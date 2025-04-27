@@ -1,0 +1,6 @@
+fastapi
+supabase
+openai
+psycopg2
+uvicorn
+python-dotenv
