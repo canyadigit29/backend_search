@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import upload, chunk, embed, memory, project, task, background_tasks, compress, session_log, search
+from app.api import upload, project
 from app.core.config import settings
 
 app = FastAPI(
@@ -20,14 +20,5 @@ app.add_middleware(
 async def root():
     return {"message": f"{settings.PROJECT_NAME} is running."}
 
-# Include routers
 app.include_router(upload.router, prefix=settings.API_PREFIX)
-app.include_router(chunk.router, prefix=settings.API_PREFIX)
-app.include_router(embed.router, prefix=settings.API_PREFIX)
-app.include_router(memory.router, prefix=settings.API_PREFIX)
 app.include_router(project.router, prefix=settings.API_PREFIX)
-app.include_router(task.router, prefix=settings.API_PREFIX)
-app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
-app.include_router(compress.router, prefix=settings.API_PREFIX)
-app.include_router(session_log.router, prefix=settings.API_PREFIX)
-app.include_router(search.router, prefix=settings.API_PREFIX)

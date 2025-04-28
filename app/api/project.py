@@ -1,5 +1,3 @@
-# app/api/project.py
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.core.supabase_client import supabase
@@ -15,7 +13,6 @@ class ProjectRequest(BaseModel):
 @router.post("/project")
 async def create_new_project(request: ProjectRequest):
     try:
-        # Check if project name already exists
         existing_project = supabase.table("projects").select("id").eq("project_name", request.project_name).single().execute()
         if existing_project.get("data"):
             raise HTTPException(status_code=400, detail="Project name already exists.")
