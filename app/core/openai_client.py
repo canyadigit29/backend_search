@@ -1,11 +1,14 @@
-import openai
-from app.core.config import settings
 
-openai.api_key = settings.OPENAI_API_KEY
+from openai import OpenAI
+
+client = OpenAI()
 
 def embed_text(text: str) -> list:
-    response = openai.Embedding.create(
-        model=settings.OPENAI_EMBEDDING_MODEL,
-        input=text
-    )
-    return response['data'][0]['embedding']
+    try:
+        response = client.embeddings.create(
+            input=[text],
+            model="text-embedding-ada-002"
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        raise RuntimeError(f"Embedding failed: {str(e)}")
