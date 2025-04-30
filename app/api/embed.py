@@ -1,13 +1,20 @@
+
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from app.core.supabase_client import supabase
 from app.core.openai_client import embed_text
 import uuid
 
 router = APIRouter()
 
+class EmbedRequest(BaseModel):
+    file_id: str
+
 @router.post("/embed")
-async def embed_chunks(file_id: str):
+async def embed_chunks(req: EmbedRequest):
     try:
+        file_id = req.file_id
+
         # Retrieve chunks
         chunk_data = supabase.table("chunks").select("*").eq("file_id", file_id).execute()
         if not chunk_data.get("data"):
