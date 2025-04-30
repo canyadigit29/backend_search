@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, HTTPException, Query
 from app.core.supabase_client import supabase
 from app.core.openai_client import embed_text
@@ -31,7 +32,7 @@ async def semantic_search(query: str, page: int = Query(1, ge=1)):
                     "query_embedding": query_embedding,
                     "match_threshold": 0.75
                 }).execute()
-                total_matches = count_response.data.get("count", 0)
+                total_matches = count_response.data
                 more_available = total_matches > match_count_per_page
             except Exception as count_error:
                 raise Exception(f"Count RPC failed: {count_error}")
