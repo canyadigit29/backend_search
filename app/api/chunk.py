@@ -1,65 +1,44 @@
-from fastapi import APIRouter, HTTPException
+
+from fastapi import HTTPException
 from app.core.supabase_client import supabase
 import uuid
-import fitz  # PyMuPDF
-import pytesseract
-import os
-import textract
 
-router = APIRouter()
-
-@router.post("/chunk")
-async def chunk_file(file_id: str):
+def chunk_file(file_id: str, chunk_size: int = 500):
     try:
-        # Retrieve file info
-        file_info = supabase.table("files").select("*").eq("id", file_id).single().execute()
-        if not file_info.get("data"):
-            raise HTTPException(status_code=404, detail="File not found.")
+        print(f"[chunk_file] Starting for file_id: {file_id}")
 
-        filepath = file_info["data"]["filepath"]
-        filename = file_info["data"]["filename"]
-        extension = filename.split(".")[-1].lower()
+        # Step 1: Fetch file content
+        file_response = supabase.table("files").select("id, content").eq("id", file_id).single().execute()
+        if file_response.data is None:
+            raise HTTPException(status_code=404, detail=f"No file found with id: {file_id}")
 
-        # Download file temporarily
-        response = supabase.storage.from_("maxgptstorage").download(filepath)
-        if isinstance(response, dict) and response.get("error"):
-            raise HTTPException(status_code=500, detail="Error downloading file from storage.")
+        content = file_response.data["content"]
+        print(f"[chunk_file] Retrieved file content length: {len(content)} characters")
 
-        local_file_path = f"/tmp/{uuid.uuid4()}_{filename}"
-        with open(local_file_path, "wb") as f:
-            f.write(response)
+        if not content.strip():
+            raise HTTPException(status_code=400, detail="File content is empty or whitespace.")
 
-        # Extract text
-        text = ""
-        if extension == "pdf":
-            doc = fitz.open(local_file_path)
-            for page in doc:
-                text += page.get_text()
-        elif extension in ["png", "jpg", "jpeg", "tiff"]:
-            text = pytesseract.image_to_string(local_file_path)
-        else:
-            try:
-                text = textract.process(local_file_path).decode()
-            except Exception:
-                raise HTTPException(status_code=500, detail="Unsupported file type or extraction failed.")
+        # Step 2: Split into chunks
+        chunks = [
+            content[i:i + chunk_size]
+            for i in range(0, len(content), chunk_size)
+        ]
 
-        # Basic chunking logic
-        max_chunk_size = 1000
-        chunks = [text[i:i+max_chunk_size] for i in range(0, len(text), max_chunk_size)]
+        print(f"[chunk_file] Total chunks created: {len(chunks)}")
 
-        # Insert chunks into Supabase
-        chunk_records = [{
-            "id": str(uuid.uuid4()),
-            "file_id": file_id,
-            "content": chunk
-        } for chunk in chunks]
+        # Step 3: Insert chunks
+        chunk_entries = [
+            {
+                "id": str(uuid.uuid4()),
+                "file_id": file_id,
+                "content": chunk.strip()
+            }
+            for chunk in chunks if chunk.strip()
+        ]
 
-        supabase.table("chunks").insert(chunk_records).execute()
-
-        # Cleanup
-        os.remove(local_file_path)
-
-        return {"message": f"File chunked into {len(chunks)} pieces."}
+        insert_response = supabase.table("chunks").insert(chunk_entries).execute()
+        print(f"[chunk_file] Inserted {len(chunk_entries)} chunks into Supabase.")
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[chunk_file] ERROR: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Chunking failed: {str(e)}")
