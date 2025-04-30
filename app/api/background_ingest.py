@@ -18,8 +18,8 @@ def chunk_and_embed_file(file_id: str):
 @router.post("/background_ingest")
 async def background_ingest(
     background_tasks: BackgroundTasks,
-    request: IngestRequest = Body(...)
+    payload: IngestRequest = Body(...)
 ):
-    file_id = request.file_id
+    file_id = payload.file_id
     background_tasks.add_task(chunk_and_embed_file, file_id)
     return {"message": f"Ingestion started for file_id {file_id}"}
