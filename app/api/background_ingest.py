@@ -1,12 +1,8 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Body
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from app.api.chunk import chunk_file
 from app.api.embed import embed_chunks
 
 router = APIRouter()
-
-class IngestRequest(BaseModel):
-    file_id: str
 
 def chunk_and_embed_file(file_id: str):
     try:
@@ -17,12 +13,11 @@ def chunk_and_embed_file(file_id: str):
 
 @router.post("/background_ingest")
 async def background_ingest(
-    background_tasks: BackgroundTasks,
-    payload: IngestRequest = Body(..., embed=True)
+    file_id: str = Query(..., description="ID of the file to process"),
+    background_tasks: BackgroundTasks = None
 ):
-    print("🔥 BACKGROUND_INGEST FINAL VERSION HIT")
-    file_id = payload.file_id
+    print("⚙️ BACKGROUND_INGEST QUERY ROUTE HIT")
     if not file_id:
-        raise HTTPException(status_code=400, detail="Missing file_id in request body")
+        raise HTTPException(status_code=400, detail="Missing file_id")
     background_tasks.add_task(chunk_and_embed_file, file_id)
     return {"message": f"Ingestion started for file_id {file_id}"}
