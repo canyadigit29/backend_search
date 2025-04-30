@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import upload, project, background_tasks, search, session_log, ingest_unprocessed
@@ -8,6 +9,7 @@ app = FastAPI(
     openapi_url=f"{settings.API_PREFIX}/openapi.json"
 )
 
+# ✅ CORS middleware for local testing
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
