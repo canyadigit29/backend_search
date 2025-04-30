@@ -21,6 +21,7 @@ def embed_chunks(file_id: str):
         )
         embeddings.append({
             "chunk_id": chunk["id"],
+            "file_id": file_id,  # 🔧 Added to fix nulls
             "embedding": response.data[0].embedding
         })
 
