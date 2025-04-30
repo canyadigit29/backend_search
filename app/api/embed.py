@@ -3,7 +3,7 @@ from app.core.config import settings
 from openai import OpenAI
 import os
 
-supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
 openai = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 def embed_chunks(file_id: str):
