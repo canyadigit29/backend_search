@@ -23,3 +23,5 @@ async def background_ingest(
     file_id = payload.file_id
     background_tasks.add_task(chunk_and_embed_file, file_id)
     return {"message": f"Ingestion started for file_id {file_id}"}
+
+print("🔥 LIVE VERSION: USING BODY EMBED")
