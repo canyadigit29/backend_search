@@ -1,50 +1,30 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from app.core.supabase_client import supabase
+
+from fastapi import APIRouter, File, UploadFile, HTTPException
+from supabase import create_client
 from app.core.config import settings
-import uuid
-import datetime
+from datetime import datetime
 
 router = APIRouter()
+supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...), project_name: str = Form(None)):
+async def upload_file(file: UploadFile = File(...)):
+    contents = await file.read()
+    file_path = f"uploads/{file.filename}"
+
     try:
-        file_id = str(uuid.uuid4())
-        filename = file.filename
-        content = await file.read()
-        upload_path = f"uploads/{file_id}/{filename}"
-        
-        response = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).upload(upload_path, content)
-        if isinstance(response, dict) and response.get("error"):
-            raise HTTPException(status_code=500, detail=f"Storage upload error: {response['error']['message']}")
+        # Upload to Supabase Storage
+        supabase.storage.from_("maxgptstorage").upload(file_path, contents, {"content-type": file.content_type})
 
-        project_id = None
-        fallback_message = None
-        if project_name:
-            project_lookup = supabase.table("projects").select("id").eq("project_name", project_name).single().execute()
-            if project_lookup.get("error") or not project_lookup.get("data"):
-                fallback_message = f"Project '{project_name}' not found. Uploaded under 'Unassigned'."
-            else:
-                project_id = project_lookup["data"]["id"]
+        # Register file in 'files' table (or update if already exists)
+        supabase.table("files").upsert({
+            "file_path": file_path,
+            "file_name": file.filename,
+            "uploaded_at": datetime.utcnow().isoformat(),
+            "ingested": False,
+            "ingested_at": None
+        }, on_conflict="file_path").execute()
 
-        file_record = {
-            "id": file_id,
-            "project_id": project_id,
-            "filename": filename,
-            "filepath": upload_path,
-            "size": len(content),
-            "uploaded_at": datetime.datetime.utcnow().isoformat()
-        }
-        insert_response = supabase.table("files").insert(file_record).execute()
-        if isinstance(insert_response, dict) and insert_response.get("error"):
-            raise HTTPException(status_code=500, detail=f"Database insert error: {insert_response['error']['message']}")
-
-        return {
-            "message": fallback_message or "File uploaded successfully.",
-            "file_id": file_id,
-            "filename": filename,
-            "project_linked": project_name if project_id else "Unassigned"
-        }
-
+        return {"status": "success", "file_path": file_path}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
