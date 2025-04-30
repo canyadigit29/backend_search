@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, HTTPException, Query
 from app.core.supabase_client import supabase
 from app.core.openai_client import embed_text
@@ -9,7 +10,6 @@ async def semantic_search(query: str, page: int = Query(1, ge=1)):
     try:
         query_embedding = embed_text(query)
 
-        # Perform semantic search
         match_count_per_page = 5
         offset = (page - 1) * match_count_per_page
 
@@ -20,12 +20,11 @@ async def semantic_search(query: str, page: int = Query(1, ge=1)):
             "match_offset": offset
         }).execute()
 
-        if search_response.error:
-            raise Exception(search_response.error.message)
+        if search_response.status_code != 200:
+            raise Exception(f"Search RPC failed: {search_response}")
 
         matches = search_response.data or []
 
-        # Check total available matches if first page
         total_matches = None
         more_available = False
         if page == 1:
@@ -33,9 +32,11 @@ async def semantic_search(query: str, page: int = Query(1, ge=1)):
                 "query_embedding": query_embedding,
                 "match_threshold": 0.75
             }).execute()
-            if count_response.error:
-                raise Exception(count_response.error.message)
-            total_matches = count_response.data["count"]
+
+            if count_response.status_code != 200:
+                raise Exception(f"Count RPC failed: {count_response}")
+
+            total_matches = count_response.data.get("count", 0)
             more_available = total_matches > match_count_per_page
 
         return {
