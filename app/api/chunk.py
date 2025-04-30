@@ -1,3 +1,4 @@
+
 import fitz  # PyMuPDF
 from supabase import create_client
 from app.core.config import settings
@@ -8,18 +9,26 @@ supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
 def chunk_file(file_id: str):
     print(f"🔍 Starting chunking for file_id: {file_id}")
     try:
+        # Try direct UUID match first
         file_entry = supabase.table("files").select("*").eq("id", file_id).single().execute().data
+
+        # If no UUID match, fallback to filename-based path match
+        if not file_entry:
+            possible_path = f"uploads/{file_id}.pdf"
+            result = supabase.table("files").select("*").eq("file_path", possible_path).single().execute()
+            file_entry = result.data if result else None
+
         if not file_entry:
             print(f"❌ File ID {file_id} not found in files table.")
             return
 
-        filepath = file_entry["filepath"]
+        file_path = file_entry["file_path"]
         bucket = "maxgptstorage"
-        print(f"📄 Filepath: {filepath}")
+        print(f"📄 Filepath: {file_path}")
 
-        response = supabase.storage.from_(bucket).download(filepath)
+        response = supabase.storage.from_(bucket).download(file_path)
         if not response:
-            print(f"❌ Could not download file from Supabase: {filepath}")
+            print(f"❌ Could not download file from Supabase: {file_path}")
             return
 
         text = ""
@@ -40,7 +49,7 @@ def chunk_file(file_id: str):
             chunk_id = str(uuid4())
             chunks.append({
                 "id": chunk_id,
-                "file_id": file_id,
+                "file_id": file_entry["id"],
                 "content": chunk_text,
                 "chunk_index": len(chunks)
             })
@@ -48,7 +57,6 @@ def chunk_file(file_id: str):
         if chunks:
             supabase.table("chunks").insert(chunks).execute()
             print(f"✅ Inserted {len(chunks)} chunks.")
-        else:
-            print("⚠️ No chunks generated.")
+
     except Exception as e:
-        print(f"💥 Chunking crashed: {str(e)}")
+        print(f"❌ Error during chunking: {str(e)}")
