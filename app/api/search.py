@@ -40,7 +40,7 @@ async def semantic_search(request: SearchRequest):
                 "chunk_index": chunk_data.get("chunk_index"),
                 "content": chunk_data.get("content"),
                 "file_id": file_id,
-                "filename": file_data.get("filename"),
+                "filename": file_data.get("file_name"),
                 "project_id": file_data.get("project_id")
             }
 
