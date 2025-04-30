@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, HTTPException
 from supabase import create_client
 from app.core.config import settings
@@ -16,20 +17,32 @@ async def ingest_unprocessed():
 
     for item in storage_list:
         file_path = f"uploads/{item['name']}"
-        exists = supabase.table("ingested").select("*").eq("file_path", file_path).execute()
-        if exists.data:
-            continue  # Skip already-ingested files
-
         file_id = item["name"].split(".")[0]
 
+        # Check if already ingested
+        file_check = supabase.table("files").select("*").eq("file_path", file_path).execute()
+        if file_check.data and file_check.data[0].get("ingested") is True:
+            continue
+
         try:
+            # Ensure file is registered
+            if not file_check.data:
+                supabase.table("files").insert({
+                    "file_path": file_path,
+                    "file_name": item["name"],
+                    "ingested": False
+                }).execute()
+
+            # Run chunk and embed
             chunk_file(file_id)
             embed_chunks(file_id)
-            supabase.table("ingested").insert({
-                "file_id": file_id,
-                "file_path": file_path,
+
+            # Update ingestion status
+            supabase.table("files").update({
+                "ingested": True,
                 "ingested_at": datetime.utcnow().isoformat()
-            }).execute()
+            }).eq("file_path", file_path).execute()
+
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
