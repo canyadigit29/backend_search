@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import upload, project, chunk, embed, background_tasks, search, session_log, background_ingest
+from app.api import upload, project, chunk, embed, background_tasks, search, session_log, background_ingest, background_ingest_v2
 from app.core.config import settings
 
 app = FastAPI(
@@ -27,6 +27,5 @@ app.include_router(embed.router, prefix=settings.API_PREFIX)
 app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
 app.include_router(search.router, prefix=settings.API_PREFIX)
 app.include_router(session_log.router, prefix=settings.API_PREFIX)
-from app.api import background_ingest_v2
-...
+app.include_router(background_ingest.router, prefix=settings.API_PREFIX)
 app.include_router(background_ingest_v2.router, prefix=settings.API_PREFIX)
