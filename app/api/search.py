@@ -27,6 +27,30 @@ async def semantic_search(request: SearchRequest):
         }).execute()
 
         matches = search_response.data or []
+        enriched_results = []
+
+        for match in matches:
+            chunk_id = match.get("id")
+            chunk_data = supabase.table("chunks").select("*").eq("id", chunk_id).single().execute().data
+            file_id = chunk_data.get("file_id")
+            file_data = supabase.table("files").select("*").eq("id", file_id).single().execute().data
+
+            enriched_result = {
+                "chunk_id": chunk_id,
+                "chunk_index": chunk_data.get("chunk_index"),
+                "content": chunk_data.get("content"),
+                "file_id": file_id,
+                "filename": file_data.get("filename"),
+                "project_id": file_data.get("project_id")
+            }
+
+            # Optionally attach project name
+            if file_data.get("project_id"):
+                project_data = supabase.table("projects").select("name").eq("id", file_data["project_id"]).single().execute().data
+                if project_data:
+                    enriched_result["project_name"] = project_data.get("name")
+
+            enriched_results.append(enriched_result)
 
         total_matches = None
         more_available = False
@@ -42,7 +66,7 @@ async def semantic_search(request: SearchRequest):
 
         return {
             "query": query,
-            "matches": matches,
+            "matches": enriched_results,
             "total_matches": total_matches,
             "more_available": more_available
         }
