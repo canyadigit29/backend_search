@@ -18,7 +18,7 @@ def chunk_and_embed_file(file_id: str):
 @router.post("/background_ingest")
 async def background_ingest(
     background_tasks: BackgroundTasks,
-    payload: IngestRequest = Body(...)
+    payload: IngestRequest = Body(embed=True)
 ):
     file_id = payload.file_id
     background_tasks.add_task(chunk_and_embed_file, file_id)
