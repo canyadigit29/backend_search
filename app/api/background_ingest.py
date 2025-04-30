@@ -1,12 +1,9 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Body
-from pydantic import BaseModel
+from fastapi import APIRouter, BackgroundTasks, Body
+from typing import Dict
 from app.api.chunk import chunk_file
 from app.api.embed import embed_chunks
 
 router = APIRouter()
-
-class IngestRequest(BaseModel):
-    file_id: str
 
 def chunk_and_embed_file(file_id: str):
     try:
@@ -18,10 +15,11 @@ def chunk_and_embed_file(file_id: str):
 @router.post("/background_ingest")
 async def background_ingest(
     background_tasks: BackgroundTasks,
-    payload: IngestRequest = Body(embed=True)
+    payload: Dict = Body(...)
 ):
-    file_id = payload.file_id
+    print("🔥 RAW MODE ACTIVE")
+    file_id = payload.get("file_id")
+    if not file_id:
+        return {"error": "file_id is missing in body"}
     background_tasks.add_task(chunk_and_embed_file, file_id)
     return {"message": f"Ingestion started for file_id {file_id}"}
-
-print("🔥 LIVE VERSION: USING BODY EMBED")
