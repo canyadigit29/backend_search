@@ -17,13 +17,21 @@ async def embed_chunks(file_id: str):
 
         embeddings_to_insert = []
         for chunk in chunks:
-            embedding = embed_text(chunk["content"])
-            embeddings_to_insert.append({
-                "id": str(uuid.uuid4()),
-                "file_id": file_id,
-                "chunk_id": chunk["id"],
-                "embedding": embedding
-            })
+            try:
+                if not isinstance(chunk.get("content"), str) or not chunk["content"].strip():
+                    raise ValueError(f"Invalid chunk content: {chunk.get('content')}")
+                embedding = embed_text(chunk["content"])
+                embeddings_to_insert.append({
+                    "id": str(uuid.uuid4()),
+                    "file_id": file_id,
+                    "chunk_id": chunk["id"],
+                    "embedding": embedding
+                })
+            except Exception as embed_error:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Embedding failed for chunk ID {chunk.get('id', '?')}: {embed_error}"
+                )
 
         # Insert all embeddings
         insert_response = supabase.table("embeddings").insert(embeddings_to_insert).execute()
