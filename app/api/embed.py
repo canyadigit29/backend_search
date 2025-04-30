@@ -24,6 +24,10 @@ async def embed_chunks(request: EmbedRequest):
         embeddings_to_insert = []
         for chunk in chunks:
             try:
+                # Validate content
+                if "content" not in chunk or not isinstance(chunk["content"], str) or not chunk["content"].strip():
+                    raise ValueError(f"Invalid chunk content: {chunk.get('content')}")
+
                 embedding = embed_text(chunk["content"])
                 embeddings_to_insert.append({
                     "id": str(uuid.uuid4()),
