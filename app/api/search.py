@@ -20,10 +20,10 @@ async def semantic_search(query: str, page: int = Query(1, ge=1)):
             "match_offset": offset
         }).execute()
 
-        if search_response.get("error"):
-            raise Exception(search_response["error"]["message"])
+        if search_response.error:
+            raise Exception(search_response.error.message)
 
-        matches = search_response["data"] if search_response else []
+        matches = search_response.data or []
 
         # Check total available matches if first page
         total_matches = None
@@ -33,9 +33,9 @@ async def semantic_search(query: str, page: int = Query(1, ge=1)):
                 "query_embedding": query_embedding,
                 "match_threshold": 0.75
             }).execute()
-            if count_response.get("error"):
-                raise Exception(count_response["error"]["message"])
-            total_matches = count_response["data"]["count"]
+            if count_response.error:
+                raise Exception(count_response.error.message)
+            total_matches = count_response.data["count"]
             more_available = total_matches > match_count_per_page
 
         return {
