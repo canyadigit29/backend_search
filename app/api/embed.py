@@ -8,14 +8,15 @@ router = APIRouter()
 @router.post("/embed")
 async def embed_chunks(file_id: str):
     try:
-        # Correct: access .data, not .get("data")
-        chunk_data = supabase.table("chunks").select("*").eq("file_id", file_id).execute()
+        # Query for chunks with matching file_id
+        chunk_response = supabase.table("chunks").select("*").eq("file_id", file_id).execute()
+        chunks = chunk_response.data
 
-        if not chunk_data.data:
+        if not chunks:
             raise HTTPException(status_code=404, detail="No chunks found for this file.")
 
         embeddings_to_insert = []
-        for chunk in chunk_data.data:
+        for chunk in chunks:
             embedding = embed_text(chunk["content"])
             embeddings_to_insert.append({
                 "id": str(uuid.uuid4()),
@@ -24,7 +25,8 @@ async def embed_chunks(file_id: str):
                 "embedding": embedding
             })
 
-        supabase.table("embeddings").insert(embeddings_to_insert).execute()
+        # Insert all embeddings
+        insert_response = supabase.table("embeddings").insert(embeddings_to_insert).execute()
 
         return {"message": f"Created {len(embeddings_to_insert)} embeddings."}
 
