@@ -14,12 +14,12 @@ def chunk_file(file_id: str):
         is_uuid = re.fullmatch(r"[0-9a-fA-F\-]{36}", file_id)
 
         if is_uuid:
-            result = supabase.table("files").select("*").eq("id", file_id).single().execute()
-            file_entry = result.data if result else None
+            result = supabase.table("files").select("*").eq("id", file_id).execute()
+            file_entry = result.data[0] if result.data else None
         else:
             filename_guess = f"uploads/{file_id}.pdf"
-            result = supabase.table("files").select("*").eq("file_path", filename_guess).single().execute()
-            file_entry = result.data if result else None
+            result = supabase.table("files").select("*").eq("file_path", filename_guess).execute()
+            file_entry = result.data[0] if result.data else None
 
         if not file_entry:
             print(f"❌ No file found for identifier: {file_id}")

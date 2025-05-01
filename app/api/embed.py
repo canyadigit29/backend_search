@@ -14,10 +14,12 @@ def embed_chunks(file_id: str):
         is_uuid = re.fullmatch(r"[0-9a-fA-F\-]{36}", file_id)
 
         if is_uuid:
-            file_entry = supabase.table("files").select("*").eq("id", file_id).single().execute().data
+            result = supabase.table("files").select("*").eq("id", file_id).execute()
+            file_entry = result.data[0] if result.data else None
         else:
             file_path = f"uploads/{file_id}.pdf"
-            file_entry = supabase.table("files").select("*").eq("file_path", file_path).single().execute().data
+            result = supabase.table("files").select("*").eq("file_path", file_path).execute()
+            file_entry = result.data[0] if result.data else None
 
         if not file_entry:
             print(f"❌ No matching file entry for: {file_id}")
