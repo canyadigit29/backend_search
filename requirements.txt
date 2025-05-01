@@ -11,3 +11,5 @@ python-docx
 textract
 psycopg2-binary
 python-multipart
+python-docx
+striprtf
