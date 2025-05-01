@@ -21,23 +21,24 @@ async def ingest_unprocessed():
 
         # Check if already ingested
         file_check = supabase.table("files").select("*").eq("file_path", file_path).execute()
-        if file_check.data and file_check.data[0].get("ingested") is True:
+        file_record = file_check.data[0] if file_check.data else None
+        if file_record and file_record.get("ingested") is True:
             continue
 
         try:
             # Ensure file is registered
-            if not file_check.data:
+            if not file_record:
                 supabase.table("files").insert({
                     "file_path": file_path,
                     "file_name": item["name"],
                     "ingested": False
                 }).execute()
 
-            # Run chunk and embed
+            # ✅ Run chunk and embed
             chunk_file(file_id)
             embed_chunks(file_id)
 
-            # Update ingestion status
+            # ✅ Only set flag AFTER both succeed
             supabase.table("files").update({
                 "ingested": True,
                 "ingested_at": datetime.utcnow().isoformat()
