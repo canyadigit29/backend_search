@@ -21,7 +21,7 @@ async def semantic_search(request: SearchRequest):
 
         search_response = supabase.rpc("match_documents_paged", {
             "query_embedding": query_embedding,
-            "match_threshold": 0.75,
+            "match_threshold": 0.6,  # 🔧 patched threshold
             "match_count": match_count_per_page,
             "match_offset": offset
         }).execute()
@@ -44,7 +44,6 @@ async def semantic_search(request: SearchRequest):
                 "project_id": file_data.get("project_id")
             }
 
-            # Optionally attach project name
             if file_data.get("project_id"):
                 project_data = supabase.table("projects").select("name").eq("id", file_data["project_id"]).single().execute().data
                 if project_data:
@@ -57,7 +56,7 @@ async def semantic_search(request: SearchRequest):
         if page == 1:
             count_response = supabase.rpc("count_matching_documents", {
                 "query_embedding": query_embedding,
-                "match_threshold": 0.75
+                "match_threshold": 0.6  # 🔧 patched threshold
             }).execute()
 
             count_value = count_response.data if isinstance(count_response.data, int) else count_response.data.get("count", 0)
