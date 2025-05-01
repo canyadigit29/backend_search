@@ -1,11 +1,35 @@
 
 import fitz  # PyMuPDF
+import re
+from uuid import uuid4
+from pathlib import Path
 from supabase import create_client
 from app.core.config import settings
-from uuid import uuid4
-import re
+
+from docx import Document
+from striprtf.striprtf import rtf_to_text
 
 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
+
+def extract_text(file_path: str, local_path: str) -> str:
+    if file_path.endswith(".pdf"):
+        doc = fitz.open(local_path)
+        return "".join([page.get_text() for page in doc])
+
+    elif file_path.endswith(".docx"):
+        doc = Document(local_path)
+        return "\n".join([para.text for para in doc.paragraphs])
+
+    elif file_path.endswith(".txt") or file_path.endswith(".md"):
+        with open(local_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    elif file_path.endswith(".rtf"):
+        with open(local_path, "r", encoding="utf-8") as f:
+            return rtf_to_text(f.read())
+
+    else:
+        raise ValueError(f"Unsupported file format: {file_path}")
 
 def chunk_file(file_id: str):
     print(f"🔍 Starting chunking for file_id: {file_id}")
@@ -15,10 +39,6 @@ def chunk_file(file_id: str):
 
         if is_uuid:
             result = supabase.table("files").select("*").eq("id", file_id).execute()
-            file_entry = result.data[0] if result.data else None
-        else:
-            filename_guess = f"uploads/{file_id}.pdf"
-            result = supabase.table("files").select("*").eq("file_path", filename_guess).execute()
             file_entry = result.data[0] if result.data else None
 
         if not file_entry:
@@ -34,15 +54,14 @@ def chunk_file(file_id: str):
             print(f"❌ Could not download file from Supabase: {file_path}")
             return
 
-        with open("/tmp/tempfile.pdf", "wb") as f:
+        local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
+        with open(local_temp_path, "wb") as f:
             f.write(response)
 
-        text = ""
-        doc = fitz.open("/tmp/tempfile.pdf")
-        for page in doc:
-            text += page.get_text()
-        doc.close()
+        # Extract text by format
+        text = extract_text(file_path, local_temp_path)
 
+        # Chunk
         max_chunk_size = 1000
         overlap = 200
         chunks = []
