@@ -17,7 +17,6 @@ async def ingest_unprocessed():
 
     for item in storage_list:
         file_path = f"uploads/{item['name']}"
-        file_id = item["name"].split(".")[0]
 
         # Check if already ingested
         file_check = supabase.table("files").select("*").eq("file_path", file_path).execute()
@@ -26,23 +25,26 @@ async def ingest_unprocessed():
             continue
 
         try:
-            # Ensure file is registered
+            # Ensure file is registered and capture the UUID
             if not file_record:
-                supabase.table("files").insert({
+                insert_result = supabase.table("files").insert({
                     "file_path": file_path,
                     "file_name": item["name"],
                     "ingested": False
                 }).execute()
+                file_record = insert_result.data[0]
 
-            # ✅ Run chunk and embed
-            chunk_file(file_id)
-            embed_chunks(file_id)
+            real_file_id = file_record["id"]
+
+            # ✅ Run chunk and embed using real UUID
+            chunk_file(real_file_id)
+            embed_chunks(real_file_id)
 
             # ✅ Only set flag AFTER both succeed
             supabase.table("files").update({
                 "ingested": True,
                 "ingested_at": datetime.utcnow().isoformat()
-            }).eq("file_path", file_path).execute()
+            }).eq("id", real_file_id).execute()
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
