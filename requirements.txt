@@ -8,7 +8,6 @@ aiofiles
 pytesseract
 PyMuPDF
 python-docx
-textract
 psycopg2-binary
 python-multipart
 striprtf
