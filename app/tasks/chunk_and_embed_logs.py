@@ -1,4 +1,11 @@
 import os
+import sys
+
+print("📁 Current Working Directory:", os.getcwd())
+print("📂 Contents:", os.listdir(os.getcwd()))
+print("📦 sys.path =", sys.path)
+
+import os
 from datetime import datetime, timedelta
 from app.core.supabase_client import create_client
 from app.core.openai_client import embed_text
