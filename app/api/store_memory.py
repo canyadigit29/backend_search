@@ -33,8 +33,8 @@ async def store_memory(entry: MemoryEntry):
             "topic_name": entry.topic_name
         }).execute()
 
-        if result.status_code not in [200, 201]:
-            raise HTTPException(status_code=500, detail="Failed to store memory in Supabase.")
+        if result.error:
+            raise HTTPException(status_code=500, detail=result.error.message)
 
         return {"status": "success", "topic_id": topic_id}
 
