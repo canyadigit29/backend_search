@@ -1,18 +1,14 @@
-
 import os
-from supabase import create_client, Client
 from datetime import datetime
-from dotenv import load_dotenv
-
-load_dotenv()
-
-supabase: Client = create_client(
-    os.getenv("SUPABASE_URL"),
-    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-)
+from supabase import create_client, Client
 
 def log_message(session_id: str, role: str, content: str, topic_name: str = None):
     try:
+        # Railway passes env variables directly — use them here
+        supabase_url = os.environ["SUPABASE_URL"]
+        supabase_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+        supabase: Client = create_client(supabase_url, supabase_key)
+
         result = supabase.table("daily_chat_log").insert({
             "session_id": session_id,
             "role": role,
