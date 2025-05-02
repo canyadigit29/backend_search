@@ -11,3 +11,4 @@ python-docx
 psycopg2-binary
 python-multipart
 striprtf
+requests
