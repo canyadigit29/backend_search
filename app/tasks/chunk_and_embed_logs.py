@@ -6,10 +6,10 @@ from openai import OpenAI
 
 # Use Railway env variables
 SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_SERVICE_ROLE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 openai = OpenAI(api_key=OPENAI_API_KEY)
 embedding_model = "text-embedding-3-small"
 
