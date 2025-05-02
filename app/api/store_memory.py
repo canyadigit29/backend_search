@@ -18,25 +18,19 @@ class MemoryEntry(BaseModel):
 
 @router.post("/store_memory")
 async def store_memory(entry: MemoryEntry):
-    try:
-        topic_id = entry.topic_id or str(uuid.uuid4())
-        embedding = embed_text(entry.content)
+    topic_id = entry.topic_id or str(uuid.uuid4())
+    embedding = embed_text(entry.content)
 
-        result = supabase.table("memory").insert({
-            "session_id": entry.session_id,
-            "message_index": entry.message_index,
-            "role": entry.role,
-            "content": entry.content,
-            "timestamp": datetime.utcnow().isoformat(),
-            "embedding": embedding,
-            "topic_id": topic_id,
-            "topic_name": entry.topic_name
-        }).execute()
+    # Supabase v2: just execute the insert, no status_code or error check
+    supabase.table("memory").insert({
+        "session_id": entry.session_id,
+        "message_index": entry.message_index,
+        "role": entry.role,
+        "content": entry.content,
+        "timestamp": datetime.utcnow().isoformat(),
+        "embedding": embedding,
+        "topic_id": topic_id,
+        "topic_name": entry.topic_name
+    }).execute()
 
-        if result.error:
-            raise HTTPException(status_code=500, detail=result.error.message)
-
-        return {"status": "success", "topic_id": topic_id}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "success", "topic_id": topic_id}
