@@ -10,7 +10,7 @@ def route_query(user_query: str, session_id: str, topic_name: str = None):
         if topic_name:
             recall_url = f"{SEARCH_BACKEND}/api/recall_memory"
             recall_params = {"topic_name": topic_name, "limit": 20, "offset": 0}
-            recall_result = requests.get(recall_url, params=recall_params)
+            recall_result = requests.get(recall_url, params=recall_params, timeout=5)
             recall_data = recall_result.json()
 
             if recall_data.get("messages"):
@@ -22,7 +22,7 @@ def route_query(user_query: str, session_id: str, topic_name: str = None):
 
         # Step 2: Fallback to semantic memory search
         search_memory_url = f"{SEARCH_BACKEND}/api/search_memory"
-        memory_result = requests.post(search_memory_url, json={"query": user_query, "top_k": 5})
+        memory_result = requests.post(search_memory_url, json={"query": user_query, "top_k": 5}, timeout=5)
         memory_data = memory_result.json()
 
         if memory_data:
@@ -33,7 +33,7 @@ def route_query(user_query: str, session_id: str, topic_name: str = None):
 
         # Step 3: Fallback to document search
         doc_search_url = f"{SEARCH_BACKEND}/api/search"
-        doc_result = requests.post(doc_search_url, json={"query": user_query, "page": 1})
+        doc_result = requests.post(doc_search_url, json={"query": user_query, "page": 1}, timeout=5)
         doc_data = doc_result.json()
 
         if doc_data.get("matches"):
