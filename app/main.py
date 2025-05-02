@@ -1,10 +1,8 @@
 
 from fastapi import FastAPI
-from app.api import store_memory
 from fastapi.middleware.cors import CORSMiddleware
 from app.api import upload, project, background_tasks, search, session_log, ingest_unprocessed
 from app.core.config import settings
-from app.api import store_memory
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
