@@ -13,19 +13,15 @@ class MemoryEntry(BaseModel):
     message_index: int
     role: str  # 'user' or 'assistant'
     content: str
-    topic_id: str = None  # Optional: auto-assigned if not provided
-    topic_name: str = "General"  # Default topic name
+    topic_id: str = None
+    topic_name: str = "General"
 
 @router.post("/store_memory")
 async def store_memory(entry: MemoryEntry):
     try:
-        # Generate topic_id if not provided
         topic_id = entry.topic_id or str(uuid.uuid4())
-
-        # Generate embedding
         embedding = embed_text(entry.content)
 
-        # Insert into Supabase
         result = supabase.table("memory").insert({
             "session_id": entry.session_id,
             "message_index": entry.message_index,
