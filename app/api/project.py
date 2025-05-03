@@ -14,7 +14,7 @@ class ProjectRequest(BaseModel):
 @router.post("/project")
 async def create_new_project(request: ProjectRequest):
     try:
-        # Check if project already exists
+        # Check if project already exists (returns actual row or None)
         existing_project = (
             supabase.table("projects")
             .select("id")
@@ -23,7 +23,7 @@ async def create_new_project(request: ProjectRequest):
             .execute()
         )
 
-        if existing_project.data:
+        if existing_project:
             raise HTTPException(status_code=400, detail="Project name already exists.")
 
         # Create DB record
@@ -44,10 +44,7 @@ async def create_new_project(request: ProjectRequest):
         folder_path = f"{USER_ID}/{request.project_name}/"
         list_response = supabase.storage.from_("maxgptstorage").list(path=f"{USER_ID}/", options={"limit": 100})
 
-        if list_response.error:
-            raise Exception(f"Failed to list folders: {list_response.error.message}")
-
-        folder_data = list_response.data or []
+        folder_data = list_response.data if list_response and list_response.data else []
         existing_folders = [
             item["name"]
             for item in folder_data
@@ -72,6 +69,7 @@ async def create_new_project(request: ProjectRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/projects")
 async def list_projects():
