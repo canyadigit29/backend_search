@@ -38,3 +38,16 @@ async def create_new_project(request: ProjectRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/projects")
+async def list_projects():
+    try:
+        response = supabase.table("projects").select("*").execute()
+
+        if response.get("error"):
+            raise HTTPException(status_code=500, detail="Failed to fetch project list")
+
+        return response.get("data", [])
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
