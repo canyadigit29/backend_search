@@ -14,7 +14,7 @@ class ProjectRequest(BaseModel):
 @router.post("/project")
 async def create_new_project(request: ProjectRequest):
     try:
-        # Check if project already exists (returns actual row or None)
+        # Check if project already exists
         existing_project = (
             supabase.table("projects")
             .select("id")
@@ -23,7 +23,7 @@ async def create_new_project(request: ProjectRequest):
             .execute()
         )
 
-        if existing_project:
+        if existing_project.data:
             raise HTTPException(status_code=400, detail="Project name already exists.")
 
         # Create DB record
@@ -51,10 +51,11 @@ async def create_new_project(request: ProjectRequest):
             if isinstance(item, dict) and item.get("metadata", {}).get("type") == "folder"
         ]
 
+        # If not found, upload placeholder to create folder
         if request.project_name not in existing_folders:
             upload_response = supabase.storage.from_("maxgptstorage").upload(
                 f"{folder_path}.init",
-                b"",
+                b"init",  # uploading empty bytes triggers folder creation
                 {"content-type": "text/plain"}
             )
 
