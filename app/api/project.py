@@ -16,8 +16,8 @@ class ProjectRequest(BaseModel):
 @router.post("/project")
 async def create_new_project(request: ProjectRequest):
     try:
-        # 1. Check for existing project
-        existing_project = supabase.table("projects").select("id").eq("project_name", request.project_name).single().execute()
+        # 1. Check for existing project (use actual column name: name)
+        existing_project = supabase.table("projects").select("id").eq("name", request.project_name).single().execute()
         if existing_project.get("data"):
             raise HTTPException(status_code=400, detail="Project name already exists.")
 
@@ -27,7 +27,7 @@ async def create_new_project(request: ProjectRequest):
 
         insert_response = supabase.table("projects").insert({
             "id": project_id,
-            "project_name": request.project_name,
+            "name": request.project_name,  # <-- correct column name
             "description": request.description,
             "created_at": created_at
         }).execute()
