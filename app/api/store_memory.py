@@ -8,6 +8,8 @@ import uuid
 
 router = APIRouter()
 
+USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"  # Temporary hardcoded user ID
+
 class MemoryEntry(BaseModel):
     session_id: str
     message_index: int
@@ -21,15 +23,16 @@ async def store_memory(entry: MemoryEntry):
     topic_id = entry.topic_id or str(uuid.uuid4())
     embedding = embed_text(entry.content)
 
-    # ✅ log the message to daily_chat_log
+    # ✅ Log to daily_chat_log with user_id
     log_message(
         session_id=entry.session_id,
         role=entry.role,
         content=entry.content,
-        topic_name=entry.topic_name
+        topic_name=entry.topic_name,
+        user_id=USER_ID  # ✅ Inject user ownership
     )
 
-    # Store it in memory table as usual
+    # ✅ Store in memory table with user_id
     supabase.table("memory").insert({
         "session_id": entry.session_id,
         "message_index": entry.message_index,
@@ -38,7 +41,5 @@ async def store_memory(entry: MemoryEntry):
         "timestamp": datetime.utcnow().isoformat(),
         "embedding": embedding,
         "topic_id": topic_id,
-        "topic_name": entry.topic_name
-    }).execute()
-
-    return {"status": "success", "topic_id": topic_id}
+        "topic_name": entry.topic_name,
+        "user_id": USER_ID  # ✅ Inject user ownership
