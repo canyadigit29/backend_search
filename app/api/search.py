@@ -1,10 +1,11 @@
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.core.supabase_client import supabase
 from app.core.openai_client import embed_text
 
 router = APIRouter()
+
+USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"  # Temporary hardcoded user ID
 
 class SearchRequest(BaseModel):
     query: str
@@ -20,7 +21,6 @@ async def semantic_search(request: SearchRequest):
         match_count_per_page = 5
         offset = (page - 1) * match_count_per_page
 
-        # Reverted: no timeout arg
         search_response = supabase.rpc("match_documents_paged", {
             "query_embedding": query_embedding,
             "match_threshold": 0.6,
@@ -33,9 +33,32 @@ async def semantic_search(request: SearchRequest):
 
         for match in matches:
             chunk_id = match.get("id")
-            chunk_data = supabase.table("chunks").select("*").eq("id", chunk_id).single().execute().data
+            chunk_data = (
+                supabase.table("chunks")
+                .select("*")
+                .eq("id", chunk_id)
+                .eq("user_id", USER_ID)  # ✅ ensure ownership
+                .single()
+                .execute()
+                .data
+            )
+
+            if not chunk_data:
+                continue  # skip if chunk doesn't belong to user
+
             file_id = chunk_data.get("file_id")
-            file_data = supabase.table("files").select("*").eq("id", file_id).single().execute().data
+            file_data = (
+                supabase.table("files")
+                .select("*")
+                .eq("id", file_id)
+                .eq("user_id", USER_ID)  # ✅ ensure ownership
+                .single()
+                .execute()
+                .data
+            )
+
+            if not file_data:
+                continue  # skip if file doesn't belong to user
 
             enriched_result = {
                 "chunk_id": chunk_id,
@@ -47,7 +70,15 @@ async def semantic_search(request: SearchRequest):
             }
 
             if file_data.get("project_id"):
-                project_data = supabase.table("projects").select("name").eq("id", file_data["project_id"]).single().execute().data
+                project_data = (
+                    supabase.table("projects")
+                    .select("name")
+                    .eq("id", file_data["project_id"])
+                    .eq("user_id", USER_ID)  # ✅ ensure ownership
+                    .single()
+                    .execute()
+                    .data
+                )
                 if project_data:
                     enriched_result["project_name"] = project_data.get("name")
 
