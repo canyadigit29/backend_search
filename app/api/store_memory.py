@@ -32,14 +32,21 @@ async def store_memory(entry: MemoryEntry):
         user_id=USER_ID  # ✅ Inject user ownership
     )
 
-    # ✅ Store in memory table with user_id
-    supabase.table("memory").insert({
-        "session_id": entry.session_id,
-        "message_index": entry.message_index,
-        "role": entry.role,
-        "content": entry.content,
-        "timestamp": datetime.utcnow().isoformat(),
-        "embedding": embedding,
-        "topic_id": topic_id,
-        "topic_name": entry.topic_name,
-        "user_id": USER_ID  # ✅ Inject user ownership
+    try:
+        # ✅ Store in memory table with user_id
+        supabase.table("memory").insert({
+            "session_id": entry.session_id,
+            "message_index": entry.message_index,
+            "role": entry.role,
+            "content": entry.content,
+            "timestamp": datetime.utcnow().isoformat(),
+            "embedding": embedding,
+            "topic_id": topic_id,
+            "topic_name": entry.topic_name,
+            "user_id": USER_ID  # ✅ Inject user ownership
+        }).execute()
+
+        return {"status": "success", "topic_id": topic_id}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Memory store failed: {str(e)}")
