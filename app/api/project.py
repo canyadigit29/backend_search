@@ -85,4 +85,5 @@ async def create_new_project(request: ProjectRequest):
 
     except Exception as e:
         print(f"❌ Final Error: {str(e)}")
-        raise HTTPException(status_code=500, detail_
+       raise HTTPException(status_code=500, detail=str(e))
+
