@@ -3,7 +3,7 @@ from supabase import create_client
 from app.core.config import settings
 from datetime import datetime
 import uuid
-from app.tasks.chunk_and_embed_logs import process_file  # ✅ Function we'll define next
+from app.api.ingest_unprocessed import process_file  # ✅ Fixed import location
 
 router = APIRouter()
 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
