@@ -1,4 +1,3 @@
-
 import fitz  # PyMuPDF
 import re
 from uuid import uuid4
@@ -10,6 +9,7 @@ from docx import Document
 from striprtf.striprtf import rtf_to_text
 
 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
+
 
 def extract_text(file_path: str, local_path: str) -> str:
     if file_path.endswith(".pdf"):
@@ -31,7 +31,8 @@ def extract_text(file_path: str, local_path: str) -> str:
     else:
         raise ValueError(f"Unsupported file format: {file_path}")
 
-def chunk_file(file_id: str):
+
+def chunk_file(file_id: str, user_id: str = None):
     print(f"🔍 Starting chunking for file_id: {file_id}")
     try:
         file_entry = None
@@ -46,6 +47,7 @@ def chunk_file(file_id: str):
             return
 
         file_path = file_entry["file_path"]
+        actual_user_id = user_id or file_entry.get("user_id", None)
         bucket = "maxgptstorage"
         print(f"📄 Filepath: {file_path}")
 
@@ -58,7 +60,7 @@ def chunk_file(file_id: str):
         with open(local_temp_path, "wb") as f:
             f.write(response)
 
-        # Extract text by format
+        # Extract text
         text = extract_text(file_path, local_temp_path)
 
         # Chunk
@@ -68,12 +70,15 @@ def chunk_file(file_id: str):
         for i in range(0, len(text), max_chunk_size - overlap):
             chunk_text = text[i:i + max_chunk_size]
             chunk_id = str(uuid4())
-            chunks.append({
+            chunk = {
                 "id": chunk_id,
                 "file_id": file_entry["id"],
                 "content": chunk_text,
                 "chunk_index": len(chunks)
-            })
+            }
+            if actual_user_id:
+                chunk["user_id"] = actual_user_id
+            chunks.append(chunk)
 
         if chunks:
             supabase.table("chunks").insert(chunks).execute()
