@@ -1,9 +1,6 @@
 from fastapi import HTTPException
 import requests
 
-# ✅ Added: import the behavior route
-from app.api import behavior
-
 SEARCH_BACKEND = "https://backendsearch-production.up.railway.app"
 
 def route_query(user_query: str, session_id: str, topic_name: str = None):
@@ -52,7 +49,3 @@ def route_query(user_query: str, session_id: str, topic_name: str = None):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Router error: {str(e)}")
-
-# ✅ Mount the behavior router
-def include_behavior_routes(app):
-    app.include_router(behavior.router, prefix="/api")
