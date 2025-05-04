@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.core.supabase_client import supabase
@@ -16,7 +15,7 @@ class ProjectRequest(BaseModel):
 @router.post("/project")
 async def create_new_project(request: ProjectRequest):
     try:
-        print("➡️ Checking if project already exists...")
+        print("➡️ Step 1: Checking for existing project...")
         existing_project = (
             supabase.table("projects")
             .select("id")
@@ -24,29 +23,34 @@ async def create_new_project(request: ProjectRequest):
             .maybe_single()
             .execute()
         )
-        print(f"🔍 Existing project check result: {existing_project}")
+        print(f"🔍 Project lookup result: {existing_project}")
 
         if existing_project and getattr(existing_project, "data", None):
             print("⚠️ Project already exists.")
             raise HTTPException(status_code=400, detail="Project name already exists.")
 
-        print("✅ Creating new project record in database...")
+        print("✅ Step 2: Inserting new project record...")
         project_id = str(uuid.uuid4())
         created_at = datetime.datetime.utcnow().isoformat()
 
-        insert_response = supabase.table("projects").insert({
-            "id": project_id,
-            "name": request.project_name,
-            "description": request.description,
-            "created_at": created_at
-        }).execute()
+        insert_response = (
+            supabase.table("projects")
+            .insert({
+                "id": project_id,
+                "name": request.project_name,
+                "description": request.description,
+                "created_at": created_at
+            })
+            .execute()
+        )
         print(f"🧾 Insert response: {insert_response}")
 
         if not insert_response or getattr(insert_response, "error", None):
-            raise Exception(f"Failed to create project: {getattr(insert_response.error, 'message', 'unknown')}")
+            msg = getattr(insert_response.error, "message", "unknown DB insert error")
+            raise Exception(f"Database error: {msg}")
 
+        print("📁 Step 3: Checking existing storage folders...")
         folder_path = f"{USER_ID}/{request.project_name}/"
-        print(f"📁 Checking for folder: {folder_path}")
         list_response = supabase.storage.from_("maxgptstorage").list(path=f"{USER_ID}/", options={"limit": 100})
         print(f"📂 Folder list response: {list_response}")
 
@@ -57,10 +61,10 @@ async def create_new_project(request: ProjectRequest):
             if isinstance(item, dict)
             and item.get("metadata", {}).get("type") == "folder"
         ]
-        print(f"📁 Existing folders: {existing_folders}")
+        print(f"📁 Found folders: {existing_folders}")
 
         if request.project_name not in existing_folders:
-            print("📤 Folder doesn't exist — uploading placeholder to create it...")
+            print("📤 Step 4: Creating folder via dummy .init upload...")
             upload_response = supabase.storage.from_("maxgptstorage").upload(
                 f"{folder_path}.init",
                 b"",
@@ -69,8 +73,10 @@ async def create_new_project(request: ProjectRequest):
             print(f"📤 Upload response: {upload_response}")
 
             if not upload_response or getattr(upload_response, "error", None):
-                raise Exception(f"Failed to create folder: {getattr(upload_response.error, 'message', 'unknown')}")
+                msg = getattr(upload_response.error, "message", "unknown storage upload error")
+                raise Exception(f"Storage error: {msg}")
 
+        print("✅ Project created successfully.")
         return {
             "message": "Project created successfully.",
             "project_id": project_id,
@@ -78,20 +84,5 @@ async def create_new_project(request: ProjectRequest):
         }
 
     except Exception as e:
-        print(f"❌ ERROR: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/projects")
-async def list_projects():
-    try:
-        response = supabase.table("projects").select("*").execute()
-        print(f"📋 Project list response: {response}")
-
-        if not response or getattr(response, "error", None):
-            raise HTTPException(status_code=500, detail="Failed to fetch project list")
-
-        return getattr(response, "data", [])
-
-    except Exception as e:
-        print(f"❌ ERROR: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        print(f"❌ Final Error: {str(e)}")
+        raise HTTPException(status_code=500, detail_
