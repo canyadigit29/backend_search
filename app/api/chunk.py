@@ -63,22 +63,37 @@ def chunk_file(file_id: str, user_id: str = None):
         # Extract text
         text = extract_text(file_path, local_temp_path)
 
-        # Chunk
+        # Chunking parameters
         max_chunk_size = 1000
         overlap = 200
         chunks = []
-        for i in range(0, len(text), max_chunk_size - overlap):
-            chunk_text = text[i:i + max_chunk_size]
+
+        if len(text) <= max_chunk_size:
+            # 👇 Entire file becomes one chunk
             chunk_id = str(uuid4())
             chunk = {
                 "id": chunk_id,
                 "file_id": file_entry["id"],
-                "content": chunk_text,
-                "chunk_index": len(chunks)
+                "content": text,
+                "chunk_index": 0
             }
             if actual_user_id:
                 chunk["user_id"] = actual_user_id
             chunks.append(chunk)
+        else:
+            # 👇 Normal multi-chunk logic
+            for i in range(0, len(text), max_chunk_size - overlap):
+                chunk_text = text[i:i + max_chunk_size]
+                chunk_id = str(uuid4())
+                chunk = {
+                    "id": chunk_id,
+                    "file_id": file_entry["id"],
+                    "content": chunk_text,
+                    "chunk_index": len(chunks)
+                }
+                if actual_user_id:
+                    chunk["user_id"] = actual_user_id
+                chunks.append(chunk)
 
         if chunks:
             supabase.table("chunks").insert(chunks).execute()
