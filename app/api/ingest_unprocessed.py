@@ -9,7 +9,6 @@ import time
 router = APIRouter()
 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
 
-
 @router.post("/ingest_unprocessed")
 async def ingest_unprocessed():
     storage_list = supabase.storage.from_("maxgptstorage").list("uploads/")
@@ -18,6 +17,17 @@ async def ingest_unprocessed():
 
     for item in storage_list:
         file_path = f"uploads/{item['name']}"
+
+        # 🔍 Try to infer project name from file path
+        path_parts = file_path.split("/")
+        project_folder = path_parts[1] if len(path_parts) > 1 else None
+
+        # 📡 Query Supabase to find project_id
+        project_id = None
+        if project_folder:
+            project_res = supabase.table("projects").select("id").eq("name", project_folder).eq("user_id", "2532a036-5988-4e0b-8c0e-b0e94aabc1c9").execute()
+            if project_res and project_res.data:
+                project_id = project_res.data[0]["id"]
 
         # Check if already ingested
         file_check = supabase.table("files").select("*").eq("file_path", file_path).execute()
@@ -28,11 +38,15 @@ async def ingest_unprocessed():
         try:
             # Ensure file is registered and capture the UUID
             if not file_record:
-                insert_result = supabase.table("files").insert({
+                insert_data = {
                     "file_path": file_path,
                     "file_name": item["name"],
                     "ingested": False
-                }).execute()
+                }
+                if project_id:
+                    insert_data["project_id"] = project_id
+
+                insert_result = supabase.table("files").insert(insert_data).execute()
                 file_record = insert_result.data[0]
 
             real_file_id = file_record["id"]
@@ -45,7 +59,6 @@ async def ingest_unprocessed():
             raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
     return {"status": "success", "message": "Ingestion complete"}
-
 
 # ✅ Shared function for upload-triggered or bulk ingestion
 def process_file(file_path: str, file_id: str, user_id: str = None):
