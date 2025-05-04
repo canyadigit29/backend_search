@@ -1,4 +1,4 @@
-=from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
 from app.core.supabase_client import supabase
 
