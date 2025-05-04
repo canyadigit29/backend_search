@@ -1,37 +1,3 @@
-import fitz  # PyMuPDF
-import re
-from uuid import uuid4
-from pathlib import Path
-from supabase import create_client
-from app.core.config import settings
-
-from docx import Document
-from striprtf.striprtf import rtf_to_text
-
-supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
-
-
-def extract_text(file_path: str, local_path: str) -> str:
-    if file_path.endswith(".pdf"):
-        doc = fitz.open(local_path)
-        return "".join([page.get_text() for page in doc])
-
-    elif file_path.endswith(".docx"):
-        doc = Document(local_path)
-        return "\n".join([para.text for para in doc.paragraphs])
-
-    elif file_path.endswith(".txt") or file_path.endswith(".md"):
-        with open(local_path, "r", encoding="utf-8") as f:
-            return f.read()
-
-    elif file_path.endswith(".rtf"):
-        with open(local_path, "r", encoding="utf-8") as f:
-            return rtf_to_text(f.read())
-
-    else:
-        raise ValueError(f"Unsupported file format: {file_path}")
-
-
 def chunk_file(file_id: str, user_id: str = None):
     print(f"🔍 Starting chunking for file_id: {file_id}")
     try:
@@ -48,6 +14,7 @@ def chunk_file(file_id: str, user_id: str = None):
 
         file_path = file_entry["file_path"]
         actual_user_id = user_id or file_entry.get("user_id", None)
+        project_id = file_entry.get("project_id")  # ✅ extract project_id
         bucket = "maxgptstorage"
         print(f"📄 Filepath: {file_path}")
 
@@ -69,7 +36,6 @@ def chunk_file(file_id: str, user_id: str = None):
         chunks = []
 
         if len(text) <= max_chunk_size:
-            # 👇 Entire file becomes one chunk
             chunk_id = str(uuid4())
             chunk = {
                 "id": chunk_id,
@@ -79,9 +45,10 @@ def chunk_file(file_id: str, user_id: str = None):
             }
             if actual_user_id:
                 chunk["user_id"] = actual_user_id
+            if project_id:
+                chunk["project_id"] = project_id  # ✅ attach project_id
             chunks.append(chunk)
         else:
-            # 👇 Normal multi-chunk logic
             for i in range(0, len(text), max_chunk_size - overlap):
                 chunk_text = text[i:i + max_chunk_size]
                 chunk_id = str(uuid4())
@@ -93,6 +60,8 @@ def chunk_file(file_id: str, user_id: str = None):
                 }
                 if actual_user_id:
                     chunk["user_id"] = actual_user_id
+                if project_id:
+                    chunk["project_id"] = project_id  # ✅ attach project_id
                 chunks.append(chunk)
 
         if chunks:
