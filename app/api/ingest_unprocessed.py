@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException
 from supabase import create_client
 from app.core.config import settings
@@ -8,6 +7,7 @@ from datetime import datetime
 
 router = APIRouter()
 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
+
 
 @router.post("/ingest_unprocessed")
 async def ingest_unprocessed():
@@ -35,18 +35,29 @@ async def ingest_unprocessed():
                 file_record = insert_result.data[0]
 
             real_file_id = file_record["id"]
+            user_id = file_record.get("user_id", None)
 
-            # ✅ Run chunk and embed using real UUID
-            chunk_file(real_file_id)
-            embed_chunks(real_file_id)
-
-            # ✅ Only set flag AFTER both succeed
-            supabase.table("files").update({
-                "ingested": True,
-                "ingested_at": datetime.utcnow().isoformat()
-            }).eq("id", real_file_id).execute()
+            # ✅ Use shared process function
+            process_file(file_path, real_file_id, user_id)
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
     return {"status": "success", "message": "Ingestion complete"}
+
+
+# ✅ Shared function for upload-triggered or bulk ingestion
+def process_file(file_path: str, file_id: str, user_id: str = None):
+    print(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
+
+    # Chunk the file
+    chunk_file(file_id, user_id=user_id)
+
+    # Embed the chunks
+    embed_chunks(file_id)
+
+    # Mark the file as ingested
+    supabase.table("files").update({
+        "ingested": True,
+        "ingested_at": datetime.utcnow().isoformat()
+    }).eq("id", file_id).execute()
