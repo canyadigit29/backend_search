@@ -28,4 +28,53 @@ async def ingest_unprocessed():
         try:
             # Ensure file is registered and capture the UUID
             if not file_record:
-                insert
+                insert_result = supabase.table("files").insert({
+                    "file_path": file_path,
+                    "file_name": item["name"],
+                    "ingested": False
+                }).execute()
+                file_record = insert_result.data[0]
+
+            real_file_id = file_record["id"]
+            user_id = file_record.get("user_id", None)
+
+            # ✅ Use shared process function
+            process_file(file_path, real_file_id, user_id)
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
+
+    return {"status": "success", "message": "Ingestion complete"}
+
+
+# ✅ Shared function for upload-triggered or bulk ingestion
+def process_file(file_path: str, file_id: str, user_id: str = None):
+    print(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
+
+    # ✅ Wait up to 2 minutes for file row to exist
+    max_retries = 24
+    retry_interval = 5.0  # seconds
+    file_record = None
+
+    for attempt in range(max_retries):
+        result = supabase.table("files").select("*").eq("id", file_id).execute()
+        if result and result.data:
+            file_record = result.data[0]
+            break
+        print(f"⏳ Waiting for file to appear in DB... attempt {attempt + 1}")
+        time.sleep(retry_interval)
+
+    if not file_record:
+        raise Exception(f"File record not found after {max_retries} retries: {file_path}")
+
+    # Chunk the file
+    chunk_file(file_id, user_id=user_id)
+
+    # Embed the chunks
+    embed_chunks(file_id)
+
+    # Mark the file as ingested
+    supabase.table("files").update({
+        "ingested": True,
+        "ingested_at": datetime.utcnow().isoformat()
+    }).eq("id", file_id).execute()
