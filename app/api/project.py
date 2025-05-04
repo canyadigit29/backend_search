@@ -41,7 +41,7 @@ async def create_new_project(request: ProjectRequest):
                 "name": request.project_name,
                 "description": request.description,
                 "created_at": created_at,
-                "user_id": USER_ID  # ✅ Insert user_id
+                "user_id": USER_ID
             })
             .execute()
         )
@@ -90,17 +90,22 @@ async def create_new_project(request: ProjectRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ✅ NEW: Filter by user_id
 @router.get("/projects")
 async def list_projects():
     try:
-        print("📦 Fetching all projects for user...")
+        print(f"📦 Fetching projects for user_id: {USER_ID}")
         response = (
             supabase.table("projects")
-            .select("name")
+            .select("id, name, description, created_at")
             .eq("user_id", USER_ID)
+            .order("created_at", desc=True)
             .execute()
         )
+        if getattr(response, "error", None):
+            msg = getattr(response.error, "message", "unknown error")
+            raise Exception(f"Supabase query error: {msg}")
+
+        print(f"📁 Projects retrieved: {len(response.data or [])}")
         return response.data or []
     except Exception as e:
         print(f"❌ Error fetching projects: {str(e)}")
