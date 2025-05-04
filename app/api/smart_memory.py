@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
@@ -7,6 +6,8 @@ from app.core.openai_client import embed_text
 import logging
 
 router = APIRouter()
+
+USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"  # Temporary hardcoded user ID
 
 class SmartMemoryQuery(BaseModel):
     session_id: str
@@ -19,7 +20,15 @@ async def smart_memory(query: SmartMemoryQuery):
         query_embedding = embed_text(query.prompt)
 
         # 🔍 Step 1: Check daily_chat_log for recent related messages
-        daily_logs = supabase.table("daily_chat_log").select("*")             .eq("session_id", query.session_id)             .order("timestamp", desc=False).execute().data
+        daily_logs = (
+            supabase.table("daily_chat_log")
+            .select("*")
+            .eq("session_id", query.session_id)
+            .eq("user_id", USER_ID)  # ✅ Filter by user
+            .order("timestamp", desc=False)
+            .execute()
+            .data
+        )
 
         if daily_logs:
             recent_context = "\n".join([entry["role"] + ": " + entry["content"] for entry in daily_logs[-10:]])
@@ -37,13 +46,16 @@ async def smart_memory(query: SmartMemoryQuery):
         }).execute()
 
         matches = search_response.data or []
+        # ✅ Filter results by user_id (just in case the RPC doesn't)
+        matches = [m for m in matches if m.get("user_id") == USER_ID]
+
         if matches:
             return {
                 "source": "memory",
                 "messages": matches
             }
 
-        # 📂 Step 3: Fallback to documents (search endpoint)
+        # 📂 Step 3: Fallback
         return {
             "source": "none",
             "messages": [],
