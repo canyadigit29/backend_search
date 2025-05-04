@@ -1,7 +1,9 @@
-from fastapi import APIRouter, File, UploadFile, Form, HTTPException
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks
 from supabase import create_client
 from app.core.config import settings
 from datetime import datetime
+import uuid
+from app.tasks.chunk_and_embed_logs import process_file  # ✅ Function we'll define next
 
 router = APIRouter()
 supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE)
@@ -10,6 +12,7 @@ USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"  # Temporary hardcoded user ID
 
 @router.post("/upload")
 async def upload_file(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     project_name: str = Form(...)
 ):
@@ -17,6 +20,7 @@ async def upload_file(
         contents = await file.read()
         folder_path = f"{USER_ID}/{project_name}/"
         file_path = f"{folder_path}{file.filename}"
+        file_id = str(uuid.uuid4())
 
         # Upload to Supabase Storage
         print(f"📤 Uploading file to: {file_path}")
@@ -25,14 +29,19 @@ async def upload_file(
         )
         print(f"📤 Upload response: {upload_response}")
 
-        # Register file in DB
+        # Register file in DB with user_id
         supabase.table("files").upsert({
+            "id": file_id,
             "file_path": file_path,
             "file_name": file.filename,
             "uploaded_at": datetime.utcnow().isoformat(),
             "ingested": False,
-            "ingested_at": None
+            "ingested_at": None,
+            "user_id": USER_ID
         }, on_conflict="file_path").execute()
+
+        # Trigger background chunk+embed
+        background_tasks.add_task(process_file, file_path=file_path, file_id=file_id, user_id=USER_ID)
 
         return {"status": "success", "file_path": file_path}
 
