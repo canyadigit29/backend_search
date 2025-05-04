@@ -6,7 +6,7 @@ import datetime
 
 router = APIRouter()
 
-USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
+USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"  # Replace with dynamic auth later
 
 class ProjectRequest(BaseModel):
     project_name: str
@@ -20,6 +20,7 @@ async def create_new_project(request: ProjectRequest):
             supabase.table("projects")
             .select("id")
             .eq("name", request.project_name)
+            .eq("user_id", USER_ID)
             .maybe_single()
             .execute()
         )
@@ -39,7 +40,8 @@ async def create_new_project(request: ProjectRequest):
                 "id": project_id,
                 "name": request.project_name,
                 "description": request.description,
-                "created_at": created_at
+                "created_at": created_at,
+                "user_id": USER_ID  # ✅ Insert user_id
             })
             .execute()
         )
@@ -85,4 +87,21 @@ async def create_new_project(request: ProjectRequest):
 
     except Exception as e:
         print(f"❌ Final Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ✅ NEW: Filter by user_id
+@router.get("/projects")
+async def list_projects():
+    try:
+        print("📦 Fetching all projects for user...")
+        response = (
+            supabase.table("projects")
+            .select("name")
+            .eq("user_id", USER_ID)
+            .execute()
+        )
+        return response.data or []
+    except Exception as e:
+        print(f"❌ Error fetching projects: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
