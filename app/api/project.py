@@ -5,6 +5,7 @@ import uuid
 import datetime
 
 router = APIRouter()
+
 USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
 
 class ProjectRequest(BaseModel):
@@ -14,7 +15,7 @@ class ProjectRequest(BaseModel):
 @router.post("/project")
 async def create_new_project(request: ProjectRequest):
     try:
-        # Check if project already exists
+        # Check for existing project (returns the row or None)
         existing_project = (
             supabase.table("projects")
             .select("id")
@@ -23,7 +24,7 @@ async def create_new_project(request: ProjectRequest):
             .execute()
         )
 
-        if existing_project.data:
+        if existing_project is not None:
             raise HTTPException(status_code=400, detail="Project name already exists.")
 
         # Create DB record
@@ -37,30 +38,27 @@ async def create_new_project(request: ProjectRequest):
             "created_at": created_at
         }).execute()
 
-        if insert_response.error:
-            raise Exception(f"Failed to create project: {insert_response.error.message}")
+        if insert_response is None:
+            raise Exception("Failed to create project (no response).")
 
-        # Check if folder already exists in Supabase Storage
+        # Check if folder exists
         folder_path = f"{USER_ID}/{request.project_name}/"
         list_response = supabase.storage.from_("maxgptstorage").list(path=f"{USER_ID}/", options={"limit": 100})
-
-        folder_data = list_response.data if list_response and list_response.data else []
+        folder_data = list_response or []
         existing_folders = [
             item["name"]
             for item in folder_data
             if isinstance(item, dict) and item.get("metadata", {}).get("type") == "folder"
         ]
 
-        # If not found, upload placeholder to create folder
         if request.project_name not in existing_folders:
             upload_response = supabase.storage.from_("maxgptstorage").upload(
                 f"{folder_path}.init",
-                b"init",  # uploading empty bytes triggers folder creation
+                b"init",
                 {"content-type": "text/plain"}
             )
-
-            if upload_response.error:
-                raise Exception(f"Failed to create folder: {upload_response.error.message}")
+            if upload_response is None:
+                raise Exception("Failed to create storage folder.")
 
         return {
             "message": "Project created successfully.",
@@ -71,16 +69,12 @@ async def create_new_project(request: ProjectRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.get("/projects")
 async def list_projects():
     try:
         response = supabase.table("projects").select("*").execute()
-
-        if response.error:
+        if response is None:
             raise HTTPException(status_code=500, detail="Failed to fetch project list")
-
-        return response.data
-
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
