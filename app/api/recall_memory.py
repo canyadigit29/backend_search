@@ -1,9 +1,10 @@
-
-from fastapi import APIRouter, HTTPException, Query
+=from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
 from app.core.supabase_client import supabase
 
 router = APIRouter()
+
+USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"  # Temporary hardcoded user ID
 
 @router.get("/recall_memory")
 async def recall_memory(
@@ -13,7 +14,7 @@ async def recall_memory(
     offset: Optional[int] = Query(0, ge=0)
 ):
     try:
-        base_query = supabase.table("memory").select("*")
+        base_query = supabase.table("memory").select("*").eq("user_id", USER_ID)
 
         if topic_name:
             base_query = base_query.eq("topic_name", topic_name)
