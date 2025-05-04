@@ -6,18 +6,20 @@ router = APIRouter()
 logger = logging.getLogger("project_match")
 logger.setLevel(logging.DEBUG)
 
-USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
-
 @router.get("/match_project_context")
-async def match_project_context(q: str = Query(..., min_length=2)):
+async def match_project_context(
+    q: str = Query(..., min_length=2),
+    user_id: str = Query(...)
+):
     try:
         logger.debug(f"🔍 Checking if prompt references a known project: {q}")
+        logger.debug(f"🔑 Using user_id: {user_id}")
 
-        # Pull all user projects
+        # Pull all projects for the provided user
         projects = (
             supabase.table("projects")
             .select("id, name, description")
-            .eq("user_id", USER_ID)
+            .eq("user_id", user_id)
             .execute()
         ).data or []
 
