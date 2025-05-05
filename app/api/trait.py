@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.db import supabase_client
+from app.core.supabase_client import supabase_client  # ✅ Fixed import path
 
 router = APIRouter()
 
