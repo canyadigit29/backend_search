@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.core.supabase_client import supabase_client  # ✅ Fixed import path
+from app.core.supabase_client import supabase  # ✅ Corrected import
 
 router = APIRouter()
 
@@ -12,7 +12,7 @@ class TraitInsert(BaseModel):
 @router.post("/trait")
 async def insert_trait(payload: TraitInsert):
     try:
-        result = supabase_client.table("behavior_traits").insert({
+        result = supabase.table("behavior_traits").insert({
             "behavior_id": payload.behavior_id,
             "trait_type": payload.trait_type,
             "value": payload.value
