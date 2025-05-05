@@ -1,33 +1,30 @@
-import httpx
 import logging
-from app.core.config import settings
+from app.api.search import semantic_search
+from fastapi import Request
 
 logger = logging.getLogger("maxgpt")
 
 async def search_documents(query: str, page: int = 1):
     try:
-        url = f"{settings.SEARCH_BACKEND_URL}/api/search"
+        # Simulate a minimal internal request object
+        class DummyRequest:
+            client = type("client", (), {"host": "internal"})
+
+        request = DummyRequest()
+
         payload = {
             "query": query,
             "page": page,
             "match_count": 10  # ✅ Get up to 10 chunks per query
         }
 
-        logger.debug(f"🌐 Sending POST to: {url}")
-        logger.debug(f"📤 Payload: {payload}")
+        logger.debug(f"🔁 Calling internal semantic_search with payload: {payload}")
+        response = await semantic_search(request=request, payload=payload)
+        logger.debug(f"📥 Internal response: {response}")
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url,
-                json=payload,
-                timeout=30.0
-            )
-            logger.debug(f"📥 Raw response status: {response.status_code}")
-            logger.debug(f"📥 Raw response content: {response.text}")
-
-            response.raise_for_status()
-            return response.json()
+        return response
 
     except Exception as e:
-        logger.exception("🔥 Error during semantic search request")
+        logger.exception("🔥 Error during internal semantic search")
         raise
+
