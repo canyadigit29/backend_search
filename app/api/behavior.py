@@ -4,49 +4,61 @@ import httpx
 
 router = APIRouter()
 
+SUPABASE_URL = "https://xyyjetaarlmzvqkzeegl.supabase.co"
+SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+
 @router.get("/api/behavior")
 async def get_behavior(request: Request):
     try:
-        # 👤 Try to get user_id from query string (optional)
         user_id = request.query_params.get("user_id", "default")
-        print(f"🔍 Looking up behavior for user_id: {user_id}")
+        headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}"
+        }
 
         async with httpx.AsyncClient() as client:
-            supabase_url = "https://xyyjetaarlmzvqkzeegl.supabase.co/rest/v1/assistant_behavior"
-            headers = {
-                "apikey": os.environ["SUPABASE_SERVICE_ROLE_KEY"],
-                "Authorization": f"Bearer {os.environ['SUPABASE_SERVICE_ROLE_KEY']}",
-            }
-
-            # 1️⃣ Try user-specific behavior
-            params_user = {
+            # 1️⃣ Query user-specific behavior
+            behavior_url = f"{SUPABASE_URL}/rest/v1/assistant_behavior"
+            behavior_params = {
                 "user_id": f"eq.{user_id}",
                 "active": "eq.true",
-                "select": "system_message",
+                "select": "id, tone, system_message",
                 "limit": 1
             }
-            res = await client.get(supabase_url, headers=headers, params=params_user)
+            res = await client.get(behavior_url, headers=headers, params=behavior_params)
             res.raise_for_status()
-            user_behavior = res.json()
+            rows = res.json()
 
-            if user_behavior:
-                return {"system_message": user_behavior[0]["system_message"]}
+            # 2️⃣ Fallback to default if user-specific not found
+            if not rows:
+                behavior_params["user_id"] = None
+                behavior_params["mode"] = "eq.default"
+                res = await client.get(behavior_url, headers=headers, params=behavior_params)
+                res.raise_for_status()
+                rows = res.json()
 
-            # 2️⃣ Fallback to global default
-            params_default = {
-                "mode": "eq.default",
-                "active": "eq.true",
-                "select": "system_message",
-                "limit": 1
+            if not rows:
+                raise HTTPException(status_code=404, detail="No behavior found.")
+
+            behavior = rows[0]
+            behavior_id = behavior["id"]
+
+            # 3️⃣ Query traits for this behavior
+            traits_url = f"{SUPABASE_URL}/rest/v1/behavior_traits"
+            traits_params = {
+                "behavior_id": f"eq.{behavior_id}",
+                "select": "trait_type,value"
             }
-            res_default = await client.get(supabase_url, headers=headers, params=params_default)
-            res_default.raise_for_status()
-            fallback_behavior = res_default.json()
+            traits_res = await client.get(traits_url, headers=headers, params=traits_params)
+            traits_res.raise_for_status()
+            traits_data = traits_res.json()
 
-            if fallback_behavior:
-                return {"system_message": fallback_behavior[0]["system_message"]}
-
-        raise HTTPException(status_code=404, detail="No active behavior profile found.")
+            return {
+                "behavior_id": behavior_id,
+                "tone": behavior.get("tone"),
+                "system_message": behavior.get("system_message"),
+                "traits": traits_data
+            }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Behavior lookup failed: {str(e)}")
