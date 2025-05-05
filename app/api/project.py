@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from app.core.supabase_client import supabase
 import uuid
@@ -11,6 +11,27 @@ USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"  # Replace with dynamic auth la
 class ProjectRequest(BaseModel):
     project_name: str
     description: str = ""
+
+# ✅ NEW: Internal function so chat.py can import directly
+async def get_projects(user_id: str, request: Request):
+    try:
+        print(f"📦 [Internal] Fetching projects for user_id: {user_id}")
+        response = (
+            supabase.table("projects")
+            .select("id, name, description, created_at")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        if getattr(response, "error", None):
+            msg = getattr(response.error, "message", "unknown error")
+            raise Exception(f"Supabase query error: {msg}")
+
+        return response.data or []
+    except Exception as e:
+        print(f"❌ Error fetching projects (internal): {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/project")
 async def create_new_project(request: ProjectRequest):
