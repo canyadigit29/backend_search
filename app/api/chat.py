@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from app.core.openai_client import chat_completion
+from app.api.match_project_context import match_project_context
+from app.api.project import get_projects
 import logging
 import os
 import requests
-import httpx
 import uuid
 
 router = APIRouter()
@@ -59,30 +60,21 @@ async def chat_with_context(payload: ChatRequest, request: Request):
             result = chat_completion(messages)
             return {"answer": result}
 
-        # 🧠 Project context matching
-        async with httpx.AsyncClient() as client:
-            project_check = await client.get(
-                "https://backendsearch-production.up.railway.app/api/match_project_context",
-                params={"q": prompt, "user_id": payload.user_id}
-            )
-            project_data = project_check.json()
-            matched_project = project_data.get("matched_project")
-            matches = project_data.get("matches", [])
+        # 🧠 Project context matching — now internal
+        project_data = await match_project_context(q=prompt, user_id=payload.user_id, request=request)
+        matched_project = project_data.get("matched_project")
+        matches = project_data.get("matches", [])
 
-            if not matched_project:
-                fallback_res = await client.get(
-                    "https://backendsearch-production.up.railway.app/api/projects",
-                    params={"user_id": payload.user_id}
-                )
-                all_projects = fallback_res.json()
-                if all_projects:
-                    names = "\n".join(f"- {p['name']}" for p in all_projects if p.get("name"))
-                    messages = [
-                        {"role": "system", "content": system_message},
-                        {"role": "user", "content": f"{prompt}\n\nProjects:\n{names}"}
-                    ]
-                    result = chat_completion(messages)
-                    return {"answer": result}
+        if not matched_project:
+            all_projects = await get_projects(user_id=payload.user_id, request=request)
+            if all_projects:
+                names = "\n".join(f"- {p['name']}" for p in all_projects if p.get("name"))
+                messages = [
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": f"{prompt}\n\nProjects:\n{names}"}
+                ]
+                result = chat_completion(messages)
+                return {"answer": result}
 
         # 🧾 With matched project and context
         if matched_project and matches:
