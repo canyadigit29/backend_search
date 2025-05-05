@@ -10,14 +10,14 @@ SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE"]
 @router.get("/api/behavior")
 async def get_behavior(request: Request):
     try:
-        user_id = request.query_params.get("user_id", "default")
+        user_id = request.query_params.get("user_id")
         headers = {
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}"
         }
 
         async with httpx.AsyncClient() as client:
-            # 1️⃣ Query user-specific behavior
+            # 1️⃣ Try to fetch user-specific behavior
             behavior_url = f"{SUPABASE_URL}/rest/v1/assistant_behavior"
             behavior_params = {
                 "user_id": f"eq.{user_id}",
@@ -29,21 +29,24 @@ async def get_behavior(request: Request):
             res.raise_for_status()
             rows = res.json()
 
-            # 2️⃣ Fallback to default if user-specific not found
+            # 2️⃣ Fallback to default behavior mode if user-specific not found
             if not rows:
-                behavior_params["user_id"] = None
-                behavior_params["mode"] = "eq.default"
-                res = await client.get(behavior_url, headers=headers, params=behavior_params)
+                fallback_params = {
+                    "mode": "eq.default",
+                    "select": "id, tone, system_message",
+                    "limit": 1
+                }
+                res = await client.get(behavior_url, headers=headers, params=fallback_params)
                 res.raise_for_status()
                 rows = res.json()
 
             if not rows:
-                raise HTTPException(status_code=404, detail="No behavior found.")
+                raise HTTPException(status_code=404, detail="No behavior profile found.")
 
             behavior = rows[0]
             behavior_id = behavior["id"]
 
-            # 3️⃣ Query traits for this behavior
+            # 3️⃣ Fetch associated traits for this behavior
             traits_url = f"{SUPABASE_URL}/rest/v1/behavior_traits"
             traits_params = {
                 "behavior_id": f"eq.{behavior_id}",
