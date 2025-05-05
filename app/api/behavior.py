@@ -5,7 +5,7 @@ import httpx
 router = APIRouter()
 
 SUPABASE_URL = "https://xyyjetaarlmzvqkzeegl.supabase.co"
-SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE"]
 
 @router.get("/api/behavior")
 async def get_behavior(request: Request):
