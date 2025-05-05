@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from app.core.openai_client import chat_completion
 from app.api.match_project_context import match_project_context
-from app.api.project import get_projects
 import logging
 import os
 import requests
@@ -66,15 +65,12 @@ async def chat_with_context(payload: ChatRequest, request: Request):
         matches = project_data.get("matches", [])
 
         if not matched_project:
-            all_projects = await get_projects(user_id=payload.user_id, request=request)
-            if all_projects:
-                names = "\n".join(f"- {p['name']}" for p in all_projects if p.get("name"))
-                messages = [
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": f"{prompt}\n\nProjects:\n{names}"}
-                ]
-                result = chat_completion(messages)
-                return {"answer": result}
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": f"{prompt}\n\n(No matching project found — try being more specific.)"}
+            ]
+            result = chat_completion(messages)
+            return {"answer": result}
 
         # 🧾 With matched project and context
         if matched_project and matches:
