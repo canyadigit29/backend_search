@@ -4,9 +4,15 @@ from app.api import (
     upload, project, background_tasks, search, session_log,
     ingest_unprocessed, store_memory, recall_memory,
     search_memory, smart_memory, match_project_context,
-    chat  # ✅ Added chat route
+    chat  # ✅ Includes chat route
 )
 from app.core.config import settings
+import os
+
+# 🧪 Optional: Print env variables for debugging
+print("🔍 Environment Variable Check:")
+print("OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
+print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -26,7 +32,7 @@ app.add_middleware(
 async def root():
     return {"message": f"{settings.PROJECT_NAME} is running."}
 
-# ✅ API route mounts
+# ✅ Route mounts
 app.include_router(upload.router, prefix=settings.API_PREFIX)
 app.include_router(project.router, prefix=settings.API_PREFIX)
 app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
@@ -38,4 +44,4 @@ app.include_router(recall_memory.router, prefix=settings.API_PREFIX)
 app.include_router(search_memory.router, prefix=settings.API_PREFIX)
 app.include_router(smart_memory.router, prefix=settings.API_PREFIX)
 app.include_router(match_project_context.router, prefix=settings.API_PREFIX)
-app.include_router(chat.router, prefix=settings.API_PREFIX)  # ✅ Mounted chat route
+app.include_router(chat.router, prefix=settings.API_PREFIX)
