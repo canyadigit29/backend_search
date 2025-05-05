@@ -6,11 +6,12 @@ router = APIRouter()
 
 SUPABASE_URL = "https://xyyjetaarlmzvqkzeegl.supabase.co"
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE"]
+FALLBACK_USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
 
 @router.get("/api/behavior")
 async def get_behavior(request: Request):
     try:
-        user_id = request.query_params.get("user_id")
+        user_id = request.query_params.get("user_id", FALLBACK_USER_ID)
         headers = {
             "apikey": SUPABASE_KEY,
             "Authorization": f"Bearer {SUPABASE_KEY}"
@@ -29,10 +30,11 @@ async def get_behavior(request: Request):
             res.raise_for_status()
             rows = res.json()
 
-            # 2️⃣ Fallback to default behavior mode if user-specific not found
-            if not rows:
+            # 2️⃣ Fallback to known seeded UUID if nothing found
+            if not rows and user_id != FALLBACK_USER_ID:
                 fallback_params = {
-                    "mode": "eq.default",
+                    "user_id": f"eq.{FALLBACK_USER_ID}",
+                    "active": "eq.true",
                     "select": "id, tone, system_message",
                     "limit": 1
                 }
@@ -46,7 +48,7 @@ async def get_behavior(request: Request):
             behavior = rows[0]
             behavior_id = behavior["id"]
 
-            # 3️⃣ Fetch associated traits for this behavior
+            # 3️⃣ Fetch associated traits
             traits_url = f"{SUPABASE_URL}/rest/v1/behavior_traits"
             traits_params = {
                 "behavior_id": f"eq.{behavior_id}",
