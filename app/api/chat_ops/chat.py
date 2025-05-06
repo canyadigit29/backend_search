@@ -1,13 +1,10 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from app.core.openai_client import chat_completion
-from app.api.memory_ops.router_brain import route_query
-from app.api.memory_ops.save_memory_entry import save_memory_entry  # ✅ Replaces store_memory
 import logging
 import os
 import requests
 import uuid
-from datetime import datetime
 
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
@@ -34,16 +31,6 @@ async def chat_with_context(payload: ChatRequest, request: Request):
 
         system_message = "You are Max, a logic-first assistant. No traits are currently active."
 
-        # 🔁 Inject memory context if available
-        memory_context = await route_query(
-            user_query=prompt,
-            session_id=payload.session_id,
-            topic_name=None
-        )
-        memory_snippets = memory_context.get("messages", [])
-        logger.debug(f"🧠 Memory source: {memory_context.get('source')}")
-        logger.debug(f"🧠 Memory matches: {len(memory_snippets)}")
-
         # 🌐 Brave Search block
         if any(kw in prompt.lower() for kw in ["look up online", "search the web", "check online", "find online", "lookup"]):
             logger.debug("🌐 Triggering Brave Search API...")
@@ -66,22 +53,14 @@ async def chat_with_context(payload: ChatRequest, request: Request):
                 {"role": "user", "content": f"{prompt}\n\nWeb Results:\n{snippet_text}"}
             ]
             result = chat_completion(messages)
-            await save_memory_entry(payload.user_id, payload.session_id, "user", prompt)
-            await save_memory_entry(payload.user_id, payload.session_id, "assistant", result)
             return {"answer": result}
 
-        # 💬 Normal chat with memory
-        memory_block = "\n".join(memory_snippets)
+        # 💬 Normal chat (no memory)
         messages = [
             {"role": "system", "content": system_message},
-            {"role": "user", "content": f"{memory_block}\n\n{prompt}"}
+            {"role": "user", "content": prompt}
         ]
         result = chat_completion(messages)
-
-        # ✅ Store memory for both sides
-        await save_memory_entry(payload.user_id, payload.session_id, "user", prompt)
-        await save_memory_entry(payload.user_id, payload.session_id, "assistant", result)
-
         return {"answer": result}
 
     except Exception as e:
