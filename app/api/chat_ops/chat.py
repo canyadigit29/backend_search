@@ -63,14 +63,10 @@ async def chat_with_context(payload: ChatRequest, request: Request):
                 raise HTTPException(status_code=500, detail="Failed to retrieve web search results.")
 
             results = response.json().get("web", {}).get("results", [])
-            snippet_text = "
-".join(f"- {r['title']}: {r['url']}" for r in results)
+            snippet_text = "\n".join(f"- {r['title']}: {r['url']}" for r in results)  # Fixed the unterminated string literal
             messages = [
                 {"role": "system", "content": system_message},
-                {"role": "user", "content": f"{prompt}
-
-Web Results:
-{snippet_text}"}
+                {"role": "user", "content": f"{prompt}\n\nWeb Results:\n{snippet_text}"}
             ]
             result = chat_completion(messages)
             return {"answer": result}
