@@ -4,12 +4,12 @@ from app.api.project_ops import project, session_log
 from app.api.memory_ops import (
     store_memory, recall_memory, search_memory,
     smart_memory, memory, memory_client,
-    memory_logger, router_brain
+    memory_logger, router_brain, search  # ✅ moved here from file_ops
 )
 from app.api.chat_ops import chat
 from app.api.file_ops import (
     upload, ingest, embed, chunk,
-    background_tasks, search,  # `search` is the former `search.py`
+    background_tasks  # ❌ removed search from here
 )
 from app.core.config import settings
 import os
@@ -41,7 +41,7 @@ async def root():
 app.include_router(upload.router, prefix=settings.API_PREFIX)
 app.include_router(project.router, prefix=settings.API_PREFIX)
 app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
-app.include_router(search.router, prefix=settings.API_PREFIX)
+app.include_router(search.router, prefix=settings.API_PREFIX)  # ✅ now from memory_ops
 app.include_router(session_log.router, prefix=settings.API_PREFIX)
 app.include_router(ingest.router, prefix=settings.API_PREFIX)
 app.include_router(store_memory.router, prefix=settings.API_PREFIX)
