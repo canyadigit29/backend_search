@@ -1,3 +1,7 @@
 # package marker
-from . import upload
-from . import ingest_unprocessed
+
+def load_upload():
+    from . import upload
+
+def load_ingest_unprocessed():
+    from . import ingest_unprocessed
