@@ -49,7 +49,4 @@ app.include_router(recall_memory.router, prefix=settings.API_PREFIX)
 app.include_router(search_memory.router, prefix=settings.API_PREFIX)
 app.include_router(smart_memory.router, prefix=settings.API_PREFIX)
 app.include_router(memory.router, prefix=settings.API_PREFIX)
-# ❌ Removed memory_client.router — helper only
-# ❌ Removed memory_logger.router — helper only
-app.include_router(router_brain.router, prefix=settings.API_PREFIX)
 app.include_router(chat.router, prefix=settings.API_PREFIX)
