@@ -1,10 +1,15 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import (
-    upload, project, background_tasks, search, session_log,
-    ingest_unprocessed, store_memory, recall_memory,
-    search_memory, smart_memory,
-    chat  # ✅ Includes chat route
+from app.api.project_ops import project, session_log
+from app.api.memory_ops import (
+    store_memory, recall_memory, search_memory,
+    smart_memory, memory, memory_client,
+    memory_logger, router_brain
+)
+from app.api.chat_ops import chat
+from app.api.file_ops import (
+    upload, ingest, embed, chunk,
+    background_tasks, search,  # `search` is the former `search.py`
 )
 from app.core.config import settings
 import os
@@ -38,9 +43,13 @@ app.include_router(project.router, prefix=settings.API_PREFIX)
 app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
 app.include_router(search.router, prefix=settings.API_PREFIX)
 app.include_router(session_log.router, prefix=settings.API_PREFIX)
-app.include_router(ingest_unprocessed.router, prefix=settings.API_PREFIX)
+app.include_router(ingest.router, prefix=settings.API_PREFIX)
 app.include_router(store_memory.router, prefix=settings.API_PREFIX)
 app.include_router(recall_memory.router, prefix=settings.API_PREFIX)
 app.include_router(search_memory.router, prefix=settings.API_PREFIX)
 app.include_router(smart_memory.router, prefix=settings.API_PREFIX)
+app.include_router(memory.router, prefix=settings.API_PREFIX)
+app.include_router(memory_client.router, prefix=settings.API_PREFIX)
+app.include_router(memory_logger.router, prefix=settings.API_PREFIX)
+app.include_router(router_brain.router, prefix=settings.API_PREFIX)
 app.include_router(chat.router, prefix=settings.API_PREFIX)

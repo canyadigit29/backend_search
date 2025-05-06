@@ -1,5 +1,5 @@
 import logging
-from app.api.search import semantic_search
+from app.api.file_ops.search import semantic_search  # ✅ Updated path
 from fastapi import Request
 
 logger = logging.getLogger("maxgpt")
@@ -27,4 +27,3 @@ async def search_documents(query: str, page: int = 1):
     except Exception as e:
         logger.exception("🔥 Error during internal semantic search")
         raise
-
