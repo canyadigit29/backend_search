@@ -3,8 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.project_ops import project, session_log
 from app.api.memory_ops import (
     store_memory, recall_memory, search_memory,
-    smart_memory, memory, memory_client,  # ✅ still imported for internal use
-    memory_logger, router_brain, search  # ✅ moved here from file_ops
+    smart_memory, memory, memory_client,  # ✅ imported only for internal use
+    memory_logger, router_brain, search   # ✅ moved here from file_ops
 )
 from app.api.chat_ops import chat
 from app.api.file_ops import (
@@ -41,7 +41,7 @@ async def root():
 app.include_router(upload.router, prefix=settings.API_PREFIX)
 app.include_router(project.router, prefix=settings.API_PREFIX)
 app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
-app.include_router(search.router, prefix=settings.API_PREFIX)  # ✅ now from memory_ops
+app.include_router(search.router, prefix=settings.API_PREFIX)  # ✅ from memory_ops
 app.include_router(session_log.router, prefix=settings.API_PREFIX)
 app.include_router(ingest.router, prefix=settings.API_PREFIX)
 app.include_router(store_memory.router, prefix=settings.API_PREFIX)
@@ -49,7 +49,7 @@ app.include_router(recall_memory.router, prefix=settings.API_PREFIX)
 app.include_router(search_memory.router, prefix=settings.API_PREFIX)
 app.include_router(smart_memory.router, prefix=settings.API_PREFIX)
 app.include_router(memory.router, prefix=settings.API_PREFIX)
-# ❌ Removed memory_client.router — this was never mounted in the original repo
-app.include_router(memory_logger.router, prefix=settings.API_PREFIX)
+# ❌ Removed memory_client.router — helper only
+# ❌ Removed memory_logger.router — helper only
 app.include_router(router_brain.router, prefix=settings.API_PREFIX)
 app.include_router(chat.router, prefix=settings.API_PREFIX)
