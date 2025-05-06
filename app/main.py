@@ -4,7 +4,7 @@ from app.api.project_ops import project, session_log
 from app.api.chat_ops import chat
 from app.api.file_ops import (
     upload, ingest, embed, chunk,
-    background_tasks  # ❌ removed search from here
+    background_tasks
 )
 from app.core.config import settings
 import os
@@ -36,7 +36,6 @@ async def root():
 app.include_router(upload.router, prefix=settings.API_PREFIX)
 app.include_router(project.router, prefix=settings.API_PREFIX)
 app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
-app.include_router(search.router, prefix=settings.API_PREFIX)  # ✅ still active
 app.include_router(session_log.router, prefix=settings.API_PREFIX)
 app.include_router(ingest.router, prefix=settings.API_PREFIX)
 app.include_router(chat.router, prefix=settings.API_PREFIX)
