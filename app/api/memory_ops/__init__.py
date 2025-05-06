@@ -1,2 +1,4 @@
 # package marker
-from . import search
+
+def load_search():
+    from . import search
