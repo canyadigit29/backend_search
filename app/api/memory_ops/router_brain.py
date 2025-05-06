@@ -1,8 +1,7 @@
 from fastapi import HTTPException
 from app.api.memory_ops.recall_memory import recall_memory
-from app.api.memory_ops.search_memory import search_memory
-# Placeholder import – replace with actual document search function when available
-# from app.api.file_ops.search_docs import semantic_doc_search
+from app.api.memory_ops.run_memory_query import run_memory_query  # ✅ use new helper
+# from app.api.file_ops.search_docs import semantic_doc_search  # optional
 
 import asyncio
 
@@ -18,8 +17,8 @@ async def route_query(user_query: str, session_id: str, topic_name: str = None):
                     "total_count": recall_data.get("total_count", 0)
                 }
 
-        # Step 2: Semantic memory fallback
-        memory_data = await search_memory(query=user_query, top_k=5)
+        # Step 2: Semantic memory fallback using helper
+        memory_data = await run_memory_query(user_query, top_k=5)
         if memory_data:
             return {
                 "source": "search_memory",
