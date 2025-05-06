@@ -1,9 +1,8 @@
-
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from app.core.openai_client import chat_completion
 from app.api.memory_ops.router_brain import route_query
-from app.api.memory_ops.store_memory import store_memory  # ✅ Store memory
+from app.api.memory_ops.save_memory_entry import save_memory_entry  # ✅ Replaces store_memory
 import logging
 import os
 import requests
@@ -67,8 +66,8 @@ async def chat_with_context(payload: ChatRequest, request: Request):
                 {"role": "user", "content": f"{prompt}\n\nWeb Results:\n{snippet_text}"}
             ]
             result = chat_completion(messages)
-            await store_memory(payload.user_id, payload.session_id, "user", prompt)
-            await store_memory(payload.user_id, payload.session_id, "assistant", result)
+            await save_memory_entry(payload.user_id, payload.session_id, "user", prompt)
+            await save_memory_entry(payload.user_id, payload.session_id, "assistant", result)
             return {"answer": result}
 
         # 💬 Normal chat with memory
@@ -80,8 +79,8 @@ async def chat_with_context(payload: ChatRequest, request: Request):
         result = chat_completion(messages)
 
         # ✅ Store memory for both sides
-        await store_memory(payload.user_id, payload.session_id, "user", prompt)
-        await store_memory(payload.user_id, payload.session_id, "assistant", result)
+        await save_memory_entry(payload.user_id, payload.session_id, "user", prompt)
+        await save_memory_entry(payload.user_id, payload.session_id, "assistant", result)
 
         return {"answer": result}
 
