@@ -1,12 +1,13 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.core.openai_client import chat_completion
+from app.core.openai_client import chat_completion  # This must accept tools OR be bypassed
 from app.api.memory_ops.session_memory import save_message, retrieve_memory
 import logging
 import os
 import requests
 import uuid
 import json
+import openai  # Use directly as fallback if wrapper is too limited
 
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
@@ -88,7 +89,11 @@ async def chat_with_context(payload: ChatRequest):
 
         try:
             logger.debug(f"📤 Sending to OpenAI: {json.dumps(messages)}")
-            response = chat_completion(messages, tools=OPENAI_TOOLS)
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=messages,
+                tools=OPENAI_TOOLS
+            )
         except Exception as e:
             logger.exception("❌ OpenAI chat_completion failed")
             raise HTTPException(status_code=500, detail=f"Chat model failed: {str(e)}")
@@ -137,7 +142,10 @@ async def chat_with_context(payload: ChatRequest):
 
                 messages.append({"role": "function", "name": tool_name, "content": tool_response})
 
-            result = chat_completion(messages)
+            result = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=messages
+            )
             save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, str(result))
             return {"answer": result}
 
@@ -146,4 +154,4 @@ async def chat_with_context(payload: ChatRequest):
 
     except Exception as e:
         logger.exception("🚨 Uncaught error in /chat route")
-        return {"error": str(e)}  # Show error inline for debugging
+        return {"error": str(e)}
