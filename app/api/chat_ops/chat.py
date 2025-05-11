@@ -31,7 +31,12 @@ OPENAI_TOOLS = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query text"},
-                    "project_name": {"type": "string", "description": "Optional project name to limit scope"}
+                    "project_name": {"type": "string", "description": "Optional project name to limit scope"},
+                    "project_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of multiple project names to include in the search"
+                    }
                 },
                 "required": ["query"]
             }
@@ -79,7 +84,10 @@ async def chat_with_context(payload: ChatRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
 
-        system_message = "You are Max, a helpful assistant. You may use tools like 'search_docs', 'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
+        system_message = (
+            "You are Max, a helpful assistant. You may use tools like 'search_docs', "
+            "'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
+        )
 
         messages = [
             {"role": "system", "content": system_message},
@@ -108,7 +116,10 @@ async def chat_with_context(payload: ChatRequest):
                 if tool_name == "search_docs":
                     from app.api.file_ops.search_docs import perform_search
                     result = perform_search(tool_args)
-                    tool_response = result or "I searched your files and memory but couldn’t find anything on that topic. Try rephrasing or check if it was uploaded."
+                    tool_response = result or (
+                        "I searched your files and memory but couldn’t find anything on that topic. "
+                        "Try rephrasing or check if it was uploaded."
+                    )
 
                 elif tool_name == "search_web":
                     api_key = os.getenv("BRAVE_SEARCH_API_KEY")
