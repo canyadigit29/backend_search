@@ -17,6 +17,7 @@ def cosine_similarity(vec1, vec2):
 def perform_search(tool_args):
     query = tool_args.get("query")
     project_name = tool_args.get("project_name")
+    project_names = tool_args.get("project_names")
 
     if not query:
         return {"error": "Missing 'query' in tool arguments."}
@@ -27,9 +28,10 @@ def perform_search(tool_args):
         return {"error": f"Embedding failed: {str(e)}"}
 
     try:
-        project_id = None
+        project_ids = []
+
         if project_name:
-            project_result = (
+            result = (
                 supabase.table("projects")
                 .select("id")
                 .eq("user_id", USER_ID)
@@ -37,13 +39,28 @@ def perform_search(tool_args):
                 .maybe_single()
                 .execute()
             )
-            if not project_result or not getattr(project_result, "data", None):
+            if not result or not getattr(result, "data", None):
                 return {"error": f"No project found with name: {project_name}"}
-            project_id = project_result.data["id"]
+            project_ids = [result.data["id"]]
 
-        base_query = supabase.table("document_chunks").select("content, embedding, chunk_index, file_name")
-        if project_id:
-            base_query = base_query.eq("project_id", project_id)
+        elif project_names:
+            result = (
+                supabase.table("projects")
+                .select("id, name")
+                .eq("user_id", USER_ID)
+                .in_("name", project_names)
+                .execute()
+            )
+            if not result or not getattr(result, "data", None):
+                return {"error": f"No matching projects found."}
+            project_ids = [row["id"] for row in result.data]
+
+        base_query = supabase.table("document_chunks").select(
+            "content, embedding, chunk_index, file_name"
+        )
+
+        if project_ids:
+            base_query = base_query.in_("project_id", project_ids)
 
         response = base_query.execute()
 
@@ -53,7 +70,7 @@ def perform_search(tool_args):
         rows = response.data
 
         if not rows:
-            return {"message": "No document chunks found in the specified project."}
+            return {"message": "No document chunks found for the specified project(s)."}
 
         scored = [
             {
