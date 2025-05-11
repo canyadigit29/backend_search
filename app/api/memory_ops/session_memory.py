@@ -2,7 +2,7 @@ import uuid
 import time
 from datetime import datetime
 from app.core.supabase_client import supabase
-from app.utils.embed_text import embed_text  # Must call OpenAI's embedding API
+from app.api.file_ops.embed import embed_text
 import logging
 import numpy as np
 
