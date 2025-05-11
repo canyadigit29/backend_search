@@ -1,4 +1,3 @@
-
 import uuid
 import time
 from datetime import datetime
@@ -57,3 +56,23 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
     except Exception as e:
         logging.exception(f"Unexpected error during embed/store: {e}")
         return {"error": str(e)}
+
+def remove_embeddings_for_file(file_id: str):
+    try:
+        # Step 1: Look up the file name by file_id
+        file_result = supabase.table("files").select("file_name").eq("id", file_id).maybe_single().execute()
+        file_data = getattr(file_result, "data", None)
+        if not file_data or "file_name" not in file_data:
+            raise Exception(f"File not found for ID: {file_id}")
+
+        file_name = file_data["file_name"]
+        print(f"🧹 Removing all embeddings for file: {file_name}")
+
+        # Step 2: Delete from document_chunks
+        delete_result = supabase.table("document_chunks").delete().eq("file_name", file_name).execute()
+        print(f"🧾 Vector delete response: {delete_result}")
+        return {"status": "success", "deleted": delete_result.data}
+
+    except Exception as e:
+        print(f"❌ Failed to remove embeddings: {e}")
+        raise
