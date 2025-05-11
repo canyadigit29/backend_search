@@ -27,9 +27,9 @@ def retry_embed_text(text, retries=3, delay=1.5):
                 logging.error(f"Embedding failed after {retries} attempts: {e}")
                 raise
 
-def save_message(user_id, session_id, project_id, content):
-    if not all(map(is_valid_uuid, [user_id, session_id, project_id])):
-        logging.error("Invalid UUID in user/session/project ID")
+def save_message(user_id, project_id, content):
+    if not all(map(is_valid_uuid, [user_id, project_id])):
+        logging.error("Invalid UUID in user/project ID")
         return {"error": "Invalid UUID input"}
 
     try:
@@ -38,7 +38,6 @@ def save_message(user_id, session_id, project_id, content):
 
         data = {
             "user_id": user_id,
-            "session_id": session_id,
             "project_id": project_id,
             "content": content,
             "embedding": embedding,
@@ -51,7 +50,7 @@ def save_message(user_id, session_id, project_id, content):
             logging.error(f"Supabase insert failed: {result.error.message}")
             return {"error": result.error.message}
 
-        logging.info(f"✅ Saved message to memory_log for user {user_id}, session {session_id}")
+        logging.info(f"✅ Saved message to memory_log for user {user_id}")
         return {"success": True}
 
     except Exception as e:
