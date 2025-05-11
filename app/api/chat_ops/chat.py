@@ -84,10 +84,10 @@ async def chat_with_context(payload: ChatRequest):
             {"role": "user", "content": prompt}
         ]
 
-        # ⏺ Save user message to memory
         save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
 
         try:
+            logger.debug(f"📤 Sending to OpenAI: {json.dumps(messages)}")
             response = chat_completion(messages, tools=OPENAI_TOOLS)
         except Exception as e:
             logger.exception("❌ OpenAI chat_completion failed")
@@ -138,15 +138,12 @@ async def chat_with_context(payload: ChatRequest):
                 messages.append({"role": "function", "name": tool_name, "content": tool_response})
 
             result = chat_completion(messages)
-            # ⏺ Save assistant response to memory
             save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, str(result))
             return {"answer": result}
 
-        # fallback: no tools called
-        # ⏺ Save assistant response to memory
         save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, str(response))
         return {"answer": response}
 
     except Exception as e:
-        logger.exception("🚨 Error during chat processing")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("🚨 Uncaught error in /chat route")
+        return {"error": str(e)}  # Show error inline for debugging
