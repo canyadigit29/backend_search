@@ -25,6 +25,23 @@ OPENAI_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "delete_project",
+            "description": "Delete a project and all its associated data (requires exact project name match)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "The exact name of the project to delete"
+                    }
+                },
+                "required": ["project_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_docs",
             "description": "Search stored documents and memory for relevant information",
             "parameters": {
@@ -148,6 +165,20 @@ async def chat_with_context(payload: ChatRequest):
                         if not results else
                         "\n\n".join(entry["content"] for entry in results)
                     )
+                elif tool_name == "delete_project":
+                    from app.api.project_ops.project import delete_project_by_name
+                    project_name = tool_args.get("project_name", "").strip()
+                    if not project_name:
+                        tool_response = "You must specify the full name of the project you want to delete."
+                    else:
+                        try:
+                            deleted = delete_project_by_name(project_name)
+                            if deleted.get("success"):
+                                tool_response = f"✅ Project '{project_name}' has been deleted."
+                            else:
+                                tool_response = deleted.get("error") or "Something went wrong deleting the project."
+                        except Exception as e:
+                            tool_response = f"Error while deleting project: {str(e)}"
 
                 else:
                     tool_response = f"Unsupported tool call: {tool_name}"
