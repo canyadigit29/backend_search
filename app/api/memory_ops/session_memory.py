@@ -1,10 +1,10 @@
-
 import uuid
 import time
 from datetime import datetime
 from app.core.supabase_client import supabase
 from app.utils.embed_text import embed_text  # Must call OpenAI's embedding API
 import logging
+import numpy as np
 
 logging.basicConfig(level=logging.INFO)
 
@@ -56,4 +56,43 @@ def save_message(user_id, session_id, project_id, content):
 
     except Exception as e:
         logging.exception("Unexpected error during message memory save")
+        return {"error": str(e)}
+
+def cosine_similarity(vec1, vec2):
+    v1, v2 = np.array(vec1), np.array(vec2)
+    return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+
+def retrieve_memory(tool_args):
+    query = tool_args.get("query")
+    if not query:
+        return {"error": "Missing query"}
+
+    try:
+        query_embedding = retry_embed_text(query)
+
+        response = supabase.table("memory_log").select("content, embedding, timestamp").execute()
+
+        if getattr(response, "error", None):
+            return {"error": f"Supabase query failed: {response.error.message}"}
+
+        rows = response.data
+
+        if not rows:
+            return {"message": "No memory entries found."}
+
+        scored = [
+            {
+                "content": row["content"],
+                "score": cosine_similarity(query_embedding, row["embedding"]),
+                "timestamp": row.get("timestamp")
+            }
+            for row in rows
+        ]
+
+        top_matches = sorted(scored, key=lambda x: (-x["score"], x["timestamp"] or ""))[:10]
+
+        return {"results": top_matches}
+
+    except Exception as e:
+        logging.exception("Error retrieving memory")
         return {"error": str(e)}
