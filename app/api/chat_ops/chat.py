@@ -30,7 +30,7 @@ OPENAI_TOOLS = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query text"},
-                    "project_id": {"type": "string", "description": "Optional project ID to limit scope"}
+                    "project_name": {"type": "string", "description": "Optional project name to limit scope"}
                 },
                 "required": ["query"]
             }
