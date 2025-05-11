@@ -46,7 +46,7 @@ def save_message(user_id, project_id, content):
 
         result = supabase.table("memory_log").insert(data).execute()
 
-        if result.error:
+        if getattr(result, "error", None):
             logging.error(f"Supabase insert failed: {result.error.message}")
             return {"error": result.error.message}
 
