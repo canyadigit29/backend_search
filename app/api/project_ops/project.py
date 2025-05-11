@@ -192,3 +192,47 @@ async def delete_project(project_name: str = Query(...)):
     except Exception as e:
         print(f"❌ Failed to delete project: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Project deletion failed: {str(e)}")
+
+
+# ✅ Internal tool call handler
+async def delete_project_by_name(project_name: str) -> dict:
+    try:
+        print(f"🗑️ (Internal) Deleting project: {project_name}")
+
+        project_lookup = (
+            supabase.table("projects")
+            .select("id")
+            .eq("user_id", USER_ID)
+            .eq("name", project_name)
+            .maybe_single()
+            .execute()
+        )
+        if not project_lookup or not getattr(project_lookup, "data", None):
+            return {"success": False, "error": f"Project '{project_name}' not found."}
+
+        project_id = project_lookup.data["id"]
+
+        files = (
+            supabase.table("files")
+            .select("id", "file_name", "file_path")
+            .eq("project_id", project_id)
+            .execute()
+        ).data or []
+
+        file_names = [file["file_name"] for file in files]
+        file_paths = [file["file_path"] for file in files]
+
+        if file_paths:
+            supabase.storage.from_("maxgptstorage").remove(file_paths)
+
+        for file_name in file_names:
+            supabase.table("document_chunks").delete().eq("file_name", file_name).execute()
+
+        supabase.table("files").delete().eq("project_id", project_id).execute()
+        supabase.table("projects").delete().eq("id", project_id).execute()
+
+        return {"success": True}
+
+    except Exception as e:
+        print(f"❌ Internal delete failed: {str(e)}")
+        return {"success": False, "error": str(e)}
