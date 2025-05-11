@@ -141,3 +141,54 @@ async def list_projects(
     except Exception as e:
         print(f"❌ Error fetching projects: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/project")
+async def delete_project(project_name: str = Query(...)):
+    try:
+        print(f"🗑️ Deleting project: {project_name}")
+
+        # Step 1: Lookup project
+        project_lookup = (
+            supabase.table("projects")
+            .select("id")
+            .eq("user_id", USER_ID)
+            .eq("name", project_name)
+            .maybe_single()
+            .execute()
+        )
+        if not project_lookup or not getattr(project_lookup, "data", None):
+            raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found.")
+        project_id = project_lookup.data["id"]
+
+        # Step 2: Delete files linked to this project
+        files = (
+            supabase.table("files")
+            .select("id", "file_name", "file_path")
+            .eq("project_id", project_id)
+            .execute()
+        ).data or []
+
+        file_names = [file["file_name"] for file in files]
+        file_paths = [file["file_path"] for file in files]
+
+        if file_paths:
+            print(f"🧹 Deleting {len(file_paths)} file(s) from storage.")
+            supabase.storage.from_("maxgptstorage").remove(file_paths)
+
+        # Step 3: Delete file chunks
+        for file_name in file_names:
+            supabase.table("document_chunks").delete().eq("file_name", file_name).execute()
+
+        # Step 4: Delete file records
+        supabase.table("files").delete().eq("project_id", project_id).execute()
+
+        # Step 5: Delete the project record
+        supabase.table("projects").delete().eq("id", project_id).execute()
+
+        print(f"✅ Deleted project '{project_name}' and all related files/memory.")
+        return {"status": "success", "message": f"Project '{project_name}' deleted."}
+
+    except Exception as e:
+        print(f"❌ Failed to delete project: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Project deletion failed: {str(e)}")
