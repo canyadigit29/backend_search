@@ -5,3 +5,4 @@ def load_upload():
 
 def load_ingest_unprocessed():
     from . import ingest_unprocessed
+from . import upload
