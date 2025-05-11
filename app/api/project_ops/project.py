@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import BaseModel
 from app.core.supabase_client import supabase
 import uuid
@@ -112,22 +112,32 @@ async def create_new_project(request: ProjectRequest):
 
 
 @router.get("/projects")
-async def list_projects():
+async def list_projects(
+    name: str = Query(None),
+    description: str = Query(None)
+):
     try:
         print(f"📦 Fetching projects for user_id: {USER_ID}")
-        response = (
+        query = (
             supabase.table("projects")
             .select("id, name, description, created_at")
             .eq("user_id", USER_ID)
-            .order("created_at", desc=True)
-            .execute()
         )
+
+        if name:
+            query = query.ilike("name", f"%{name}%")
+        if description:
+            query = query.ilike("description", f"%{description}%")
+
+        response = query.order("created_at", desc=True).execute()
+
         if getattr(response, "error", None):
             msg = getattr(response.error, "message", "unknown error")
             raise Exception(f"Supabase query error: {msg}")
 
         print(f"📁 Projects retrieved: {len(response.data or [])}")
         return response.data or []
+
     except Exception as e:
         print(f"❌ Error fetching projects: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
