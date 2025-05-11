@@ -2,10 +2,21 @@ import uuid
 import time
 from datetime import datetime
 from app.core.supabase_client import supabase
-from app.utils.embed_text import embed_text  # Assumes your embed_text() hits OpenAI
+from openai import OpenAI
 import logging
 
 logging.basicConfig(level=logging.INFO)
+client = OpenAI()
+
+def embed_text(text: str) -> list[float]:
+    if not text.strip():
+        raise ValueError("Cannot embed empty text")
+
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    )
+    return response.data[0].embedding
 
 def is_valid_uuid(value):
     try:
