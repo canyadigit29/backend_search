@@ -68,6 +68,13 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
         logging.exception(f"Unexpected error during embed/store: {e}")
         return {"error": str(e)}
 
+def embed_chunks(chunks: list[str], project_id: str, file_name: str):
+    results = []
+    for index, chunk in enumerate(chunks):
+        result = embed_and_store_chunk(chunk, project_id, file_name, index)
+        results.append(result)
+    return results
+
 def remove_embeddings_for_file(file_id: str):
     try:
         # Step 1: Look up the file name by file_id
