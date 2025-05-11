@@ -1,3 +1,7 @@
+from fastapi import APIRouter
+
+router = APIRouter()
+
 @router.post("/upload")
 async def upload_file(
     background_tasks: BackgroundTasks,
