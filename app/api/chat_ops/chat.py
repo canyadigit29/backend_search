@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.core.openai_client import chat_completion
+from app.api.memory_ops.session_memory import save_message
 import logging
 import os
 import requests
@@ -10,6 +11,8 @@ import json
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
+
+GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 
 class ChatRequest(BaseModel):
     user_prompt: str
@@ -69,6 +72,9 @@ async def chat_with_context(payload: ChatRequest):
             {"role": "user", "content": prompt}
         ]
 
+        # ⏺ Save user message to memory
+        save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
+
         response = chat_completion(messages, tools=OPENAI_TOOLS)
 
         if hasattr(response, "tool_calls"):
@@ -78,7 +84,7 @@ async def chat_with_context(payload: ChatRequest):
                 tool_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
 
                 if tool_name == "search_docs":
-                    from app.api.file_ops.search_docs import perform_search  # must implement this
+                    from app.api.file_ops.search_docs import perform_search
                     result = perform_search(tool_args)
                     if not result:
                         tool_response = "I searched your files and memory but couldn’t find anything on that topic. Try rephrasing or check if it was uploaded."
@@ -106,9 +112,13 @@ async def chat_with_context(payload: ChatRequest):
                 messages.append({"role": "function", "name": tool_name, "content": tool_response})
 
             result = chat_completion(messages)
+            # ⏺ Save assistant response to memory
+            save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, result)
             return {"answer": result}
 
         # fallback: no tools called
+        # ⏺ Save assistant response to memory
+        save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, response)
         return {"answer": response}
 
     except Exception as e:
