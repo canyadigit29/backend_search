@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.core.openai_client import chat_completion
-from app.api.memory_ops.session_memory import save_message
+from app.api.memory_ops.session_memory import save_message, retrieve_memory
 import logging
 import os
 import requests
@@ -49,6 +49,20 @@ OPENAI_TOOLS = [
                 "required": ["query"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "retrieve_memory",
+            "description": "Search past conversations and assistant memory for related information",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Memory search phrase"}
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 
@@ -65,7 +79,7 @@ async def chat_with_context(payload: ChatRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
 
-        system_message = "You are Max, a helpful assistant. You may use tools like 'search_docs' or 'search_web' when asked about topics in memory, files, or online."
+        system_message = "You are Max, a helpful assistant. You may use tools like 'search_docs', 'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
 
         messages = [
             {"role": "system", "content": system_message},
@@ -75,7 +89,11 @@ async def chat_with_context(payload: ChatRequest):
         # ⏺ Save user message to memory
         save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
 
-        response = chat_completion(messages, tools=OPENAI_TOOLS)
+        try:
+            response = chat_completion(messages, tools=OPENAI_TOOLS)
+        except Exception as e:
+            logger.exception("❌ OpenAI chat_completion failed")
+            raise HTTPException(status_code=500, detail=f"Chat model failed: {str(e)}")
 
         if hasattr(response, "tool_calls"):
             for tool_call in response.tool_calls:
@@ -86,10 +104,7 @@ async def chat_with_context(payload: ChatRequest):
                 if tool_name == "search_docs":
                     from app.api.file_ops.search_docs import perform_search
                     result = perform_search(tool_args)
-                    if not result:
-                        tool_response = "I searched your files and memory but couldn’t find anything on that topic. Try rephrasing or check if it was uploaded."
-                    else:
-                        tool_response = result
+                    tool_response = result or "I searched your files and memory but couldn’t find anything on that topic. Try rephrasing or check if it was uploaded."
 
                 elif tool_name == "search_web":
                     api_key = os.getenv("BRAVE_SEARCH_API_KEY")
@@ -101,10 +116,23 @@ async def chat_with_context(payload: ChatRequest):
                         params={"q": tool_args["query"], "count": 3}
                     )
                     brave_data = r.json().get("web", {}).get("results", [])
-                    if not brave_data:
-                        tool_response = "I searched online but couldn’t find anything helpful."
-                    else:
-                        tool_response = "Web Results:\n" + "\n".join(f"- {item['title']}: {item['url']}" for item in brave_data)
+                    tool_response = (
+                        "I searched online but couldn’t find anything helpful."
+                        if not brave_data else
+                        "Web Results:\n" + "\n".join(f"- {item['title']}: {item['url']}" for item in brave_data)
+                    )
+
+                elif tool_name == "retrieve_memory":
+                    result = retrieve_memory(tool_args)
+                    if not isinstance(result, dict) or "results" not in result:
+                        logger.warning("Unexpected structure from retrieve_memory")
+                        result = {"results": []}
+                    results = result.get("results", [])
+                    tool_response = (
+                        "I don't remember anything like that."
+                        if not results else
+                        "\n\n".join(entry["content"] for entry in results)
+                    )
 
                 else:
                     tool_response = f"Unsupported tool call: {tool_name}"
@@ -113,12 +141,12 @@ async def chat_with_context(payload: ChatRequest):
 
             result = chat_completion(messages)
             # ⏺ Save assistant response to memory
-            save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, result)
+            save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, str(result))
             return {"answer": result}
 
         # fallback: no tools called
         # ⏺ Save assistant response to memory
-        save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, response)
+        save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, str(response))
         return {"answer": response}
 
     except Exception as e:
