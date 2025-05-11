@@ -120,15 +120,20 @@ async def chat_with_context(payload: ChatRequest):
                 messages=messages,
                 tools=OPENAI_TOOLS
             )
+            logger.debug(f"🧪 OpenAI raw response: {response}")
         except Exception as e:
             logger.exception("❌ OpenAI chat_completion failed")
             raise HTTPException(status_code=500, detail=f"Chat model failed: {str(e)}")
 
-        if hasattr(response, "tool_calls"):
-            for tool_call in response.tool_calls:
+        # Grab tool calls from message
+        tool_calls = response.choices[0].message.tool_calls if response.choices else None
+
+        if tool_calls:
+            for tool_call in tool_calls:
                 tool_name = tool_call.function.name
                 raw_args = tool_call.function.arguments
                 tool_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                logger.debug(f"🛠️ Tool call: {tool_name} → args: {tool_args}")
 
                 if tool_name == "search_docs":
                     from app.api.file_ops.search_docs import perform_search
@@ -165,6 +170,7 @@ async def chat_with_context(payload: ChatRequest):
                         if not results else
                         "\n\n".join(entry["content"] for entry in results)
                     )
+
                 elif tool_name == "delete_project":
                     from app.api.project_ops.project import delete_project_by_name
                     project_name = tool_args.get("project_name", "").strip()
@@ -172,7 +178,7 @@ async def chat_with_context(payload: ChatRequest):
                         tool_response = "You must specify the full name of the project you want to delete."
                     else:
                         try:
-                            deleted = delete_project_by_name(project_name)
+                            deleted = await delete_project_by_name(project_name)
                             if deleted.get("success"):
                                 tool_response = f"✅ Project '{project_name}' has been deleted."
                             else:
