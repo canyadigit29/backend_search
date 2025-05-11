@@ -1,17 +1,18 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from app.core.openai_client import chat_completion  # This must accept tools OR be bypassed
 from app.api.memory_ops.session_memory import save_message, retrieve_memory
 import logging
 import os
 import requests
 import uuid
 import json
-import openai  # Use directly as fallback if wrapper is too limited
+from openai import OpenAI
 
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
+
+client = OpenAI()
 
 GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 
@@ -89,7 +90,7 @@ async def chat_with_context(payload: ChatRequest):
 
         try:
             logger.debug(f"📤 Sending to OpenAI: {json.dumps(messages)}")
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-4",
                 messages=messages,
                 tools=OPENAI_TOOLS
@@ -142,15 +143,18 @@ async def chat_with_context(payload: ChatRequest):
 
                 messages.append({"role": "function", "name": tool_name, "content": tool_response})
 
-            result = openai.ChatCompletion.create(
+            followup = client.chat.completions.create(
                 model="gpt-4",
                 messages=messages
             )
-            save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, str(result))
-            return {"answer": result}
+            reply = followup.choices[0].message.content if followup.choices else "(No reply)"
+            save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, reply)
+            return {"answer": reply}
 
-        save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, str(response))
-        return {"answer": response}
+        # fallback: no tools triggered
+        reply = response.choices[0].message.content if response.choices else "(No reply)"
+        save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, reply)
+        return {"answer": reply}
 
     except Exception as e:
         logger.exception("🚨 Uncaught error in /chat route")
