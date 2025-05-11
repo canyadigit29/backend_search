@@ -1,4 +1,4 @@
-\import os
+import os
 import json
 import numpy as np
 from app.core.supabase_client import create_client
