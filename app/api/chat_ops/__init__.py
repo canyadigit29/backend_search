@@ -1,1 +1,3 @@
-# package marker
+from . import chat
+
+
