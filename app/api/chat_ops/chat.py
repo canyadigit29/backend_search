@@ -17,7 +17,6 @@ GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 class ChatRequest(BaseModel):
     user_prompt: str
     user_id: str
-    session_id: str
 
 # Tool definitions for OpenAI
 OPENAI_TOOLS = [
@@ -72,7 +71,6 @@ async def chat_with_context(payload: ChatRequest):
         prompt = payload.user_prompt.strip()
         logger.debug(f"🔍 User prompt: {prompt}")
         logger.debug(f"👤 User ID: {payload.user_id}")
-        logger.debug(f"🪪 Session ID: {payload.session_id}")
 
         try:
             uuid.UUID(str(payload.user_id))
@@ -87,7 +85,7 @@ async def chat_with_context(payload: ChatRequest):
         ]
 
         # ⏺ Save user message to memory
-        save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
+        save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
 
         try:
             response = chat_completion(messages, tools=OPENAI_TOOLS)
@@ -141,12 +139,12 @@ async def chat_with_context(payload: ChatRequest):
 
             result = chat_completion(messages)
             # ⏺ Save assistant response to memory
-            save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, str(result))
+            save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, str(result))
             return {"answer": result}
 
         # fallback: no tools called
         # ⏺ Save assistant response to memory
-        save_message(payload.user_id, payload.session_id, GENERAL_CONTEXT_PROJECT_ID, str(response))
+        save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, str(response))
         return {"answer": response}
 
     except Exception as e:
