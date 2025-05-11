@@ -1,6 +1,17 @@
+from fastapi import APIRouter
 from app.core.supabase_client import supabase
 from app.api.file_ops.chunk import chunk_file
 from app.api.file_ops.embed import embed_chunks
+from app.api.file_ops.embed import remove_embeddings_for_file as delete_embedding
+from datetime import datetime
+import time
+
+router = APIRouter()
+
+@router.post("/process")
+def api_process_file(file_path: str, file_id: str, user_id: str = None):
+    process_file(file_path, file_id, user_id)
+    return {"status": "processing started"}
 
 def process_file(file_path: str, file_id: str, user_id: str = None):
     print(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
@@ -34,6 +45,3 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         "ingested": True,
         "ingested_at": datetime.utcnow().isoformat()
     }).eq("id", file_id).execute()
-
-# ✅ Alias the embedding delete utility for compatibility
-from app.api.file_ops.embed import remove_embeddings_for_file as delete_embedding
