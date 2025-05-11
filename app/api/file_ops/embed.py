@@ -77,7 +77,6 @@ def embed_chunks(chunks: list[str], project_id: str, file_name: str):
 
 def remove_embeddings_for_file(file_id: str):
     try:
-        # Step 1: Look up the file name by file_id
         file_result = supabase.table("files").select("file_name").eq("id", file_id).maybe_single().execute()
         file_data = getattr(file_result, "data", None)
         if not file_data or "file_name" not in file_data:
@@ -86,7 +85,6 @@ def remove_embeddings_for_file(file_id: str):
         file_name = file_data["file_name"]
         print(f"🧹 Removing all embeddings for file: {file_name}")
 
-        # Step 2: Delete from document_chunks
         delete_result = supabase.table("document_chunks").delete().eq("file_name", file_name).execute()
         print(f"🧾 Vector delete response: {delete_result}")
         return {"status": "success", "deleted": delete_result.data}
@@ -94,3 +92,6 @@ def remove_embeddings_for_file(file_id: str):
     except Exception as e:
         print(f"❌ Failed to remove embeddings: {e}")
         raise
+
+# ✅ Add alias for compatibility
+delete_embedding = remove_embeddings_for_file
