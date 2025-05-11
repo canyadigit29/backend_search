@@ -71,6 +71,7 @@ def chunk_file(file_id: str, user_id: str = None):
         if chunks:
             supabase.table("chunks").insert(chunks).execute()
             print(f"✅ Inserted {len(chunks)} chunks.")
+            return [chunk["content"] for chunk in chunks]  # ✅ PATCHED
 
     except Exception as e:
         print(f"❌ Error during chunking: {str(e)}")
