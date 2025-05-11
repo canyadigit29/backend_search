@@ -1,3 +1,7 @@
+from app.core.supabase_client import supabase
+from app.api.file_ops.chunk import chunk_file
+from app.api.file_ops.embed import embed_chunks
+
 def process_file(file_path: str, file_id: str, user_id: str = None):
     print(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
     max_retries = 24
@@ -30,3 +34,6 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         "ingested": True,
         "ingested_at": datetime.utcnow().isoformat()
     }).eq("id", file_id).execute()
+
+# ✅ Alias the embedding delete utility for compatibility
+from app.api.file_ops.embed import remove_embeddings_for_file as delete_embedding
