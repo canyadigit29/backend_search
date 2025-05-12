@@ -1,6 +1,6 @@
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks
 from app.core.supabase_client import supabase
-from app.api.ingest import process_file
+from app.api.file_ops.ingest import process_file
 from datetime import datetime
 import uuid
 import zipfile
