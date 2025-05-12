@@ -199,14 +199,26 @@ async def delete_project_by_name(project_name: str) -> dict:
     try:
         print(f"🗑️ (Internal) Deleting project: {project_name}")
 
+        # Debug: list available project names
+        debug_projects = (
+            supabase.table("projects")
+            .select("name")
+            .eq("user_id", USER_ID)
+            .execute()
+        )
+        all_names = [p["name"] for p in debug_projects.data or []]
+        print(f"📋 Available project names: {all_names}")
+
+        # Use ilike to avoid 406 errors from spacing/case
         project_lookup = (
             supabase.table("projects")
             .select("id")
             .eq("user_id", USER_ID)
-            .eq("name", project_name)
+            .ilike("name", project_name)
             .maybe_single()
             .execute()
         )
+
         if not project_lookup or not getattr(project_lookup, "data", None):
             return {"success": False, "error": f"Project '{project_name}' not found."}
 
