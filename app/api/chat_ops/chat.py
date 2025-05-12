@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from app.api.memory_ops.session_memory import save_message, retrieve_memory
+from app.core.supabase_client import supabase
 import logging
 import os
 import requests
@@ -101,31 +102,50 @@ async def chat_with_context(payload: ChatRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
 
-        system_message = (
-            "You are Max, a helpful assistant. You may use tools like 'search_docs', "
-            "'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
+        # Build message history from session_logs (short-term memory)
+        session_response = (
+            supabase.table("session_logs")
+            .select("speaker_role, content")
+            .eq("user_id", payload.user_id)
+            .order("message_index", desc=True)
+            .limit(10)
+            .execute()
         )
 
-        messages = [
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": prompt}
-        ]
+        messages = [{
+            "role": "system",
+            "content": (
+                "You are Max, a helpful assistant. You may use tools like 'search_docs', "
+                "'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
+            )
+        }]
 
+        if session_response.data:
+            past_messages = reversed(session_response.data)
+            for row in past_messages:
+                if row["speaker_role"] in ("user", "assistant"):
+                    messages.append({"role": row["speaker_role"], "content": row["content"]})
+
+        # Optional: Long-term memory injection
+        memory_result = retrieve_memory({"query": prompt})
+        if memory_result.get("results"):
+            memory_snippets = "\n".join([m["content"] for m in memory_result["results"]])
+            messages.insert(1, {
+                "role": "system",
+                "content": f"Relevant past memory:\n{memory_snippets}"
+            })
+
+        # Append current prompt
+        messages.append({"role": "user", "content": prompt})
         save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
 
-        try:
-            logger.debug(f"📤 Sending to OpenAI: {json.dumps(messages)}")
-            response = client.chat.completions.create(
-                model="gpt-4",
-                messages=messages,
-                tools=OPENAI_TOOLS
-            )
-            logger.debug(f"🧪 OpenAI raw response: {response}")
-        except Exception as e:
-            logger.exception("❌ OpenAI chat_completion failed")
-            raise HTTPException(status_code=500, detail=f"Chat model failed: {str(e)}")
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            tools=OPENAI_TOOLS
+        )
+        logger.debug(f"🧪 OpenAI raw response: {response}")
 
-        # Grab tool calls from message
         tool_calls = response.choices[0].message.tool_calls if response.choices else None
 
         if tool_calls:
@@ -133,7 +153,7 @@ async def chat_with_context(payload: ChatRequest):
                 tool_name = tool_call.function.name
                 raw_args = tool_call.function.arguments
                 tool_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                logger.debug(f"🛠️ Tool call: {tool_name} → args: {tool_args}")
+                logger.debug(f"🔨 Tool call: {tool_name} → args: {tool_args}")
 
                 if tool_name == "search_docs":
                     from app.api.file_ops.search_docs import perform_search
