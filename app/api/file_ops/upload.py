@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from fastapi import File, UploadFile, Form, HTTPException, BackgroundTasks
+from app.core.supabase_client import supabase
 
 router = APIRouter()
 
