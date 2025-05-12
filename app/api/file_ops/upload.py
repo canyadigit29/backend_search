@@ -3,6 +3,9 @@ from fastapi import File, UploadFile, Form, HTTPException, BackgroundTasks
 
 router = APIRouter()
 
+USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"  # temporary hardcoded user
+
+
 @router.post("/upload")
 async def upload_file(
     background_tasks: BackgroundTasks,
