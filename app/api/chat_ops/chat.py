@@ -23,7 +23,85 @@ class ChatRequest(BaseModel):
     user_prompt: str
     user_id: str
 
-# Tool definitions omitted for brevity
+OPENAI_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_project",
+            "description": "Delete a project and all its associated data (requires exact project name match)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_name": {
+                        "type": "string",
+                        "description": "The exact name of the project to delete"
+                    }
+                },
+                "required": ["project_name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_docs",
+            "description": "Search stored documents and memory for relevant information",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query text"},
+                    "project_name": {"type": "string", "description": "Optional project name to limit scope"},
+                    "project_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Optional list of multiple project names to include in the search"
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "Search the public internet using Brave Search API",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query text"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "retrieve_memory",
+            "description": "Search past conversations and assistant memory for related information",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Memory search phrase"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sync_storage_files",
+            "description": "Scan Supabase storage and ingest any missing or unprocessed files",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    }
+]
 
 @router.post("/chat")
 async def chat_with_context(payload: ChatRequest):
@@ -92,7 +170,7 @@ async def chat_with_context(payload: ChatRequest):
                     folders = storage.list(payload.user_id, {"limit": 100})
                     added = []
 
-                    for folder in folders:  # ✅ PATCHED
+                    for folder in folders:
                         project = folder["name"]
                         project_id_result = (
                             supabase.table("projects")
