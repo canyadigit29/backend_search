@@ -1,7 +1,10 @@
-from fastapi import APIRouter
-from fastapi import File, UploadFile, Form, HTTPException, BackgroundTasks
+from fastapi import APIRouter, File, UploadFile, Form, HTTPException, BackgroundTasks
 from app.core.supabase_client import supabase
+from app.api.ingest import process_file
+from datetime import datetime
 import uuid
+import zipfile
+import io
 
 router = APIRouter()
 
@@ -15,14 +18,17 @@ async def upload_file(
     project_name: str = Form(...)
 ):
     try:
-        import zipfile
-        import io
-
         contents = await file.read()
         folder_path = f"{USER_ID}/{project_name}/"
 
         # 🔍 Lookup project ID by name
-        project_lookup = supabase.table("projects").select("id").eq("user_id", USER_ID).eq("name", project_name).execute()
+        project_lookup = (
+            supabase.table("projects")
+            .select("id")
+            .eq("user_id", USER_ID)
+            .eq("name", project_name)
+            .execute()
+        )
         if not project_lookup.data:
             raise HTTPException(status_code=404, detail=f"No project found with name '{project_name}'")
         project_id = project_lookup.data[0]["id"]
