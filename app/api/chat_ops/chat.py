@@ -7,7 +7,9 @@ import os
 import requests
 import uuid
 import json
+from datetime import datetime
 from openai import OpenAI
+from app.api.file_ops.ingest import process_file
 
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
@@ -87,6 +89,18 @@ OPENAI_TOOLS = [
                 "required": ["query"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sync_storage_files",
+            "description": "Scan Supabase storage and ingest any missing or unprocessed files",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
     }
 ]
 
@@ -102,7 +116,6 @@ async def chat_with_context(payload: ChatRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
 
-        # Build message history from session_logs (short-term memory)
         session_response = (
             supabase.table("session_logs")
             .select("speaker_role, content")
@@ -126,7 +139,6 @@ async def chat_with_context(payload: ChatRequest):
                 if row["speaker_role"] in ("user", "assistant"):
                     messages.append({"role": row["speaker_role"], "content": row["content"]})
 
-        # Optional: Long-term memory injection
         memory_result = retrieve_memory({"query": prompt})
         if memory_result.get("results"):
             memory_snippets = "\n".join([m["content"] for m in memory_result["results"]])
@@ -135,7 +147,6 @@ async def chat_with_context(payload: ChatRequest):
                 "content": f"Relevant past memory:\n{memory_snippets}"
             })
 
-        # Append current prompt
         messages.append({"role": "user", "content": prompt})
         save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
 
@@ -206,6 +217,61 @@ async def chat_with_context(payload: ChatRequest):
                         except Exception as e:
                             tool_response = f"Error while deleting project: {str(e)}"
 
+                elif tool_name == "sync_storage_files":
+                    # AUTO SYNC STORAGE & INGEST
+                    storage = supabase.storage.from_("maxgptstorage")
+                    folders = storage.list(payload.user_id, {"limit": 100})
+                    added = []
+
+                    for folder in folders.get("data", []):
+                        project = folder["name"]
+                        project_id_result = (
+                            supabase.table("projects")
+                            .select("id")
+                            .eq("user_id", payload.user_id)
+                            .eq("name", project)
+                            .maybe_single()
+                            .execute()
+                        )
+                        if not project_id_result.data:
+                            continue
+
+                        project_id = project_id_result.data["id"]
+                        path_prefix = f"{payload.user_id}/{project}/"
+                        files = storage.list(path_prefix, {"limit": 100})
+
+                        for f in files.get("data", []):
+                            name = f["name"]
+                            if not name or name.startswith("."):
+                                continue
+
+                            file_path = f"{path_prefix}{name}"
+                            exists = supabase.table("files")\
+                                .select("id, ingested")\
+                                .eq("file_path", file_path)\
+                                .maybe_single().execute()
+
+                            if not exists.data:
+                                file_id = str(uuid.uuid4())
+                                supabase.table("files").insert({
+                                    "id": file_id,
+                                    "file_path": file_path,
+                                    "file_name": name,
+                                    "project_id": project_id,
+                                    "user_id": payload.user_id,
+                                    "uploaded_at": datetime.utcnow().isoformat(),
+                                    "ingested": False,
+                                    "ingested_at": None
+                                }).execute()
+                                added.append(file_path)
+                            else:
+                                file_id = exists.data["id"]
+
+                            if not exists.data or not exists.data.get("ingested"):
+                                process_file(file_path=file_path, file_id=file_id, user_id=payload.user_id)
+
+                    tool_response = f"✅ Sync complete. Files added or reprocessed: {len(added)}"
+
                 else:
                     tool_response = f"Unsupported tool call: {tool_name}"
 
@@ -219,7 +285,6 @@ async def chat_with_context(payload: ChatRequest):
             save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, reply)
             return {"answer": reply}
 
-        # fallback: no tools triggered
         reply = response.choices[0].message.content if response.choices else "(No reply)"
         save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, reply)
         return {"answer": reply}
