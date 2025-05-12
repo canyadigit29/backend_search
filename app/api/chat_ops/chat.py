@@ -187,7 +187,7 @@ async def chat_with_context(payload: ChatRequest):
                         path_prefix = f"{payload.user_id}/{project}/"
                         files = storage.list(path_prefix, {"limit": 100})
 
-                        for f in files.get("data", []):
+                        for f in files:
                             name = f["name"]
                             if not name or name.startswith("."):
                                 continue
