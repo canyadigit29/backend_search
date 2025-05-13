@@ -1,8 +1,11 @@
 import logging
-from app.api.file_ops.search_docs import semantic_search
+
 from fastapi import Request
 
+from app.api.file_ops.search_docs import semantic_search
+
 logger = logging.getLogger("maxgpt")
+
 
 async def search_documents(query: str, page: int = 1):
     try:
@@ -15,7 +18,7 @@ async def search_documents(query: str, page: int = 1):
         payload = {
             "query": query,
             "page": page,
-            "match_count": 10  # ✅ Get up to 10 chunks per query
+            "match_count": 10,  # ✅ Get up to 10 chunks per query
         }
 
         logger.debug(f"🔁 Calling internal semantic_search with payload: {payload}")

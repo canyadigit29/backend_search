@@ -1,8 +1,10 @@
-import os
 import json
+import os
+
 import numpy as np
-from app.core.supabase_client import create_client
+
 from app.core.openai_client import embed_text
+from app.core.supabase_client import create_client
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
@@ -10,9 +12,11 @@ supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
 USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
 
+
 def cosine_similarity(vec1, vec2):
     v1, v2 = np.array(vec1), np.array(vec2)
     return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+
 
 def perform_search(tool_args):
     query = tool_args.get("query")
@@ -77,7 +81,7 @@ def perform_search(tool_args):
                 "content": row["content"],
                 "score": cosine_similarity(query_embedding, row["embedding"]),
                 "file_name": row.get("file_name", "(unknown file)"),
-                "chunk_index": row.get("chunk_index", 0)
+                "chunk_index": row.get("chunk_index", 0),
             }
             for row in rows
         ]
@@ -87,6 +91,7 @@ def perform_search(tool_args):
 
     except Exception as e:
         return {"error": f"Error during search: {str(e)}"}
+
 
 # ✅ Async wrapper for internal use
 async def semantic_search(request, payload):

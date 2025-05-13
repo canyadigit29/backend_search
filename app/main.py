@@ -1,13 +1,12 @@
 import os  # Moved up as per PEP8
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.project_ops import project, session_log
 from app.api.chat_ops import chat
-from app.api.file_ops import (
-    upload, ingest,
-    background_tasks  # Removed: embed, chunk
-)
+from app.api.file_ops import (background_tasks,  # Removed: embed, chunk
+                              ingest, upload)
+from app.api.project_ops import project, session_log
 from app.core.config import settings
 
 # 🧪 Optional: Print env variables for debugging
@@ -16,8 +15,7 @@ print("OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
 print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
 
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    openapi_url=f"{settings.API_PREFIX}/openapi.json"
+    title=settings.PROJECT_NAME, openapi_url=f"{settings.API_PREFIX}/openapi.json"
 )
 
 # ✅ CORS middleware for local testing
@@ -29,9 +27,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/")
 async def root():
     return {"message": f"{settings.PROJECT_NAME} is running."}
+
 
 # ✅ Route mounts (memory routes removed)
 app.include_router(upload.router, prefix=settings.API_PREFIX)

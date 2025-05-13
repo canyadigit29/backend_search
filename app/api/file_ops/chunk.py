@@ -1,8 +1,10 @@
 import re
-from uuid import uuid4
 from pathlib import Path
-from app.core.supabase_client import supabase
+from uuid import uuid4
+
 from app.core.extract_text import extract_text  # Assumed
+from app.core.supabase_client import supabase
+
 
 def chunk_file(file_id: str, user_id: str = None):
     print(f"🔍 Starting chunking for file_id: {file_id}")
@@ -45,7 +47,7 @@ def chunk_file(file_id: str, user_id: str = None):
                 "id": chunk_id,
                 "file_id": file_entry["id"],
                 "content": text,
-                "chunk_index": 0
+                "chunk_index": 0,
             }
             if actual_user_id:
                 chunk["user_id"] = actual_user_id
@@ -54,13 +56,13 @@ def chunk_file(file_id: str, user_id: str = None):
             chunks.append(chunk)
         else:
             for i in range(0, len(text), max_chunk_size - overlap):
-                chunk_text = text[i:i + max_chunk_size]
+                chunk_text = text[i : i + max_chunk_size]
                 chunk_id = str(uuid4())
                 chunk = {
                     "id": chunk_id,
                     "file_id": file_entry["id"],
                     "content": chunk_text,
-                    "chunk_index": len(chunks)
+                    "chunk_index": len(chunks),
                 }
                 if actual_user_id:
                     chunk["user_id"] = actual_user_id

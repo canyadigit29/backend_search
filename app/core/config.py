@@ -1,7 +1,9 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 class Settings:
     # 🔧 Project metadata
@@ -20,5 +22,6 @@ class Settings:
     # ⚙️ Env
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").strip()
     DEBUG: bool = os.getenv("DEBUG", "True").strip() == "True"
+
 
 settings = Settings()

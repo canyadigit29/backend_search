@@ -1,17 +1,22 @@
+import time
+from datetime import datetime
+
 from fastapi import APIRouter
-from app.core.supabase_client import supabase
+
 from app.api.file_ops.chunk import chunk_file
 from app.api.file_ops.embed import embed_chunks
-from app.api.file_ops.embed import remove_embeddings_for_file as delete_embedding
-from datetime import datetime
-import time
+from app.api.file_ops.embed import \
+    remove_embeddings_for_file as delete_embedding
+from app.core.supabase_client import supabase
 
 router = APIRouter()
+
 
 @router.post("/process")
 def api_process_file(file_path: str, file_id: str, user_id: str = None):
     process_file(file_path, file_id, user_id)
     return {"status": "processing started"}
+
 
 def process_file(file_path: str, file_id: str, user_id: str = None):
     print(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
@@ -28,7 +33,9 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         time.sleep(retry_interval)
 
     if not file_record:
-        raise Exception(f"File record not found after {max_retries} retries: {file_path}")
+        raise Exception(
+            f"File record not found after {max_retries} retries: {file_path}"
+        )
 
     # Get required fields for embedding
     file_name = file_record["file_name"]
@@ -41,7 +48,6 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
     embed_chunks(chunks, project_id, file_name)
 
     # Mark the file as ingested
-    supabase.table("files").update({
-        "ingested": True,
-        "ingested_at": datetime.utcnow().isoformat()
-    }).eq("id", file_id).execute()
+    supabase.table("files").update(
+        {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
+    ).eq("id", file_id).execute()

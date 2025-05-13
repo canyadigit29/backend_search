@@ -1,12 +1,15 @@
-import uuid
-import time
-from datetime import datetime
-from app.core.supabase_client import supabase
-from app.api.file_ops.embed import embed_text
 import logging
+import time
+import uuid
+from datetime import datetime
+
 import numpy as np
 
+from app.api.file_ops.embed import embed_text
+from app.core.supabase_client import supabase
+
 logging.basicConfig(level=logging.INFO)
+
 
 def is_valid_uuid(value):
     try:
@@ -15,17 +18,21 @@ def is_valid_uuid(value):
     except ValueError:
         return False
 
+
 def retry_embed_text(text, retries=3, delay=1.5):
     for attempt in range(retries):
         try:
             return embed_text(text)
         except Exception as e:
             if attempt < retries - 1:
-                logging.warning(f"Embedding failed (attempt {attempt + 1}), retrying... {e}")
-                time.sleep(delay * (2 ** attempt))  # Exponential backoff
+                logging.warning(
+                    f"Embedding failed (attempt {attempt + 1}), retrying... {e}"
+                )
+                time.sleep(delay * (2**attempt))  # Exponential backoff
             else:
                 logging.error(f"Embedding failed after {retries} attempts: {e}")
                 raise
+
 
 def save_message(user_id, project_id, content):
     if not all(map(is_valid_uuid, [user_id, project_id])):
@@ -57,9 +64,11 @@ def save_message(user_id, project_id, content):
         logging.exception("Unexpected error during message memory save")
         return {"error": str(e)}
 
+
 def cosine_similarity(vec1, vec2):
     v1, v2 = np.array(vec1), np.array(vec2)
     return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+
 
 def retrieve_memory(tool_args):
     query = tool_args.get("query")
@@ -69,7 +78,11 @@ def retrieve_memory(tool_args):
     try:
         query_embedding = retry_embed_text(query)
 
-        response = supabase.table("memory_log").select("content, embedding, timestamp").execute()
+        response = (
+            supabase.table("memory_log")
+            .select("content, embedding, timestamp")
+            .execute()
+        )
 
         if getattr(response, "error", None):
             return {"error": f"Supabase query failed: {response.error.message}"}
@@ -83,12 +96,14 @@ def retrieve_memory(tool_args):
             {
                 "content": row["content"],
                 "score": cosine_similarity(query_embedding, row["embedding"]),
-                "timestamp": row.get("timestamp")
+                "timestamp": row.get("timestamp"),
             }
             for row in rows
         ]
 
-        top_matches = sorted(scored, key=lambda x: (-x["score"], x["timestamp"] or ""))[:10]
+        top_matches = sorted(scored, key=lambda x: (-x["score"], x["timestamp"] or ""))[
+            :10
+        ]
 
         return {"results": top_matches}
 

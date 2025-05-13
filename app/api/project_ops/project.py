@@ -1,16 +1,20 @@
-from fastapi import APIRouter, HTTPException, Request, Query
-from pydantic import BaseModel
-from app.core.supabase_client import supabase
-import uuid
 import datetime
+import uuid
+
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel
+
+from app.core.supabase_client import supabase
 
 router = APIRouter()
 
 USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"  # Replace with dynamic auth later
 
+
 class ProjectRequest(BaseModel):
     project_name: str
     description: str = ""
+
 
 # ✅ NEW: Internal function so chat.py can import directly
 async def get_projects(user_id: str, request: Request):
@@ -57,13 +61,15 @@ async def create_new_project(request: ProjectRequest):
 
         insert_response = (
             supabase.table("projects")
-            .insert({
-                "id": project_id,
-                "name": request.project_name,
-                "description": request.description,
-                "created_at": created_at,
-                "user_id": USER_ID
-            })
+            .insert(
+                {
+                    "id": project_id,
+                    "name": request.project_name,
+                    "description": request.description,
+                    "created_at": created_at,
+                    "user_id": USER_ID,
+                }
+            )
             .execute()
         )
         print(f"🧾 Insert response: {insert_response}")
@@ -74,7 +80,9 @@ async def create_new_project(request: ProjectRequest):
 
         print("📁 Step 3: Checking existing storage folders...")
         folder_path = f"{USER_ID}/{request.project_name}/"
-        list_response = supabase.storage.from_("maxgptstorage").list(path=f"{USER_ID}/", options={"limit": 100})
+        list_response = supabase.storage.from_("maxgptstorage").list(
+            path=f"{USER_ID}/", options={"limit": 100}
+        )
         print(f"📂 Folder list response: {list_response}")
 
         folder_data = getattr(list_response, "data", [])
@@ -89,21 +97,21 @@ async def create_new_project(request: ProjectRequest):
         if request.project_name not in existing_folders:
             print("📤 Step 4: Creating folder via dummy .init upload...")
             upload_response = supabase.storage.from_("maxgptstorage").upload(
-                f"{folder_path}.init",
-                b"",
-                {"content-type": "text/plain"}
+                f"{folder_path}.init", b"", {"content-type": "text/plain"}
             )
             print(f"📤 Upload response: {upload_response}")
 
             if not upload_response or getattr(upload_response, "error", None):
-                msg = getattr(upload_response.error, "message", "unknown storage upload error")
+                msg = getattr(
+                    upload_response.error, "message", "unknown storage upload error"
+                )
                 raise Exception(f"Storage error: {msg}")
 
         print("✅ Project created successfully.")
         return {
             "message": "Project created successfully.",
             "project_id": project_id,
-            "project_name": request.project_name
+            "project_name": request.project_name,
         }
 
     except Exception as e:
@@ -112,10 +120,7 @@ async def create_new_project(request: ProjectRequest):
 
 
 @router.get("/projects")
-async def list_projects(
-    name: str = Query(None),
-    description: str = Query(None)
-):
+async def list_projects(name: str = Query(None), description: str = Query(None)):
     try:
         print(f"📦 Fetching projects for user_id: {USER_ID}")
         query = (
@@ -158,7 +163,9 @@ async def delete_project(project_name: str = Query(...)):
             .execute()
         )
         if not project_lookup or not getattr(project_lookup, "data", None):
-            raise HTTPException(status_code=404, detail=f"Project '{project_name}' not found.")
+            raise HTTPException(
+                status_code=404, detail=f"Project '{project_name}' not found."
+            )
         project_id = project_lookup.data["id"]
 
         # Step 2: Delete files linked to this project
@@ -178,7 +185,9 @@ async def delete_project(project_name: str = Query(...)):
 
         # Step 3: Delete file chunks
         for file_name in file_names:
-            supabase.table("document_chunks").delete().eq("file_name", file_name).execute()
+            supabase.table("document_chunks").delete().eq(
+                "file_name", file_name
+            ).execute()
 
         # Step 4: Delete file records
         supabase.table("files").delete().eq("project_id", project_id).execute()
@@ -191,7 +200,9 @@ async def delete_project(project_name: str = Query(...)):
 
     except Exception as e:
         print(f"❌ Failed to delete project: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Project deletion failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Project deletion failed: {str(e)}"
+        )
 
 
 # ✅ Internal tool call handler
@@ -201,10 +212,7 @@ async def delete_project_by_name(project_name: str) -> dict:
 
         # Debug: list available project names
         debug_projects = (
-            supabase.table("projects")
-            .select("name")
-            .eq("user_id", USER_ID)
-            .execute()
+            supabase.table("projects").select("name").eq("user_id", USER_ID).execute()
         )
         all_names = [p["name"] for p in debug_projects.data or []]
         print(f"📋 Available project names: {all_names}")
@@ -238,7 +246,9 @@ async def delete_project_by_name(project_name: str) -> dict:
             supabase.storage.from_("maxgptstorage").remove(file_paths)
 
         for file_name in file_names:
-            supabase.table("document_chunks").delete().eq("file_name", file_name).execute()
+            supabase.table("document_chunks").delete().eq(
+                "file_name", file_name
+            ).execute()
 
         supabase.table("files").delete().eq("project_id", project_id).execute()
         supabase.table("projects").delete().eq("id", project_id).execute()

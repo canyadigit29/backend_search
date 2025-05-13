@@ -1,9 +1,12 @@
-from fastapi import APIRouter, HTTPException  # ✅ Added missing import
-from app.core.supabase_client import supabase
-import uuid
 import datetime
+import uuid
+
+from fastapi import APIRouter, HTTPException  # ✅ Added missing import
+
+from app.core.supabase_client import supabase
 
 router = APIRouter()
+
 
 @router.post("/log_session")
 async def log_session(user_query: str, matched_documents: list):
@@ -12,7 +15,7 @@ async def log_session(user_query: str, matched_documents: list):
             "id": str(uuid.uuid4()),
             "query": user_query,
             "matched_documents": matched_documents,
-            "timestamp": datetime.datetime.utcnow().isoformat()
+            "timestamp": datetime.datetime.utcnow().isoformat(),
         }
         response = supabase.table("session_logs").insert(log_entry).execute()
 

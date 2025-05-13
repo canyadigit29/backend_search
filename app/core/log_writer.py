@@ -1,8 +1,16 @@
 import os
 from datetime import datetime
-from supabase import create_client, Client
 
-def log_message(session_id: str, role: str, content: str, topic_name: str = None, user_id: str = None):
+from supabase import Client, create_client
+
+
+def log_message(
+    session_id: str,
+    role: str,
+    content: str,
+    topic_name: str = None,
+    user_id: str = None,
+):
     try:
         # Railway passes env variables directly — use them here
         supabase_url = os.environ["SUPABASE_URL"]
@@ -14,7 +22,7 @@ def log_message(session_id: str, role: str, content: str, topic_name: str = None
             "role": role,
             "content": content,
             "topic_name": topic_name,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat(),
         }
 
         if user_id:
@@ -22,7 +30,9 @@ def log_message(session_id: str, role: str, content: str, topic_name: str = None
 
         result = supabase.table("daily_chat_log").insert(log_entry).execute()
 
-        print(f"✅ Logged message: {role} | {session_id} | {topic_name} | user: {user_id}")
+        print(
+            f"✅ Logged message: {role} | {session_id} | {topic_name} | user: {user_id}"
+        )
         return result
     except Exception as e:
         print(f"❌ Log failed: {str(e)}")

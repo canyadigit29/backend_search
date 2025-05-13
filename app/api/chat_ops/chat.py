@@ -1,15 +1,17 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from app.api.memory_ops.session_memory import save_message, retrieve_memory
-from app.core.supabase_client import supabase
+import json
 import logging
 import os
-import requests
 import uuid
-import json
 from datetime import datetime
+
+import requests
+from fastapi import APIRouter, HTTPException
 from openai import OpenAI
+from pydantic import BaseModel
+
 from app.api.file_ops.ingest import process_file
+from app.api.memory_ops.session_memory import retrieve_memory, save_message
+from app.core.supabase_client import supabase
 
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
@@ -19,9 +21,11 @@ client = OpenAI()
 
 GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 
+
 class ChatRequest(BaseModel):
     user_prompt: str
     user_id: str
+
 
 OPENAI_TOOLS = [
     {
@@ -34,12 +38,12 @@ OPENAI_TOOLS = [
                 "properties": {
                     "project_name": {
                         "type": "string",
-                        "description": "The exact name of the project to delete"
+                        "description": "The exact name of the project to delete",
                     }
                 },
-                "required": ["project_name"]
-            }
-        }
+                "required": ["project_name"],
+            },
+        },
     },
     {
         "type": "function",
@@ -50,16 +54,19 @@ OPENAI_TOOLS = [
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Search query text"},
-                    "project_name": {"type": "string", "description": "Optional project name to limit scope"},
+                    "project_name": {
+                        "type": "string",
+                        "description": "Optional project name to limit scope",
+                    },
                     "project_names": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Optional list of multiple project names to include in the search"
-                    }
+                        "description": "Optional list of multiple project names to include in the search",
+                    },
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     },
     {
         "type": "function",
@@ -71,9 +78,9 @@ OPENAI_TOOLS = [
                 "properties": {
                     "query": {"type": "string", "description": "Search query text"}
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     },
     {
         "type": "function",
@@ -85,23 +92,20 @@ OPENAI_TOOLS = [
                 "properties": {
                     "query": {"type": "string", "description": "Memory search phrase"}
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     },
     {
         "type": "function",
         "function": {
             "name": "sync_storage_files",
             "description": "Scan Supabase storage and ingest any missing or unprocessed files",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    }
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
+
 
 @router.post("/chat")
 async def chat_with_context(payload: ChatRequest):
@@ -113,7 +117,9 @@ async def chat_with_context(payload: ChatRequest):
         try:
             uuid.UUID(str(payload.user_id))
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
+            raise HTTPException(
+                status_code=400, detail="Invalid user_id format. Must be a UUID."
+            )
 
         session_response = (
             supabase.table("session_logs")
@@ -124,45 +130,56 @@ async def chat_with_context(payload: ChatRequest):
             .execute()
         )
 
-        messages = [{
-            "role": "system",
-            "content": (
-                "You are Max, a helpful assistant. You may use tools like 'search_docs', "
-                "'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
-            )
-        }]
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are Max, a helpful assistant. You may use tools like 'search_docs', "
+                    "'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
+                ),
+            }
+        ]
 
         if session_response.data:
             past_messages = reversed(session_response.data)
             for row in past_messages:
                 if row["speaker_role"] in ("user", "assistant"):
-                    messages.append({"role": row["speaker_role"], "content": row["content"]})
+                    messages.append(
+                        {"role": row["speaker_role"], "content": row["content"]}
+                    )
 
         memory_result = retrieve_memory({"query": prompt})
         if memory_result.get("results"):
-            memory_snippets = "\n".join([m["content"] for m in memory_result["results"]])
-            messages.insert(1, {
-                "role": "system",
-                "content": f"Relevant past memory:\n{memory_snippets}"
-            })
+            memory_snippets = "\n".join(
+                [m["content"] for m in memory_result["results"]]
+            )
+            messages.insert(
+                1,
+                {
+                    "role": "system",
+                    "content": f"Relevant past memory:\n{memory_snippets}",
+                },
+            )
 
         messages.append({"role": "user", "content": prompt})
         save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
 
         response = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            tools=OPENAI_TOOLS
+            model="gpt-4", messages=messages, tools=OPENAI_TOOLS
         )
         logger.debug(f"🧪 OpenAI raw response: {response}")
 
-        tool_calls = response.choices[0].message.tool_calls if response.choices else None
+        tool_calls = (
+            response.choices[0].message.tool_calls if response.choices else None
+        )
 
         if tool_calls:
             for tool_call in tool_calls:
                 tool_name = tool_call.function.name
                 raw_args = tool_call.function.arguments
-                tool_args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                tool_args = (
+                    json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                )
                 logger.debug(f"🔨 Tool call: {tool_name} → args: {tool_args}")
 
                 if tool_name == "sync_storage_files":
@@ -193,46 +210,62 @@ async def chat_with_context(payload: ChatRequest):
                                 continue
 
                             file_path = f"{path_prefix}{name}"
-                            exists = supabase.table("files")\
-                                .select("id, ingested")\
-                                .eq("file_path", file_path)\
-                                .maybe_single().execute()
+                            exists = (
+                                supabase.table("files")
+                                .select("id, ingested")
+                                .eq("file_path", file_path)
+                                .maybe_single()
+                                .execute()
+                            )
 
                             if not exists.data:
                                 file_id = str(uuid.uuid4())
-                                supabase.table("files").insert({
-                                    "id": file_id,
-                                    "file_path": file_path,
-                                    "file_name": name,
-                                    "project_id": project_id,
-                                    "user_id": payload.user_id,
-                                    "uploaded_at": datetime.utcnow().isoformat(),
-                                    "ingested": False,
-                                    "ingested_at": None
-                                }).execute()
+                                supabase.table("files").insert(
+                                    {
+                                        "id": file_id,
+                                        "file_path": file_path,
+                                        "file_name": name,
+                                        "project_id": project_id,
+                                        "user_id": payload.user_id,
+                                        "uploaded_at": datetime.utcnow().isoformat(),
+                                        "ingested": False,
+                                        "ingested_at": None,
+                                    }
+                                ).execute()
                                 added.append(file_path)
                             else:
                                 file_id = exists.data["id"]
 
                             if not exists.data or not exists.data.get("ingested"):
-                                process_file(file_path=file_path, file_id=file_id, user_id=payload.user_id)
+                                process_file(
+                                    file_path=file_path,
+                                    file_id=file_id,
+                                    user_id=payload.user_id,
+                                )
 
-                    tool_response = f"✅ Sync complete. Files added or reprocessed: {len(added)}"
+                    tool_response = (
+                        f"✅ Sync complete. Files added or reprocessed: {len(added)}"
+                    )
 
                 else:
                     tool_response = f"Unsupported tool call: {tool_name}"
 
-                messages.append({"role": "function", "name": tool_name, "content": tool_response})
+                messages.append(
+                    {"role": "function", "name": tool_name, "content": tool_response}
+                )
 
-            followup = client.chat.completions.create(
-                model="gpt-4",
-                messages=messages
+            followup = client.chat.completions.create(model="gpt-4", messages=messages)
+            reply = (
+                followup.choices[0].message.content
+                if followup.choices
+                else "(No reply)"
             )
-            reply = followup.choices[0].message.content if followup.choices else "(No reply)"
             save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, reply)
             return {"answer": reply}
 
-        reply = response.choices[0].message.content if response.choices else "(No reply)"
+        reply = (
+            response.choices[0].message.content if response.choices else "(No reply)"
+        )
         save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, reply)
         return {"answer": reply}
 

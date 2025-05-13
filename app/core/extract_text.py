@@ -1,6 +1,8 @@
 import os
+
 import fitz  # PyMuPDF
 from docx import Document
+
 
 def extract_text(supabase_path: str, local_path: str) -> str:
     _, ext = os.path.splitext(local_path.lower())
