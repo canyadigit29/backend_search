@@ -1,5 +1,5 @@
 import logging
-from app.api.file_ops.search import semantic_search  # ✅ Updated path
+from app.api.file_ops.search_docs import semantic_search
 from fastapi import Request
 
 logger = logging.getLogger("maxgpt")
