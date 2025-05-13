@@ -35,7 +35,7 @@ def chunk_file(file_id: str, user_id: str = None):
         with open(local_temp_path, "wb") as f:
             f.write(response)
 
-        text = extract_text(file_path, local_temp_path)
+        text = extract_text(local_temp_path)
 
         max_chunk_size = 1000
         overlap = 200
