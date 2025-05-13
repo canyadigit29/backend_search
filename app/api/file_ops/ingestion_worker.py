@@ -74,64 +74,64 @@ async def run_ingestion_loop():
                 await asyncio.sleep(CHECK_INTERVAL)
                 continue
 
-            for folder in user_folders:
-                user_id = folder["name"].rstrip("/")
+            for user_folder in user_folders:
+                user_id = user_folder["name"].rstrip("/")
                 logger.info(f"📂 Scanning user folder: {user_id}")
 
-                all_files = supabase.storage.from_(BUCKET).list(f"{user_id}/", {"recursive": True})
-                for file in all_files:
-                    logger.info(f"🧾 Found file: {file['name']}")
-                    path_parts = file["name"].split("/")
-                    if len(path_parts) != 3:
-                        logger.warning(f"⚠️ Skipping malformed path: {file['name']}")
-                        continue
+                project_folders = supabase.storage.from_(BUCKET).list(f"{user_id}/")
+                for project_folder in project_folders:
+                    project_name = project_folder["name"].rstrip("/")
+                    logger.info(f"📁 Scanning project folder: {project_name}")
 
-                    user_id, project_name, file_name = path_parts
-                    file_path = f"{user_id}/{project_name}/{file_name}"
-                    logger.info(f"🔍 Checking for file_path: {file_path}")
+                    files = supabase.storage.from_(BUCKET).list(f"{user_id}/{project_name}/")
+                    for file in files:
+                        logger.info(f"🧾 Found file: {file['name']}")
+                        file_name = file["name"]
+                        file_path = f"{user_id}/{project_name}/{file_name}"
+                        logger.info(f"🔍 Checking for file_path: {file_path}")
 
-                    exists = (
-                        supabase.table("files")
-                        .select("id")
-                        .eq("file_path", file_path)
-                        .maybe_single()
-                        .execute()
-                    )
-
-                    if not exists.data:
-                        logger.info(f"➕ New file found: {file_path}. Registering.")
-                        project_lookup = (
-                            supabase.table("projects")
+                        exists = (
+                            supabase.table("files")
                             .select("id")
-                            .eq("user_id", user_id)
-                            .eq("name", project_name)
+                            .eq("file_path", file_path)
                             .maybe_single()
                             .execute()
                         )
 
-                        if not project_lookup.data:
-                            logger.warning(f"⚠️ No matching project for {project_name} under {user_id}")
-                            continue
+                        if not exists.data:
+                            logger.info(f"➕ New file found: {file_path}. Registering.")
+                            project_lookup = (
+                                supabase.table("projects")
+                                .select("id")
+                                .eq("user_id", user_id)
+                                .eq("name", project_name)
+                                .maybe_single()
+                                .execute()
+                            )
 
-                        project_id = project_lookup.data["id"]
-                        file_id = str(uuid.uuid4())
+                            if not project_lookup.data:
+                                logger.warning(f"⚠️ No matching project for {project_name} under {user_id}")
+                                continue
 
-                        record = {
-                            "id": file_id,
-                            "file_path": file_path,
-                            "file_name": file_name,
-                            "user_id": user_id,
-                            "project_id": project_id,
-                            "uploaded_at": datetime.utcnow().isoformat(),
-                            "ingested": False,
-                            "ingested_at": None,
-                        }
-                        logger.info(f"📦 Attempting to insert: {record}")
-                        insert_result = supabase.table("files").insert(record).execute()
-                        if getattr(insert_result, "error", None):
-                            logger.error(f"❌ Insert error: {insert_result.error.message}")
-                        else:
-                            logger.info(f"✅ Inserted file metadata for {file_path}")
+                            project_id = project_lookup.data["id"]
+                            file_id = str(uuid.uuid4())
+
+                            record = {
+                                "id": file_id,
+                                "file_path": file_path,
+                                "file_name": file_name,
+                                "user_id": user_id,
+                                "project_id": project_id,
+                                "uploaded_at": datetime.utcnow().isoformat(),
+                                "ingested": False,
+                                "ingested_at": None,
+                            }
+                            logger.info(f"📦 Attempting to insert: {record}")
+                            insert_result = supabase.table("files").insert(record).execute()
+                            if getattr(insert_result, "error", None):
+                                logger.error(f"❌ Insert error: {insert_result.error.message}")
+                            else:
+                                logger.info(f"✅ Inserted file metadata for {file_path}")
 
             unprocessed = (
                 supabase.table("files")
