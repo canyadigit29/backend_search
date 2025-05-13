@@ -1,13 +1,14 @@
+import os  # Moved up as per PEP8
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.project_ops import project, session_log
 from app.api.chat_ops import chat
 from app.api.file_ops import (
-    upload, ingest, embed, chunk,
-    background_tasks
+    upload, ingest,
+    background_tasks  # Removed: embed, chunk
 )
 from app.core.config import settings
-import os
 
 # 🧪 Optional: Print env variables for debugging
 print("🔍 Environment Variable Check:")
