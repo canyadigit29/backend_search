@@ -35,7 +35,11 @@ def chunk_file(file_id: str, user_id: str = None):
         with open(local_temp_path, "wb") as f:
             f.write(response)
 
-        text = extract_text(local_temp_path)
+        try:
+            text = extract_text(local_temp_path)
+        except Exception as e:
+            print(f"❌ Failed to extract text from {file_path}: {str(e)}")
+            return
 
         max_chunk_size = 1000
         overlap = 200
