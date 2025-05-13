@@ -75,7 +75,7 @@ def chunk_file(file_id: str, user_id: str = None):
                 chunks.append(chunk)
 
         if chunks:
-            supabase.table("chunks").insert(chunks).execute()
+            supabase.table("document_chunks").insert(chunks).execute()
             print(f"✅ Inserted {len(chunks)} chunks.")
             return [chunk["content"] for chunk in chunks]  # ✅ PATCHED
 
