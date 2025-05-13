@@ -22,9 +22,22 @@ async def upload_file(
 ):
     try:
         contents = await file.read()
-        folder_path = f"{USER_ID}/{project_id}/"
-        
-        # ✅ Check if it's a zip file
+
+        # 🧠 Resolve project name from project_id
+        project_lookup = (
+            supabase.table("projects")
+            .select("name")
+            .eq("id", project_id)
+            .eq("user_id", USER_ID)
+            .single()
+            .execute()
+        )
+        if not project_lookup.data:
+            raise HTTPException(status_code=404, detail="Invalid project_id")
+
+        project_name = project_lookup.data["name"]
+        folder_path = f"{USER_ID}/{project_name}/"
+
         if file.filename.endswith(".zip"):
             extracted = zipfile.ZipFile(io.BytesIO(contents))
             ingested_files = []
@@ -37,12 +50,8 @@ async def upload_file(
                     file_id = str(uuid.uuid4())
                     inner_path = f"{folder_path}{name}"
 
-                    # Upload each extracted file to Supabase
-                    supabase.storage.from_("maxgptstorage").upload(
-                        inner_path, inner_file
-                    )
+                    supabase.storage.from_("maxgptstorage").upload(inner_path, inner_file)
 
-                    # Register in DB
                     supabase.table("files").upsert(
                         {
                             "id": file_id,
@@ -57,7 +66,6 @@ async def upload_file(
                         on_conflict="file_path",
                     ).execute()
 
-                    # Trigger chunk + embed
                     background_tasks.add_task(
                         process_file,
                         file_path=inner_path,
@@ -69,7 +77,6 @@ async def upload_file(
             return {"status": "success", "ingested_files": ingested_files}
 
         else:
-            # 🧾 Normal file upload
             file_path = f"{folder_path}{file.filename}"
             file_id = str(uuid.uuid4())
 
