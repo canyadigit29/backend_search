@@ -10,7 +10,6 @@ from app.core.supabase_client import supabase
 logging.basicConfig(level=logging.INFO)
 client = OpenAI()
 
-
 def embed_text(text: str) -> list[float]:
     if not text.strip():
         raise ValueError("Cannot embed empty text")
@@ -18,14 +17,12 @@ def embed_text(text: str) -> list[float]:
     response = client.embeddings.create(model="text-embedding-3-small", input=text)
     return response.data[0].embedding
 
-
 def is_valid_uuid(value):
     try:
         uuid.UUID(str(value))
         return True
     except ValueError:
         return False
-
 
 def retry_embed_text(text, retries=3, delay=1.5):
     for attempt in range(retries):
@@ -41,11 +38,14 @@ def retry_embed_text(text, retries=3, delay=1.5):
                 logging.error(f"Embedding failed after {retries} attempts: {e}")
                 raise
 
-
 def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
     if not is_valid_uuid(project_id):
         logging.error(f"Invalid project_id: {project_id}")
         return {"error": "Invalid project_id"}
+
+    if not chunk_text.strip():
+        logging.warning(f"⚠️ Skipping empty chunk {chunk_index} for file {file_name}")
+        return {"skipped": True}
 
     try:
         embedding = retry_embed_text(chunk_text)
@@ -76,7 +76,6 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
         logging.exception(f"Unexpected error during embed/store: {e}")
         return {"error": str(e)}
 
-
 def embed_chunks(chunks: list[str], project_id: str, file_name: str):
     if not chunks:
         logging.warning("⚠️ No chunks to embed.")
@@ -87,7 +86,6 @@ def embed_chunks(chunks: list[str], project_id: str, file_name: str):
         result = embed_and_store_chunk(chunk, project_id, file_name, index)
         results.append(result)
     return results
-
 
 def remove_embeddings_for_file(file_id: str):
     try:
@@ -117,7 +115,6 @@ def remove_embeddings_for_file(file_id: str):
     except Exception as e:
         print(f"❌ Failed to remove embeddings: {e}")
         raise
-
 
 # ✅ Add alias for compatibility
 delete_embedding = remove_embeddings_for_file
