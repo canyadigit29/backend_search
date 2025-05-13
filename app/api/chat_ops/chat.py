@@ -197,7 +197,8 @@ async def chat_with_context(payload: ChatRequest):
                             .maybe_single()
                             .execute()
                         )
-                        if not project_id_result.data:
+
+                        if not project_id_result or not getattr(project_id_result, "data", None):
                             continue
 
                         project_id = project_id_result.data["id"]
