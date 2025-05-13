@@ -75,12 +75,15 @@ async def run_ingestion_loop():
                 continue
 
             for file in all_files:
+                logger.info(f"🧾 Found file: {file['name']}")
                 path_parts = file["name"].split("/")
                 if len(path_parts) != 3:
+                    logger.warning(f"⚠️ Skipping malformed path: {file['name']}")
                     continue
 
                 user_id, project_name, file_name = path_parts
                 file_path = f"{user_id}/{project_name}/{file_name}"
+                logger.info(f"🔍 Checking for file_path: {file_path}")
 
                 exists = (
                     supabase.table("files")
