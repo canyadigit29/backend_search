@@ -90,15 +90,19 @@ async def run_ingestion_loop():
                         file_path = f"{user_id}/{project_name}/{file_name}"
                         logger.info(f"🔍 Checking for file_path: {file_path}")
 
-                        exists = (
-                            supabase.table("files")
-                            .select("id")
-                            .eq("file_path", file_path)
-                            .maybe_single()
-                            .execute()
-                        )
+                        try:
+                            exists = (
+                                supabase.table("files")
+                                .select("id")
+                                .eq("file_path", file_path)
+                                .maybe_single()
+                                .execute()
+                            )
+                        except Exception as e:
+                            logger.warning(f"⚠️ Skipping file due to query error: {file_path} → {e}")
+                            continue
 
-                        if not exists.data:
+                        if not exists or not getattr(exists, "data", None):
                             logger.info(f"➕ New file found: {file_path}. Registering.")
                             project_lookup = (
                                 supabase.table("projects")
