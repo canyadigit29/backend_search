@@ -82,9 +82,15 @@ def perform_search(tool_args):
             for row in rows
         ]
 
-        top_matches = sorted(scored, key=lambda x: x["score"], reverse=True)[:15]
-
+                top_matches = sorted(scored, key=lambda x: x["score"], reverse=True)[:15]
         return {"results": top_matches}
 
     except Exception as e:
         return {"error": f"Error during search: {str(e)}"}
+
+# ✅ Async wrapper for internal use
+async def semantic_search(request, payload):
+    return perform_search(payload)
+
+
+
