@@ -52,6 +52,7 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
         timestamp = datetime.utcnow().isoformat()
 
         data = {
+            "id": str(uuid.uuid4()),
             "content": chunk_text,
             "embedding": embedding,
             "project_id": project_id,
@@ -62,7 +63,7 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
 
         result = supabase.table("document_chunks").insert(data).execute()
 
-        if result.error:
+        if getattr(result, "error", None):
             logging.error(f"Supabase insert failed: {result.error.message}")
             return {"error": result.error.message}
 
@@ -77,6 +78,10 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
 
 
 def embed_chunks(chunks: list[str], project_id: str, file_name: str):
+    if not chunks:
+        logging.warning("⚠️ No chunks to embed.")
+        return []
+
     results = []
     for index, chunk in enumerate(chunks):
         result = embed_and_store_chunk(chunk, project_id, file_name, index)
