@@ -44,10 +44,12 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
     # Chunk the file (this will return the actual chunk text list)
     chunks = chunk_file(file_id, user_id=user_id)
 
-    # Embed the chunks and store in document_chunks table
-    embed_chunks(chunks, project_id, file_name)
-
-    # Mark the file as ingested
-    supabase.table("files").update(
-        {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
-    ).eq("id", file_id).execute()
+    # Only embed and update ingestion if chunking succeeded
+    if chunks and isinstance(chunks, list) and len(chunks) > 0:
+        embed_chunks(chunks, project_id, file_name)
+        supabase.table("files").update(
+            {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
+        ).eq("id", file_id).execute()
+        print(f"✅ Marked file as ingested: {file_id}")
+    else:
+        print(f"⚠️ Skipping embedding and ingestion update — no chunks returned for {file_id}")
