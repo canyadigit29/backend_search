@@ -44,6 +44,13 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
     # Chunk the file (this will return the actual chunk text list)
     chunks = chunk_file(file_id, user_id=user_id)
 
+    if chunks is None:
+        print(f"⚠️ chunk_file() returned None for {file_id} — possible download or extraction failure")
+    elif not isinstance(chunks, list):
+        print(f"⚠️ Unexpected chunk type for {file_id}: {type(chunks)}")
+    elif len(chunks) == 0:
+        print(f"⚠️ chunk_file() returned empty list for {file_id} — text likely blank or too short")
+
     # Only embed and update ingestion if chunking succeeded
     if chunks and isinstance(chunks, list) and len(chunks) > 0:
         embed_chunks(chunks, project_id, file_name)
