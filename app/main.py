@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat_ops import chat
 from app.api.file_ops import (background_tasks,  # Removed: embed, chunk
-                              ingest, upload)
+                              ingest, upload, ingestion_worker)
 from app.api.project_ops import project, session_log
 from app.core.config import settings
 
@@ -40,3 +40,8 @@ app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
 app.include_router(session_log.router, prefix=settings.API_PREFIX)
 app.include_router(ingest.router, prefix=settings.API_PREFIX)
 app.include_router(chat.router, prefix=settings.API_PREFIX)
+
+
+@app.on_event("startup")
+async def start_background_ingestion():
+    await ingestion_worker.startup_event()
