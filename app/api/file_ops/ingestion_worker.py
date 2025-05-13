@@ -1,6 +1,55 @@
+import os  # Moved up as per PEP8
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.chat_ops import chat
+from app.api.file_ops import (background_tasks,  # Removed: embed, chunk
+                              ingest, upload, ingestion_worker)
+from app.api.project_ops import project, session_log
+from app.core.config import settings
+
+# 🧪 Optional: Print env variables for debugging
+print("🔍 Environment Variable Check:")
+print("OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
+print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
+
+app = FastAPI(
+    title=settings.PROJECT_NAME, openapi_url=f"{settings.API_PREFIX}/openapi.json"
+)
+
+# ✅ CORS middleware for local testing
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/")
+async def root():
+    return {"message": f"{settings.PROJECT_NAME} is running."}
+
+
+# ✅ Route mounts (memory routes removed)
+app.include_router(upload.router, prefix=settings.API_PREFIX)
+app.include_router(project.router, prefix=settings.API_PREFIX)
+app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
+app.include_router(session_log.router, prefix=settings.API_PREFIX)
+app.include_router(ingest.router, prefix=settings.API_PREFIX)
+app.include_router(chat.router, prefix=settings.API_PREFIX)
+
+
+@app.on_event("startup")
+async def start_background_ingestion():
+    await ingestion_worker.startup_event()
+
+
+# 🔁 Patch ingestion worker to debug missing file inserts
 import asyncio
 import logging
-import os
 import uuid
 from datetime import datetime
 
@@ -11,31 +60,28 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ingestion_worker")
 
 BUCKET = "maxgptstorage"
-CHECK_INTERVAL = 300  # seconds (5 minutes)
+CHECK_INTERVAL = 300
 
 
 async def run_ingestion_loop():
     while True:
         try:
             logger.info("🔁 Starting ingestion cycle")
-
-            # Step 1: List all files from Supabase storage
             all_files = supabase.storage.from_(BUCKET).list("", {"limit": 10000, "recursive": True})
+
             if not all_files:
                 logger.info("📭 No files found in storage bucket.")
                 await asyncio.sleep(CHECK_INTERVAL)
                 continue
 
-            # Step 2: For each file path: user_id/project_name/filename
             for file in all_files:
                 path_parts = file["name"].split("/")
                 if len(path_parts) != 3:
-                    continue  # Skip invalid paths
+                    continue
 
                 user_id, project_name, file_name = path_parts
                 file_path = f"{user_id}/{project_name}/{file_name}"
 
-                # Step 3: Check if file is already in files table
                 exists = (
                     supabase.table("files")
                     .select("id")
@@ -46,8 +92,6 @@ async def run_ingestion_loop():
 
                 if not exists.data:
                     logger.info(f"➕ New file found: {file_path}. Registering.")
-                    
-                    # Look up project_id from user_id + project_name
                     project_lookup = (
                         supabase.table("projects")
                         .select("id")
@@ -64,7 +108,7 @@ async def run_ingestion_loop():
                     project_id = project_lookup.data["id"]
                     file_id = str(uuid.uuid4())
 
-                    supabase.table("files").insert({
+                    record = {
                         "id": file_id,
                         "file_path": file_path,
                         "file_name": file_name,
@@ -73,9 +117,14 @@ async def run_ingestion_loop():
                         "uploaded_at": datetime.utcnow().isoformat(),
                         "ingested": False,
                         "ingested_at": None,
-                    }).execute()
+                    }
+                    logger.info(f"📦 Attempting to insert: {record}")
+                    insert_result = supabase.table("files").insert(record).execute()
+                    if getattr(insert_result, "error", None):
+                        logger.error(f"❌ Insert error: {insert_result.error.message}")
+                    else:
+                        logger.info(f"✅ Inserted file metadata for {file_path}")
 
-            # Step 4: Find un-ingested files
             unprocessed = (
                 supabase.table("files")
                 .select("id, file_path, user_id")
@@ -99,6 +148,5 @@ async def run_ingestion_loop():
         await asyncio.sleep(CHECK_INTERVAL)
 
 
-# Hook for FastAPI startup
 async def startup_event():
     asyncio.create_task(run_ingestion_loop())
