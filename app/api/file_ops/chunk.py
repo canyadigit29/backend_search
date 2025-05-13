@@ -5,7 +5,6 @@ from uuid import uuid4
 from app.core.extract_text import extract_text  # Assumed
 from app.core.supabase_client import supabase
 
-
 def chunk_file(file_id: str, user_id: str = None):
     print(f"🔍 Starting chunking for file_id: {file_id}")
     try:
@@ -37,6 +36,7 @@ def chunk_file(file_id: str, user_id: str = None):
 
         try:
             text = extract_text(local_temp_path)
+            print(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
         except Exception as e:
             print(f"❌ Failed to extract text from {file_path}: {str(e)}")
             return
@@ -73,6 +73,8 @@ def chunk_file(file_id: str, user_id: str = None):
                 if project_id:
                     chunk["project_id"] = project_id
                 chunks.append(chunk)
+
+        print(f"🧹 Got {len(chunks)} chunks from {file_path}")
 
         if chunks:
             supabase.table("document_chunks").insert(chunks).execute()
