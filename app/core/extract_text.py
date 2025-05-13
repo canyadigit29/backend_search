@@ -1,10 +1,8 @@
 import os
-
 import fitz  # PyMuPDF
 from docx import Document
 
-
-def extract_text(supabase_path: str, local_path: str) -> str:
+def extract_text(local_path: str) -> str:
     _, ext = os.path.splitext(local_path.lower())
 
     if ext == ".txt":
@@ -19,14 +17,14 @@ def extract_text(supabase_path: str, local_path: str) -> str:
                 text += page.get_text()
             return text
         except Exception as e:
-            raise RuntimeError(f"PDF extraction failed: {e}")
+            raise RuntimeError(f"PDF extraction failed: {e}") from e
 
     elif ext in [".doc", ".docx"]:
         try:
             doc = Document(local_path)
             return "\n".join(p.text for p in doc.paragraphs)
         except Exception as e:
-            raise RuntimeError(f"DOCX extraction failed: {e}")
+            raise RuntimeError(f"DOCX extraction failed: {e}") from e
 
     else:
         raise ValueError(f"Unsupported file type: {ext}")
