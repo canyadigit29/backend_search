@@ -54,7 +54,11 @@ OPENAI_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "query": {"type": "string", "description": "Search query text"},
+                    "embedding": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "description": "Embedding vector for the query"
+                    },
                     "project_name": {
                         "type": "string",
                         "description": "Optional project name to limit scope",
@@ -65,7 +69,7 @@ OPENAI_TOOLS = [
                         "description": "Optional list of multiple project names to include in the search",
                     },
                 },
-                "required": ["query"],
+                "required": ["embedding"],
             },
         },
     },
@@ -134,8 +138,8 @@ async def chat_with_context(payload: ChatRequest):
             {
                 "role": "system",
                 "content": (
-                    "You are Max, a helpful assistant. You may use tools like 'search_docs', "
-                    "'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
+                    "You are Max, a helpful assistant. Use 'search_docs' if the user asks about project documents. "
+                    "Use 'search_web' for public internet searches. The user's query may be pre-embedded below."
                 ),
             }
         ]
@@ -156,39 +160,30 @@ async def chat_with_context(payload: ChatRequest):
                 "content": f"Relevant past memory:\n{memory_snippets}",
             })
 
-        # 🔍 Auto-trigger document search if certain keywords are present
-        lowered_prompt = prompt.lower()
-        if any(kw in lowered_prompt for kw in ["search", "find", "documents", "retrieve"]):
-            try:
-                embedding_response = client.embeddings.create(
-                    model="text-embedding-3-small",
-                    input=prompt
-                )
-                embedding = embedding_response.data[0].embedding
-                doc_results = perform_search({"embedding": embedding})
-                if doc_results.get("results"):
-                    doc_snippets = "\n".join([d["content"] for d in doc_results["results"]])
-                    messages.insert(1, {
-                        "role": "system",
-                        "content": f"Relevant document excerpts:\n{doc_snippets}"
-                    })
-                elif doc_results.get("error") or doc_results.get("message"):
-                    messages.insert(1, {
-                        "role": "system",
-                        "content": f"[search_docs output]: {doc_results.get('error') or doc_results.get('message')}"
-                    })
-            except Exception as e:
-                logger.warning(f"⚠️ search_docs failed: {e}")
-                messages.insert(1, {
-                    "role": "system",
-                    "content": f"[search_docs exception]: {str(e)}"
-                })
+        # 🔍 Embed prompt and provide it to tools
+        embedding_response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=prompt
+        )
+        embedding = embedding_response.data[0].embedding
+
+        messages.append({
+            "role": "system",
+            "content": (
+                "The user query has been embedded below. If the query involves documents, "
+                "you may call the 'search_docs' tool with this embedding vector."
+                f"\n\nEMBEDDING: {json.dumps(embedding)}"
+            )
+        })
 
         messages.append({"role": "user", "content": prompt})
         save_message(payload.user_id, payload.session_id, prompt)
 
         response = client.chat.completions.create(
-            model="gpt-4", messages=messages, tools=OPENAI_TOOLS
+            model="gpt-4",
+            messages=messages,
+            tools=OPENAI_TOOLS,
+            tool_choice="auto"
         )
         logger.debug(f"🧪 OpenAI raw response: {response}")
 
@@ -215,7 +210,9 @@ async def chat_with_context(payload: ChatRequest):
                     {"role": "function", "name": tool_name, "content": tool_response}
                 )
 
-            followup = client.chat.completions.create(model="gpt-4", messages=messages)
+            followup = client.chat.completions.create(
+                model="gpt-4", messages=messages
+            )
             reply = (
                 followup.choices[0].message.content
                 if followup.choices
