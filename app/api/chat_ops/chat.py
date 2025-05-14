@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from app.core.openai_client import chat_completion
 from app.api.memory_ops.session_memory import save_message
-from app.api.tools.search_docs import search_docs  # ✅ REAL tool logic
+from app.api.file_ops.search_docs import search_docs  # ✅ CORRECTED module path
 import os
 import requests
 import uuid
