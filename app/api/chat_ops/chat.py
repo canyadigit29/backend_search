@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.api.file_ops.ingest import process_file
 from app.api.memory_ops.session_memory import retrieve_memory, save_message
+from app.api.file_ops.search_docs import search_docs
 from app.core.supabase_client import supabase
 
 router = APIRouter()
@@ -173,14 +174,12 @@ async def chat_with_context(payload: ChatRequest):
         lowered_prompt = prompt.lower()
         if any(kw in lowered_prompt for kw in ["search", "find", "documents", "retrieve"]):
             try:
-                from app.api.file_ops.search_docs import search_docs
                 doc_results = search_docs({"query": prompt})
                 if doc_results.get("results"):
                     doc_snippets = "\n".join([d["content"] for d in doc_results["results"]])
                     messages.insert(1, {
                         "role": "system", 
-                        "content": f"Relevant document excerpts:
-{doc_snippets}",
+                        "content": f"Relevant document excerpts:\n{doc_snippets}",
                     })
                 elif doc_results.get("error") or doc_results.get("message"):
                     messages.insert(1, {
@@ -299,6 +298,7 @@ async def chat_with_context(payload: ChatRequest):
 
         reply = (
             response.choices[0].message.content if response.choices else "(No reply)"
+        save_message(payload.user_id, payload.session_id, reply)
         )
             save_message(payload.user_id, payload.session_id, reply)
         return {"answer": reply}
