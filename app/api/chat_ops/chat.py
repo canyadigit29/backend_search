@@ -166,8 +166,7 @@ async def chat_with_context(payload: ChatRequest):
             memory_snippets = "\n".join([m["content"] for m in memory_result["results"]])
             messages.insert(1, {
                 "role": "system",
-                "content": f"Relevant past memory:
-{memory_snippets}",
+                "content": f"Relevant past memory:\n{memory_snippets}",
             })
 
         # 🔍 Auto-trigger document search if "search", "find", "documents", or "retrieve" is in the prompt
