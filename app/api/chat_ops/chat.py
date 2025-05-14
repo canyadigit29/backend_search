@@ -210,7 +210,7 @@ async def chat_with_context(payload: ChatRequest):
                 )
 
             followup = client.chat.completions.create(
-                model="gpt-4", messages=messages
+                model="gpt-4o", messages=messages
             )
             reply = (
                 followup.choices[0].message.content
