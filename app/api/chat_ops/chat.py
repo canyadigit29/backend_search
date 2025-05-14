@@ -138,8 +138,7 @@ async def chat_with_context(payload: ChatRequest):
             {
                 "role": "system",
                 "content": (
-                    "You are Max, a helpful assistant. Use 'search_docs' if the user asks about project documents. "
-                    "Use 'search_web' for public internet searches. The user's query may be pre-embedded below."
+                    "You are Max, a helpful assistant. You can answer general questions, search public internet sources using 'search_web', or analyze the user’s uploaded documents using 'search_docs'. Use 'search_web' only if the user explicitly asks to search the internet, online sources, or the web. Use 'search_docs' only if the user asks you to scan, find, analyze, or summarize something in their documents. If the user simply asks a question without referencing a source, answer it directly."
                 ),
             }
         ]
