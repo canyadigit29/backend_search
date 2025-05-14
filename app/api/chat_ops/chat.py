@@ -15,21 +15,6 @@ from app.api.file_ops.search_docs import perform_search
 from app.api.file_ops.ingestion_worker import run_ingestion_once
 from app.core.supabase_client import supabase
 
-
-def get_next_index(session_id: str) -> int:
-    result = (
-        supabase.table("memory_log")
-        .select("message_index")
-        .eq("session_id", session_id)
-        .order("message_index", desc=True)
-        .limit(1)
-        .execute()
-    )
-    if result.data and isinstance(result.data[0].get("message_index"), int):
-        return result.data[0]["message_index"] + 1
-    return 0
-
-
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
@@ -115,8 +100,15 @@ OPENAI_TOOLS = [
                 "required": ["query"],
             },
         },
-    }
-    # ❌ sync_storage_files removed from default tool list
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sync_storage_files",
+            "description": "Scan Supabase storage and ingest any missing or unprocessed files",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 @router.post("/chat")
@@ -146,7 +138,7 @@ async def chat_with_context(payload: ChatRequest):
             {
                 "role": "system",
                 "content": (
-                    "You are Max, a helpful assistant. You can answer general questions, search public internet sources using 'search_web', or analyze the user’s uploaded documents using 'search_docs'. Use 'search_web' only if the user explicitly asks to search the internet, online sources, or the web. Use 'search_docs' only if the user asks you to scan, find, analyze, or summarize something in their documents. Only use 'sync_storage_files' if the user explicitly says to sync, rescan, or ingest files."
+                    "You are Max, a helpful assistant. You can answer general questions, search public internet sources using 'search_web', or analyze the user’s uploaded documents using 'search_docs'. Use 'search_web' only if the user explicitly asks to search the internet, online sources, or the web. Use 'search_docs' only if the user asks you to scan, find, analyze, or summarize something in their documents. If the user simply asks a question without referencing a source, answer it directly."
                 ),
             }
         ]
@@ -167,8 +159,31 @@ async def chat_with_context(payload: ChatRequest):
                 "content": f"Relevant past memory:\n{memory_snippets}",
             })
 
+        embedding_response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=prompt
+        )
+        embedding = embedding_response.data[0].embedding
+
+        doc_results = perform_search({"embedding": embedding})
+        summaries = []
+        for chunk in doc_results.get("results", [])[:10]:
+            summary_prompt = f"Summarize the following document content in 1–2 sentences:\n\n{chunk['content']}"
+            summary_response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": summary_prompt}]
+            )
+            summaries.append(summary_response.choices[0].message.content)
+
+        if summaries:
+            summary_block = "\n\n".join(summaries)
+            messages.insert(1, {
+                "role": "system",
+                "content": f"Summary of document excerpts about '{payload.user_prompt}':\n{summary_block}"
+            })
+
         messages.append({"role": "user", "content": prompt})
-        save_message(payload.user_id, payload.session_id, prompt, session_id=payload.session_id, speaker_role="user", message_index=get_next_index(payload.session_id))
+        save_message(payload.user_id, payload.session_id, prompt)
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -191,18 +206,9 @@ async def chat_with_context(payload: ChatRequest):
                 )
                 logger.debug(f"🔨 Tool call: {tool_name} → args: {tool_args}")
 
-                if tool_name == "retrieve_memory":
-                    tool_response = retrieve_memory(tool_args)
-                elif tool_name == "sync_storage_files":
+                if tool_name == "sync_storage_files":
                     await run_ingestion_once()
                     tool_response = "✅ Sync complete. Ingestion triggered manually."
-                elif tool_name == "search_docs":
-                    tool_response = perform_search(tool_args)
-                    messages.append({
-                        "role": "function",
-                        "name": tool_name,
-                        "content": tool_response if isinstance(tool_response, str) else json.dumps(tool_response)
-                    })
                 else:
                     tool_response = f"Unsupported tool call: {tool_name}"
 
@@ -218,13 +224,13 @@ async def chat_with_context(payload: ChatRequest):
                 if followup.choices
                 else "(No reply)"
             )
-            save_message(payload.user_id, payload.session_id, reply, session_id=payload.session_id, speaker_role="assistant", message_index=get_next_index(payload.session_id))
+            save_message(payload.user_id, payload.session_id, reply)
             return {"answer": reply}
 
         reply = (
             response.choices[0].message.content if response.choices else "(No reply)"
         )
-        save_message(payload.user_id, payload.session_id, reply, session_id=payload.session_id, speaker_role="assistant", message_index=get_next_index(payload.session_id))
+        save_message(payload.user_id, payload.session_id, reply)
         return {"answer": reply}
 
     except Exception as e:
