@@ -161,6 +161,25 @@ async def chat_with_context(payload: ChatRequest):
                 },
             )
 
+        
+        # 🔍 Auto-trigger document search if "search" is in the prompt but not "search the web"/"online"/"internet"
+        lowered_prompt = prompt.lower()
+        if "search" in lowered_prompt and not any(kw in lowered_prompt for kw in ["search the web", "search online", "search the internet"]):
+            try:
+                from app.api.file_ops.search_docs import search_docs
+                doc_results = search_docs({"query": prompt})
+                if doc_results.get("results"):
+                    doc_snippets = "\n".join([d["content"] for d in doc_results["results"]])
+                    messages.insert(
+                        1,
+                        {
+                            "role": "system",
+                            "content": f"Relevant document excerpts:\n{doc_snippets}",
+                        },
+                    )
+            except Exception as e:
+                logger.warning(f"⚠️ search_docs failed: {e}")
+
         messages.append({"role": "user", "content": prompt})
         save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
 
