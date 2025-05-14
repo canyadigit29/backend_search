@@ -45,8 +45,8 @@ def perform_search(tool_args):
                 .execute()
             )
             if not result or not getattr(result, "data", None):
-                logger.error(f"❌ No project found with name: {project_name}")
-                return {"error": f"No project found with name: {project_name}"}
+                logger.warning(f"⚠️ No project found with name '{project_name}' — falling back to all documents.")
+                project_ids = []
             project_ids = [result.data["id"]]
 
         elif project_names:
@@ -70,6 +70,9 @@ def perform_search(tool_args):
 
         if project_ids:
             base_query = base_query.in_("project_id", project_ids)
+        else:
+            logger.info("🔍 No project specified — searching all user documents.")
+            base_query = base_query.eq("user_id", USER_ID)
 
         response = base_query.execute()
 
