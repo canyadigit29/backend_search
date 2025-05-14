@@ -148,23 +148,27 @@ async def chat_with_context(payload: ChatRequest):
 
         memory_result = retrieve_memory({"query": prompt})
         if memory_result.get("results"):
-            memory_snippets = "\n".join([m["content"] for m in memory_result["results"]])
+            memory_snippets = "
+".join([m["content"] for m in memory_result["results"]])
             messages.insert(1, {
                 "role": "system",
-                "content": f"Relevant past memory:\n{memory_snippets}",
+                "content": f"Relevant past memory:
+{memory_snippets}",
             })
 
-        # 🔍 Auto-trigger document search if "search" is in the prompt but not "search the web"/"online"/"internet"
+        # 🔍 Auto-trigger document search if "search", "find", "documents", or "retrieve" is in the prompt
         lowered_prompt = prompt.lower()
-        if "search" in lowered_prompt and not any(kw in lowered_prompt for kw in ["search the web", "search online", "search the internet"]):
+        if any(kw in lowered_prompt for kw in ["search", "find", "documents", "retrieve"]):
             try:
                 from app.api.file_ops.search_docs import search_docs
                 doc_results = search_docs({"query": prompt})
                 if doc_results.get("results"):
-                    doc_snippets = "\n".join([d["content"] for d in doc_results["results"]])
+                    doc_snippets = "
+".join([d["content"] for d in doc_results["results"]])
                     messages.insert(1, {
-                        "role": "system",
-                        "content": f"Relevant document excerpts:\n{doc_snippets}",
+                        "role": "system", 
+                        "content": f"Relevant document excerpts:
+{doc_snippets}",
                     })
                 elif doc_results.get("error") or doc_results.get("message"):
                     messages.insert(1, {
@@ -174,7 +178,7 @@ async def chat_with_context(payload: ChatRequest):
             except Exception as e:
                 logger.warning(f"⚠️ search_docs failed: {e}")
                 messages.insert(1, {
-                    "role": "system",
+                    "role": "system", 
                     "content": f"[search_docs exception]: {str(e)}"
                 })
 
