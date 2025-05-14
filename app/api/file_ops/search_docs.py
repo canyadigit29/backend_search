@@ -22,10 +22,11 @@ def cosine_similarity(vec1, vec2):
 def perform_search(tool_args):
     project_name = tool_args.get("project_name")
     project_names = tool_args.get("project_names")
+    keyword_hint = tool_args.get("keyword_hint")
     query_embedding = tool_args.get("embedding")
 
     logger.debug(f"🔍 Searching for documents with the following parameters:")
-    logger.debug(f"Project Name: {project_name}, Project Names: {project_names}")
+    logger.debug(f"Project Name: {project_name}, Project Names: {project_names}, Keyword Hint: {keyword_hint}")
     logger.debug(f"🔑 Received embedding: {query_embedding[:5]}...")
 
     if not query_embedding:
@@ -71,6 +72,9 @@ def perform_search(tool_args):
         if project_ids:
             base_query = base_query.in_("project_id", project_ids)
 
+        if keyword_hint:
+            base_query = base_query.ilike("file_name", f"%{keyword_hint}%")
+
         response = base_query.execute()
 
         if getattr(response, "error", None):
@@ -80,8 +84,8 @@ def perform_search(tool_args):
         rows = response.data
 
         if not rows:
-            logger.info("ℹ️ No document chunks found for the specified project(s).")
-            return {"message": "No document chunks found for the specified project(s)."}
+            logger.info("ℹ️ No document chunks found for the specified filters.")
+            return {"message": "No document chunks found for the specified filters."}
 
         logger.debug(f"✅ Retrieved {len(rows)} document chunks.")
 
