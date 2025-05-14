@@ -1,25 +1,25 @@
 import time
+import uuid
 from datetime import datetime
+from pathlib import Path
+import logging
 
 from fastapi import APIRouter
-
-from app.api.file_ops.chunk import chunk_file
-from app.api.file_ops.embed import embed_chunks
-from app.api.file_ops.embed import \
-    remove_embeddings_for_file as delete_embedding
 from app.core.supabase_client import supabase
+from app.core.extract_text import extract_text
+from openai import OpenAI
 
 router = APIRouter()
-
+logging.basicConfig(level=logging.INFO)
+client = OpenAI()
 
 @router.post("/process")
 def api_process_file(file_path: str, file_id: str, user_id: str = None):
     process_file(file_path, file_id, user_id)
     return {"status": "processing started"}
 
-
 def process_file(file_path: str, file_id: str, user_id: str = None):
-    print(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
+    logging.info(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
     max_retries = 24
     retry_interval = 5.0
     file_record = None
@@ -29,34 +29,69 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         if result and result.data:
             file_record = result.data[0]
             break
-        print(f"⏳ Waiting for file to appear in DB... attempt {attempt + 1}")
+        logging.info(f"⏳ Waiting for file to appear in DB... attempt {attempt + 1}")
         time.sleep(retry_interval)
 
     if not file_record:
-        raise Exception(
-            f"File record not found after {max_retries} retries: {file_path}"
-        )
+        raise Exception(f"File record not found after {max_retries} retries: {file_path}")
 
-    # Get required fields for embedding
     file_name = file_record["file_name"]
     project_id = file_record["project_id"]
+    bucket = "maxgptstorage"
 
-    # Chunk the file (this will return the actual chunk text list)
-    chunks = chunk_file(file_id, user_id=user_id)
+    response = supabase.storage.from_(bucket).download(file_path)
+    if not response:
+        logging.error(f"❌ Could not download file from Supabase: {file_path}")
+        return
 
-    if chunks is None:
-        print(f"⚠️ chunk_file() returned None for {file_id} — possible download or extraction failure")
-    elif not isinstance(chunks, list):
-        print(f"⚠️ Unexpected chunk type for {file_id}: {type(chunks)}")
-    elif len(chunks) == 0:
-        print(f"⚠️ chunk_file() returned empty list for {file_id} — text likely blank or too short")
+    local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
+    with open(local_temp_path, "wb") as f:
+        f.write(response)
 
-    # Only embed and update ingestion if chunking succeeded
-    if chunks and isinstance(chunks, list) and len(chunks) > 0:
-        embed_chunks(chunks, project_id, file_name)
+    try:
+        text = extract_text(local_temp_path)
+        logging.info(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
+    except Exception as e:
+        logging.error(f"❌ Failed to extract text from {file_path}: {str(e)}")
+        return
+
+    max_chunk_size = 1000
+    overlap = 200
+    chunks = []
+
+    if len(text.strip()) == 0:
+        logging.warning(f"⚠️ Skipping empty file: {file_path}")
+        return
+
+    for i in range(0, len(text), max_chunk_size - overlap):
+        chunk_text = text[i : i + max_chunk_size].strip()
+        if not chunk_text:
+            continue
+
+        embedding = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=chunk_text
+        ).data[0].embedding
+
+        chunk_data = {
+            "id": str(uuid.uuid4()),
+            "file_id": file_id,
+            "content": chunk_text,
+            "embedding": embedding,
+            "chunk_index": len(chunks),
+            "project_id": project_id,
+            "file_name": file_name,
+            "user_id": user_id,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        chunks.append(chunk_data)
+
+    if chunks:
+        supabase.table("document_chunks").insert(chunks).execute()
+        logging.info(f"✅ Inserted and embedded {len(chunks)} chunks from {file_path}")
         supabase.table("files").update(
             {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
         ).eq("id", file_id).execute()
-        print(f"✅ Marked file as ingested: {file_id}")
+        logging.info(f"✅ Marked file as ingested: {file_id}")
     else:
-        print(f"⚠️ Skipping embedding and ingestion update — no chunks returned for {file_id}")
+        logging.warning(f"⚠️ No valid chunks generated for {file_path}; ingestion skipped.")
