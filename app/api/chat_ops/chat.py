@@ -157,9 +157,12 @@ async def chat_with_context(payload: ChatRequest):
 
         # 🔍 Auto-trigger document search if "search", "find", "documents", or "retrieve" is in the prompt
         lowered_prompt = prompt.lower()
+        logger.debug(f"🔍 Checking if the user prompt should trigger a document search...")
         if any(kw in lowered_prompt for kw in ["search", "find", "documents", "retrieve"]):
+            logger.debug(f"✅ Detected search-related prompt: {prompt}")
             try:
                 from app.api.file_ops.search_docs import search_docs
+                logger.debug(f"🔍 Triggering search_docs with query: {prompt}")
                 doc_results = search_docs({"query": prompt})
                 if doc_results.get("results"):
                     doc_snippets = "\n".join([d["content"] for d in doc_results["results"]])
