@@ -198,6 +198,11 @@ async def chat_with_context(payload: ChatRequest):
                     tool_response = "✅ Sync complete. Ingestion triggered manually."
                 elif tool_name == "search_docs":
                     tool_response = perform_search(tool_args)
+                    messages.append({
+                        "role": "function",
+                        "name": tool_name,
+                        "content": json.dumps(tool_response)
+                    })
                 else:
                     tool_response = f"Unsupported tool call: {tool_name}"
 
