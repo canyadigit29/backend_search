@@ -153,27 +153,34 @@ async def chat_with_context(payload: ChatRequest):
 
         memory_result = retrieve_memory({"query": prompt})
         if memory_result.get("results"):
-            memory_snippets = "\n".join([m["content"] for m in memory_result["results"]])
+            memory_snippets = "\n".join([m["content"] for m in memory_result["results"][:3]])
             messages.insert(1, {
                 "role": "system",
                 "content": f"Relevant past memory:\n{memory_snippets}",
             })
 
-        # 🔍 Embed prompt and provide it to tools
         embedding_response = client.embeddings.create(
             model="text-embedding-3-small",
             input=prompt
         )
         embedding = embedding_response.data[0].embedding
 
-        messages.append({
-            "role": "system",
-            "content": (
-                "The user query has been embedded below. If the query involves documents, "
-                "you may call the 'search_docs' tool with this embedding vector."
-                f"\n\nEMBEDDING: {json.dumps(embedding)}"
+        doc_results = perform_search({"embedding": embedding})
+        summaries = []
+        for chunk in doc_results.get("results", [])[:10]:
+            summary_prompt = f"Summarize the following document content in 1–2 sentences:\n\n{chunk['content']}"
+            summary_response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": summary_prompt}]
             )
-        })
+            summaries.append(summary_response.choices[0].message.content)
+
+        if summaries:
+            summary_block = "\n\n".join(summaries)
+            messages.insert(1, {
+                "role": "system",
+                "content": f"Summary of document excerpts about '{payload.user_prompt}':\n{summary_block}"
+            })
 
         messages.append({"role": "user", "content": prompt})
         save_message(payload.user_id, payload.session_id, prompt)
