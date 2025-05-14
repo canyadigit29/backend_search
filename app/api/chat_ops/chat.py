@@ -201,7 +201,7 @@ async def chat_with_context(payload: ChatRequest):
                     messages.append({
                         "role": "function",
                         "name": tool_name,
-                        "content": json.dumps(tool_response)
+                        "content": tool_response if isinstance(tool_response, str) else json.dumps(tool_response)
                     })
                 else:
                     tool_response = f"Unsupported tool call: {tool_name}"
