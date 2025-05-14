@@ -68,6 +68,10 @@ OPENAI_TOOLS = [
                         "items": {"type": "string"},
                         "description": "Optional list of multiple project names to include in the search",
                     },
+                    "keyword_hint": {
+                        "type": "string",
+                        "description": "Optional keyword to filter by file_name matches, e.g. 'minutes', 'agenda', etc."
+                    }
                 },
                 "required": ["embedding"],
             },
@@ -138,7 +142,7 @@ async def chat_with_context(payload: ChatRequest):
             {
                 "role": "system",
                 "content": (
-                    "You are Max, a helpful assistant. You can answer general questions, search public internet sources using 'search_web', or analyze the user’s uploaded documents using 'search_docs'. Use 'search_web' only if the user explicitly asks to search the internet, online sources, or the web. Use 'search_docs' only if the user asks you to scan, find, analyze, or summarize something in their documents. If the user simply asks a question without referencing a source, answer it directly."
+                    "You are Max, a helpful assistant. You can answer general questions, search public internet sources using 'search_web', or analyze the user’s uploaded documents using 'search_docs'. If the user asks you to scan, find, summarize, or analyze specific types of documents like 'minutes', 'agenda', or 'ordinances', consider using the 'keyword_hint' to filter relevant files. Use 'search_web' only for internet lookups."
                 ),
             }
         ]
@@ -157,29 +161,6 @@ async def chat_with_context(payload: ChatRequest):
             messages.insert(1, {
                 "role": "system",
                 "content": f"Relevant past memory:\n{memory_snippets}",
-            })
-
-        embedding_response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=prompt
-        )
-        embedding = embedding_response.data[0].embedding
-
-        doc_results = perform_search({"embedding": embedding})
-        summaries = []
-        for chunk in doc_results.get("results", [])[:10]:
-            summary_prompt = f"Summarize the following document content in 1–2 sentences:\n\n{chunk['content']}"
-            summary_response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": summary_prompt}]
-            )
-            summaries.append(summary_response.choices[0].message.content)
-
-        if summaries:
-            summary_block = "\n\n".join(summaries)
-            messages.insert(1, {
-                "role": "system",
-                "content": f"Summary of document excerpts about '{payload.user_prompt}':\n{summary_block}"
             })
 
         messages.append({"role": "user", "content": prompt})
