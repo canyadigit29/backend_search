@@ -176,8 +176,7 @@ async def chat_with_context(payload: ChatRequest):
                 from app.api.file_ops.search_docs import search_docs
                 doc_results = search_docs({"query": prompt})
                 if doc_results.get("results"):
-                    doc_snippets = "
-".join([d["content"] for d in doc_results["results"]])
+                    doc_snippets = "\n".join([d["content"] for d in doc_results["results"]])
                     messages.insert(1, {
                         "role": "system", 
                         "content": f"Relevant document excerpts:
