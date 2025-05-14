@@ -1,4 +1,3 @@
-
 import json
 import logging
 import os
@@ -12,7 +11,7 @@ from pydantic import BaseModel
 
 from app.api.file_ops.ingest import process_file
 from app.api.memory_ops.session_memory import retrieve_memory, save_message
-from app.api.file_ops.search_docs import search_docs
+from app.api.file_ops.search_docs import perform_search
 from app.core.supabase_client import supabase
 
 router = APIRouter()
@@ -24,9 +23,9 @@ client = OpenAI()
 GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 
 class ChatRequest(BaseModel):
-    session_id: str
     user_prompt: str
     user_id: str
+    session_id: str
 
 OPENAI_TOOLS = [
     {
@@ -129,20 +128,6 @@ async def chat_with_context(payload: ChatRequest):
             .limit(10)
             .execute()
         )
-        # 💾 Save latest prompt to memory_log (embedding it)
-        embedding_response = client.embeddings.create(
-            model="text-embedding-3-small", input=prompt
-        )
-        embedding = embedding_response.data[0].embedding
-        supabase.table("memory_log").insert({
-            "user_id": payload.user_id,
-            "session_id": payload.session_id,
-            "content": prompt,
-            "embedding": embedding,
-            "timestamp": datetime.utcnow().isoformat()
-        }).execute()
-        logger.debug("✅ Embedded and saved user prompt to memory_log")
-
 
         messages = [
             {
@@ -170,26 +155,31 @@ async def chat_with_context(payload: ChatRequest):
                 "content": f"Relevant past memory:\n{memory_snippets}",
             })
 
-        # 🔍 Auto-trigger document search if "search", "find", "documents", or "retrieve" is in the prompt
+        # 🔍 Auto-trigger document search if certain keywords are present
         lowered_prompt = prompt.lower()
         if any(kw in lowered_prompt for kw in ["search", "find", "documents", "retrieve"]):
             try:
-                doc_results = search_docs({"query": prompt})
+                embedding_response = client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=prompt
+                )
+                embedding = embedding_response.data[0].embedding
+                doc_results = perform_search({"embedding": embedding})
                 if doc_results.get("results"):
                     doc_snippets = "\n".join([d["content"] for d in doc_results["results"]])
                     messages.insert(1, {
-                        "role": "system", 
-                        "content": f"Relevant document excerpts:\n{doc_snippets}",
+                        "role": "system",
+                        "content": f"Relevant document excerpts:\n{doc_snippets}"
                     })
                 elif doc_results.get("error") or doc_results.get("message"):
                     messages.insert(1, {
                         "role": "system",
-                        "content": f"[search_docs output]: {doc_results.get('error') or doc_results.get('message')}",
+                        "content": f"[search_docs output]: {doc_results.get('error') or doc_results.get('message')}"
                     })
             except Exception as e:
                 logger.warning(f"⚠️ search_docs failed: {e}")
                 messages.insert(1, {
-                    "role": "system", 
+                    "role": "system",
                     "content": f"[search_docs exception]: {str(e)}"
                 })
 
@@ -290,15 +280,16 @@ async def chat_with_context(payload: ChatRequest):
             followup = client.chat.completions.create(model="gpt-4", messages=messages)
             reply = (
                 followup.choices[0].message.content
-        )
+                if followup.choices
                 else "(No reply)"
             )
+            save_message(payload.user_id, payload.session_id, reply)
             return {"answer": reply}
 
         reply = (
             response.choices[0].message.content if response.choices else "(No reply)"
         )
-        )
+        save_message(payload.user_id, payload.session_id, reply)
         return {"answer": reply}
 
     except Exception as e:
