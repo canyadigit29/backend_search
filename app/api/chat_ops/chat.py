@@ -191,7 +191,9 @@ async def chat_with_context(payload: ChatRequest):
                 )
                 logger.debug(f"🔨 Tool call: {tool_name} → args: {tool_args}")
 
-                if tool_name == "sync_storage_files":
+                if tool_name == "retrieve_memory":
+                    tool_response = retrieve_memory(tool_args)
+                elif tool_name == "sync_storage_files":
                     await run_ingestion_once()
                     tool_response = "✅ Sync complete. Ingestion triggered manually."
                 else:
