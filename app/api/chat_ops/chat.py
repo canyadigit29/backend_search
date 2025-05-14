@@ -290,17 +290,15 @@ async def chat_with_context(payload: ChatRequest):
             followup = client.chat.completions.create(model="gpt-4", messages=messages)
             reply = (
                 followup.choices[0].message.content
-                if followup.choices
+        )
                 else "(No reply)"
             )
-            save_message(payload.user_id, payload.session_id, reply)
             return {"answer": reply}
 
         reply = (
             response.choices[0].message.content if response.choices else "(No reply)"
-        save_message(payload.user_id, payload.session_id, reply)
         )
-            save_message(payload.user_id, payload.session_id, reply)
+        )
         return {"answer": reply}
 
     except Exception as e:
