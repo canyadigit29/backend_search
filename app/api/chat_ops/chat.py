@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from app.api.file_ops.ingest import process_file
 from app.api.memory_ops.session_memory import retrieve_memory, save_message
 from app.api.file_ops.search_docs import perform_search
+from app.api.file_ops.ingestion_worker import run_ingestion_once
 from app.core.supabase_client import supabase
 
 router = APIRouter()
@@ -205,71 +206,8 @@ async def chat_with_context(payload: ChatRequest):
                 logger.debug(f"🔨 Tool call: {tool_name} → args: {tool_args}")
 
                 if tool_name == "sync_storage_files":
-                    storage = supabase.storage.from_("maxgptstorage")
-                    folders = storage.list(payload.user_id, {"limit": 100})
-                    added = []
-
-                    for folder in folders:
-                        project = folder["name"]
-                        project_id_result = (
-                            supabase.table("projects")
-                            .select("id")
-                            .eq("user_id", payload.user_id)
-                            .eq("name", project)
-                            .maybe_single()
-                            .execute()
-                        )
-
-                        if not project_id_result or not getattr(project_id_result, "data", None):
-                            continue
-
-                        project_id = project_id_result.data["id"]
-                        path_prefix = f"{payload.user_id}/{project}/"
-                        files = storage.list(path_prefix, {"limit": 100})
-
-                        for f in files:
-                            name = f["name"]
-                            if not name or name.startswith("."):
-                                continue
-
-                            file_path = f"{path_prefix}{name}"
-                            exists = (
-                                supabase.table("files")
-                                .select("id, ingested")
-                                .eq("file_path", file_path)
-                                .maybe_single()
-                                .execute()
-                            )
-
-                            if not exists.data:
-                                file_id = str(uuid.uuid4())
-                                supabase.table("files").insert(
-                                    {
-                                        "id": file_id,
-                                        "file_path": file_path,
-                                        "file_name": name,
-                                        "project_id": project_id,
-                                        "user_id": payload.user_id,
-                                        "uploaded_at": datetime.utcnow().isoformat(),
-                                        "ingested": False,
-                                        "ingested_at": None,
-                                    }
-                                ).execute()
-                                added.append(file_path)
-                            else:
-                                file_id = exists.data["id"]
-
-                            if not exists.data or not exists.data.get("ingested"):
-                                process_file(
-                                    file_path=file_path,
-                                    file_id=file_id,
-                                    user_id=payload.user_id,
-                                )
-
-                    tool_response = (
-                        f"✅ Sync complete. Files added or reprocessed: {len(added)}"
-                    )
-
+                    await run_ingestion_once()
+                    tool_response = "✅ Sync complete. Ingestion triggered manually."
                 else:
                     tool_response = f"Unsupported tool call: {tool_name}"
 
