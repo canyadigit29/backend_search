@@ -163,8 +163,7 @@ async def chat_with_context(payload: ChatRequest):
 
         memory_result = retrieve_memory({"query": prompt})
         if memory_result.get("results"):
-            memory_snippets = "
-".join([m["content"] for m in memory_result["results"]])
+            memory_snippets = "\n".join([m["content"] for m in memory_result["results"]])
             messages.insert(1, {
                 "role": "system",
                 "content": f"Relevant past memory:
