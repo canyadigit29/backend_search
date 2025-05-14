@@ -1,7 +1,6 @@
 import json
 import os
 import logging
-
 import numpy as np
 
 from app.core.supabase_client import create_client
@@ -23,33 +22,15 @@ def cosine_similarity(vec1, vec2):
 def perform_search(tool_args):
     project_name = tool_args.get("project_name")
     project_names = tool_args.get("project_names")
+    query_embedding = tool_args.get("embedding")
 
     logger.debug(f"🔍 Searching for documents with the following parameters:")
     logger.debug(f"Project Name: {project_name}, Project Names: {project_names}")
+    logger.debug(f"🔑 Received embedding: {query_embedding[:5]}...")
 
-    try:
-        # ⬇️ Pull most recent embedded message
-        memory_result = (
-            supabase.table("memory_log")
-            .select("embedding")
-            .eq("user_id", USER_ID)
-            .not_.is_("embedding", None)
-            .order("timestamp", desc=True)
-            .limit(1)
-            .maybe_single()
-            .execute()
-        )
-
-        if not memory_result or not memory_result.data:
-            logger.error("❌ No valid embedded memory entry found.")
-            return {"error": "No valid embedded memory entry found."}
-
-        query_embedding = memory_result.data["embedding"]
-        logger.debug(f"✅ Retrieved memory embedding: {query_embedding[:10]}...")  # Log a portion of the embedding
-
-    except Exception as e:
-        logger.error(f"❌ Failed to fetch latest embedding from memory_log: {str(e)}")
-        return {"error": f"Failed to fetch latest embedding from memory_log: {str(e)}"}
+    if not query_embedding:
+        logger.error("❌ No embedding provided in tool_args.")
+        return {"error": "Embedding must be provided to perform similarity search."}
 
     try:
         project_ids = []
