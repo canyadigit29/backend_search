@@ -196,6 +196,8 @@ async def chat_with_context(payload: ChatRequest):
                 elif tool_name == "sync_storage_files":
                     await run_ingestion_once()
                     tool_response = "✅ Sync complete. Ingestion triggered manually."
+                elif tool_name == "search_docs":
+                    tool_response = perform_search(tool_args)
                 else:
                     tool_response = f"Unsupported tool call: {tool_name}"
 
