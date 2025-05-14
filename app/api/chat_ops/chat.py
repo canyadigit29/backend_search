@@ -15,6 +15,22 @@ from app.api.file_ops.search_docs import perform_search
 from app.api.file_ops.ingestion_worker import run_ingestion_once
 from app.core.supabase_client import supabase
 
+
+def get_next_index(session_id: str) -> int:
+    result = (
+        supabase.table("memory_log")
+        .select("message_index")
+        .eq("session_id", session_id)
+        .order("message_index", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if result.data and isinstance(result.data[0].get("message_index"), int):
+        return result.data[0]["message_index"] + 1
+    return 0
+
+
+
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
@@ -183,7 +199,7 @@ async def chat_with_context(payload: ChatRequest):
             })
 
         messages.append({"role": "user", "content": prompt})
-        save_message(payload.user_id, payload.session_id, prompt)
+        save_message(payload.user_id, payload.session_id, prompt, session_id=payload.session_id, speaker_role="user", message_index=get_next_index(payload.session_id))
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -224,13 +240,13 @@ async def chat_with_context(payload: ChatRequest):
                 if followup.choices
                 else "(No reply)"
             )
-            save_message(payload.user_id, payload.session_id, reply)
+            save_message(payload.user_id, payload.session_id, reply, session_id=payload.session_id, speaker_role="assistant", message_index=get_next_index(payload.session_id))
             return {"answer": reply}
 
         reply = (
             response.choices[0].message.content if response.choices else "(No reply)"
         )
-        save_message(payload.user_id, payload.session_id, reply)
+        save_message(payload.user_id, payload.session_id, reply, session_id=payload.session_id, speaker_role="assistant", message_index=get_next_index(payload.session_id))
         return {"answer": reply}
 
     except Exception as e:
