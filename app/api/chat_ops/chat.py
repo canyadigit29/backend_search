@@ -131,8 +131,10 @@ async def chat_with_context(payload: ChatRequest):
             {
                 "role": "system",
                 "content": (
-                    "You are Max, a helpful assistant. You may use tools like 'search_docs', "
-                    "'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
+                    "You are Max, a helpful assistant with access to documents, memory, and web search tools. "
+                    "If a user asks for something related to documents, you should search the available documents first. "
+                    "Use the 'search_docs' function for searching documents or 'retrieve_memory' for past conversations. "
+                    "You should also perform a web search if documents or memory are insufficient."
                 ),
             }
         ]
