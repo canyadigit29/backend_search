@@ -137,20 +137,23 @@ async def run_ingestion_loop():
                             else:
                                 logger.info(f"✅ Inserted file metadata for {file_path}")
 
-            unprocessed = (
-                supabase.table("files")
-                .select("id, file_path, user_id")
-                .eq("ingested", False)
-                .limit(20)
-                .execute()
-            )
+            for run in range(3):
+                logger.info(f"🔁 Ingestion pass {run + 1}/3")
 
-            for file in unprocessed.data:
-                try:
-                    logger.info(f"🧠 Ingesting {file['file_path']}")
-                    process_file(file_path=file["file_path"], file_id=file["id"], user_id=file["user_id"])
-                except Exception as e:
-                    logger.error(f"❌ Failed to ingest {file['file_path']}: {e}")
+                unprocessed = (
+                    supabase.table("files")
+                    .select("id, file_path, user_id")
+                    .eq("ingested", False)
+                    .limit(20)
+                    .execute()
+                )
+
+                for file in unprocessed.data:
+                    try:
+                        logger.info(f"🧠 Ingesting {file['file_path']}")
+                        process_file(file_path=file["file_path"], file_id=file["id"], user_id=file["user_id"])
+                    except Exception as e:
+                        logger.error(f"❌ Failed to ingest {file['file_path']}: {e}")
 
             logger.info("✅ Ingestion cycle complete.")
 
