@@ -44,19 +44,24 @@ def save_message(user_id, project_id, content, session_id=None, speaker_role=Non
         timestamp = datetime.utcnow().isoformat()
 
         data = {
-    "user_id": user_id,
-    "project_id": project_id,
-    "content": content,
-    "embedding": embedding,
-    "timestamp": timestamp,
-}
-if session_id is not None:
-    data["session_id"] = session_id
-if speaker_role is not None:
-    data["speaker_role"] = speaker_role
-if message_index is not None:
-    data["message_index"] = message_index
-    }
+            "user_id": user_id,
+            "project_id": project_id,
+            "content": content,
+            "embedding": embedding,
+            "timestamp": timestamp,
+        }
+        if session_id is not None:
+            data["session_id"] = session_id
+        if speaker_role is not None:
+            data["speaker_role"] = speaker_role
+        if message_index is not None:
+            data["message_index"] = message_index
+            "user_id": user_id,
+            "project_id": project_id,
+            "content": content,
+            "embedding": embedding,
+            "timestamp": timestamp,
+        }
 
         result = supabase.table("memory_log").insert(data).execute()
 
