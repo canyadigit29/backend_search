@@ -1,10 +1,14 @@
-
 import json
 import os
+import logging
 
 import numpy as np
 
 from app.core.supabase_client import create_client
+
+# Initialize logger
+logger = logging.getLogger("maxgpt")
+logger.setLevel(logging.DEBUG)
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
@@ -20,6 +24,9 @@ def perform_search(tool_args):
     project_name = tool_args.get("project_name")
     project_names = tool_args.get("project_names")
 
+    logger.debug(f"🔍 Searching for documents with the following parameters:")
+    logger.debug(f"Project Name: {project_name}, Project Names: {project_names}")
+
     try:
         # ⬇️ Pull most recent embedded message
         memory_result = (
@@ -34,11 +41,14 @@ def perform_search(tool_args):
         )
 
         if not memory_result or not memory_result.data:
+            logger.error("❌ No valid embedded memory entry found.")
             return {"error": "No valid embedded memory entry found."}
 
         query_embedding = memory_result.data["embedding"]
+        logger.debug(f"✅ Retrieved memory embedding: {query_embedding[:10]}...")  # Log a portion of the embedding
 
     except Exception as e:
+        logger.error(f"❌ Failed to fetch latest embedding from memory_log: {str(e)}")
         return {"error": f"Failed to fetch latest embedding from memory_log: {str(e)}"}
 
     try:
@@ -54,6 +64,7 @@ def perform_search(tool_args):
                 .execute()
             )
             if not result or not getattr(result, "data", None):
+                logger.error(f"❌ No project found with name: {project_name}")
                 return {"error": f"No project found with name: {project_name}"}
             project_ids = [result.data["id"]]
 
@@ -66,8 +77,11 @@ def perform_search(tool_args):
                 .execute()
             )
             if not result or not getattr(result, "data", None):
+                logger.error("❌ No matching projects found.")
                 return {"error": f"No matching projects found."}
             project_ids = [row["id"] for row in result.data]
+
+        logger.debug(f"✅ Project IDs found: {project_ids}")
 
         base_query = supabase.table("document_chunks").select(
             "content, embedding, chunk_index, file_name"
@@ -79,13 +93,18 @@ def perform_search(tool_args):
         response = base_query.execute()
 
         if getattr(response, "error", None):
+            logger.error(f"❌ Supabase query failed: {response.error.message}")
             return {"error": f"Supabase query failed: {response.error.message}"}
 
         rows = response.data
 
         if not rows:
+            logger.info("ℹ️ No document chunks found for the specified project(s).")
             return {"message": "No document chunks found for the specified project(s)."}
 
+        logger.debug(f"✅ Retrieved {len(rows)} document chunks.")
+
+        # Calculate cosine similarity for each document
         scored = [
             {
                 "content": row["content"],
@@ -96,10 +115,16 @@ def perform_search(tool_args):
             for row in rows
         ]
 
+        logger.debug(f"✅ Cosine similarity scores calculated.")
+
+        # Sort by score and get top matches
         top_matches = sorted(scored, key=lambda x: x["score"], reverse=True)[:15]
+        logger.debug(f"✅ Top matches: {top_matches}")
+
         return {"results": top_matches}
 
     except Exception as e:
+        logger.error(f"❌ Error during search: {str(e)}")
         return {"error": f"Error during search: {str(e)}"}
 
 # ✅ Async wrapper for internal use
