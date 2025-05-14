@@ -179,7 +179,7 @@ async def chat_with_context(payload: ChatRequest):
         save_message(payload.user_id, payload.session_id, prompt)
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=messages,
             tools=OPENAI_TOOLS,
             tool_choice="auto"
