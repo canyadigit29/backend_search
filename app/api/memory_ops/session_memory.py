@@ -34,7 +34,7 @@ def retry_embed_text(text, retries=3, delay=1.5):
                 raise
 
 
-def save_message(user_id, project_id, content):
+def save_message(user_id, project_id, content, session_id=None, speaker_role=None, message_index=None):
     if not all(map(is_valid_uuid, [user_id, project_id])):
         logging.error("Invalid UUID in user/project ID")
         return {"error": "Invalid UUID input"}
@@ -49,7 +49,10 @@ def save_message(user_id, project_id, content):
             "content": content,
             "embedding": embedding,
             "timestamp": timestamp,
-        }
+        if session_id is not None: data["session_id"] = session_id
+        if speaker_role is not None: data["speaker_role"] = speaker_role
+        if message_index is not None: data["message_index"] = message_index
+    }
 
         result = supabase.table("memory_log").insert(data).execute()
 
