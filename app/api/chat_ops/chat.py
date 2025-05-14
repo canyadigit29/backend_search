@@ -1,3 +1,4 @@
+
 import json
 import logging
 import os
@@ -18,6 +19,7 @@ logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
 
 client = OpenAI()
+
 GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 
 class ChatRequest(BaseModel):
@@ -60,13 +62,8 @@ OPENAI_TOOLS = [
                         "items": {"type": "string"},
                         "description": "Optional list of multiple project names to include in the search",
                     },
-                    "embedding": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Pre-generated embedding to use for similarity search",
-                    },
                 },
-                "required": ["query", "embedding"],
+                "required": ["query"],
             },
         },
     },
@@ -122,13 +119,6 @@ async def chat_with_context(payload: ChatRequest):
                 status_code=400, detail="Invalid user_id format. Must be a UUID."
             )
 
-        # ✅ Generate the embedding now
-        embedding_response = client.embeddings.create(
-            model="text-embedding-ada-002", input=prompt
-        )
-        query_embedding = embedding_response.data[0].embedding
-        logger.debug(f"✅ Generated embedding for prompt (first 5 dims): {query_embedding[:5]}")
-
         session_response = (
             supabase.table("session_logs")
             .select("speaker_role, content")
@@ -142,10 +132,8 @@ async def chat_with_context(payload: ChatRequest):
             {
                 "role": "system",
                 "content": (
-                    "You are Max, a helpful assistant with access to documents, memory, and web search tools. "
-                    "If a user asks for something related to documents, you should search the available documents first. "
-                    "Use the 'search_docs' function for searching documents or 'retrieve_memory' for past conversations. "
-                    "You should also perform a web search if documents or memory are insufficient."
+                    "You are Max, a helpful assistant. You may use tools like 'search_docs', "
+                    "'search_web', or 'retrieve_memory' when asked about topics in memory, files, or online."
                 ),
             }
         ]
@@ -160,29 +148,45 @@ async def chat_with_context(payload: ChatRequest):
 
         memory_result = retrieve_memory({"query": prompt})
         if memory_result.get("results"):
-            memory_snippets = "\n".join([m["content"] for m in memory_result["results"]])
+            memory_snippets = "
+".join([m["content"] for m in memory_result["results"]])
             messages.insert(1, {
                 "role": "system",
-                "content": f"Relevant past memory:\n{memory_snippets}",
+                "content": f"Relevant past memory:
+{memory_snippets}",
             })
+
+        # 🔍 Auto-trigger document search if "search", "find", "documents", or "retrieve" is in the prompt
+        lowered_prompt = prompt.lower()
+        if any(kw in lowered_prompt for kw in ["search", "find", "documents", "retrieve"]):
+            try:
+                from app.api.file_ops.search_docs import search_docs
+                doc_results = search_docs({"query": prompt})
+                if doc_results.get("results"):
+                    doc_snippets = "
+".join([d["content"] for d in doc_results["results"]])
+                    messages.insert(1, {
+                        "role": "system", 
+                        "content": f"Relevant document excerpts:
+{doc_snippets}",
+                    })
+                elif doc_results.get("error") or doc_results.get("message"):
+                    messages.insert(1, {
+                        "role": "system",
+                        "content": f"[search_docs output]: {doc_results.get('error') or doc_results.get('message')}",
+                    })
+            except Exception as e:
+                logger.warning(f"⚠️ search_docs failed: {e}")
+                messages.insert(1, {
+                    "role": "system", 
+                    "content": f"[search_docs exception]: {str(e)}"
+                })
 
         messages.append({"role": "user", "content": prompt})
         save_message(payload.user_id, GENERAL_CONTEXT_PROJECT_ID, prompt)
 
         response = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            tools=OPENAI_TOOLS,
-            tool_choice={
-                "type": "function",
-                "function": {
-                    "name": "search_docs",
-                    "arguments": json.dumps({
-                        "query": prompt,
-                        "embedding": query_embedding
-                    })
-                }
-            }
+            model="gpt-4", messages=messages, tools=OPENAI_TOOLS
         )
         logger.debug(f"🧪 OpenAI raw response: {response}")
 
@@ -199,9 +203,74 @@ async def chat_with_context(payload: ChatRequest):
                 )
                 logger.debug(f"🔨 Tool call: {tool_name} → args: {tool_args}")
 
-                # TODO: Add support for sync_storage_files and others here as needed
+                if tool_name == "sync_storage_files":
+                    storage = supabase.storage.from_("maxgptstorage")
+                    folders = storage.list(payload.user_id, {"limit": 100})
+                    added = []
 
-                tool_response = f"(Tool output for {tool_name} not yet implemented)"
+                    for folder in folders:
+                        project = folder["name"]
+                        project_id_result = (
+                            supabase.table("projects")
+                            .select("id")
+                            .eq("user_id", payload.user_id)
+                            .eq("name", project)
+                            .maybe_single()
+                            .execute()
+                        )
+
+                        if not project_id_result or not getattr(project_id_result, "data", None):
+                            continue
+
+                        project_id = project_id_result.data["id"]
+                        path_prefix = f"{payload.user_id}/{project}/"
+                        files = storage.list(path_prefix, {"limit": 100})
+
+                        for f in files:
+                            name = f["name"]
+                            if not name or name.startswith("."):
+                                continue
+
+                            file_path = f"{path_prefix}{name}"
+                            exists = (
+                                supabase.table("files")
+                                .select("id, ingested")
+                                .eq("file_path", file_path)
+                                .maybe_single()
+                                .execute()
+                            )
+
+                            if not exists.data:
+                                file_id = str(uuid.uuid4())
+                                supabase.table("files").insert(
+                                    {
+                                        "id": file_id,
+                                        "file_path": file_path,
+                                        "file_name": name,
+                                        "project_id": project_id,
+                                        "user_id": payload.user_id,
+                                        "uploaded_at": datetime.utcnow().isoformat(),
+                                        "ingested": False,
+                                        "ingested_at": None,
+                                    }
+                                ).execute()
+                                added.append(file_path)
+                            else:
+                                file_id = exists.data["id"]
+
+                            if not exists.data or not exists.data.get("ingested"):
+                                process_file(
+                                    file_path=file_path,
+                                    file_id=file_id,
+                                    user_id=payload.user_id,
+                                )
+
+                    tool_response = (
+                        f"✅ Sync complete. Files added or reprocessed: {len(added)}"
+                    )
+
+                else:
+                    tool_response = f"Unsupported tool call: {tool_name}"
 
                 messages.append(
                     {"role": "function", "name": tool_name, "content": tool_response}
