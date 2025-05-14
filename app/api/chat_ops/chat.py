@@ -1,4 +1,4 @@
-import json
+mport json
 import logging
 import os
 import uuid
@@ -172,32 +172,6 @@ async def chat_with_context(payload: ChatRequest):
             messages.insert(1, {
                 "role": "system",
                 "content": f"Relevant past memory:\n{memory_snippets}",
-            })
-
-        embedding_response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=prompt
-        )
-        embedding = embedding_response.data[0].embedding
-
-        doc_results = perform_search({"embedding": embedding})
-        all_chunks = doc_results.get("results", [])
-        summaries = []
-
-        for chunk in all_chunks[:10]:
-            summary_prompt = f"Summarize the following document content in 1–2 sentences:\n\n{chunk['content']}"
-            summary_response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": summary_prompt}]
-            )
-            summaries.append(summary_response.choices[0].message.content)
-
-        if summaries:
-            summary_block = "\n\n".join(summaries)
-            more_notice = "\n\nThere are more relevant results available. Would you like to see them?" if len(all_chunks) > 10 else ""
-            messages.insert(1, {
-                "role": "system",
-                "content": f"Summary of document excerpts about '{payload.user_prompt}':\n{summary_block}{more_notice}"
             })
 
         messages.append({"role": "user", "content": prompt})
