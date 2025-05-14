@@ -30,7 +30,6 @@ def get_next_index(session_id: str) -> int:
     return 0
 
 
-
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
@@ -182,8 +181,10 @@ async def chat_with_context(payload: ChatRequest):
         embedding = embedding_response.data[0].embedding
 
         doc_results = perform_search({"embedding": embedding})
+        all_chunks = doc_results.get("results", [])
         summaries = []
-        for chunk in doc_results.get("results", [])[:10]:
+
+        for chunk in all_chunks[:10]:
             summary_prompt = f"Summarize the following document content in 1–2 sentences:\n\n{chunk['content']}"
             summary_response = client.chat.completions.create(
                 model="gpt-4o",
@@ -193,9 +194,10 @@ async def chat_with_context(payload: ChatRequest):
 
         if summaries:
             summary_block = "\n\n".join(summaries)
+            more_notice = "\n\nThere are more relevant results available. Would you like to see them?" if len(all_chunks) > 10 else ""
             messages.insert(1, {
                 "role": "system",
-                "content": f"Summary of document excerpts about '{payload.user_prompt}':\n{summary_block}"
+                "content": f"Summary of document excerpts about '{payload.user_prompt}':\n{summary_block}{more_notice}"
             })
 
         messages.append({"role": "user", "content": prompt})
