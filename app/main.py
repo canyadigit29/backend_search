@@ -41,6 +41,4 @@ app.include_router(session_log.router, prefix=settings.API_PREFIX)
 app.include_router(ingest.router, prefix=settings.API_PREFIX)
 app.include_router(chat.router, prefix=settings.API_PREFIX)
 
-
-@app.on_event("startup")
-
+# 🚫 No ingestion worker trigger on startup — now called manually from chat
