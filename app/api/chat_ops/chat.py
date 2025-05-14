@@ -115,15 +115,8 @@ OPENAI_TOOLS = [
                 "required": ["query"],
             },
         },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "sync_storage_files",
-            "description": "Scan Supabase storage and ingest any missing or unprocessed files",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
+    }
+    # ❌ sync_storage_files removed from default tool list
 ]
 
 @router.post("/chat")
@@ -153,7 +146,7 @@ async def chat_with_context(payload: ChatRequest):
             {
                 "role": "system",
                 "content": (
-                    "You are Max, a helpful assistant. You can answer general questions, search public internet sources using 'search_web', or analyze the user’s uploaded documents using 'search_docs'. Use 'search_web' only if the user explicitly asks to search the internet, online sources, or the web. Use 'search_docs' only if the user asks you to scan, find, analyze, or summarize something in their documents. If the user simply asks a question without referencing a source, answer it directly."
+                    "You are Max, a helpful assistant. You can answer general questions, search public internet sources using 'search_web', or analyze the user’s uploaded documents using 'search_docs'. Use 'search_web' only if the user explicitly asks to search the internet, online sources, or the web. Use 'search_docs' only if the user asks you to scan, find, analyze, or summarize something in their documents. Only use 'sync_storage_files' if the user explicitly says to sync, rescan, or ingest files."
                 ),
             }
         ]
