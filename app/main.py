@@ -7,9 +7,10 @@ from app.api.chat_ops import chat
 from app.api.file_ops import (background_tasks,  # Removed: embed, chunk
                               ingest, upload)
 from app.api.project_ops import project, session_log
+from app.api.NerdGPT import code_chat
 from app.core.config import settings
 
-# 🧪 Optional: Print env variables for debugging
+# 🔍 Optional: Print env variables for debugging
 print("🔍 Environment Variable Check:")
 print("OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
 print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
@@ -40,5 +41,6 @@ app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
 app.include_router(session_log.router, prefix=settings.API_PREFIX)
 app.include_router(ingest.router, prefix=settings.API_PREFIX)
 app.include_router(chat.router, prefix=settings.API_PREFIX)
+app.include_router(code_chat.router, prefix=settings.API_PREFIX)  # 🔹 NerdGPT route mounted
 
 # 🚫 No ingestion worker trigger on startup — now called manually from chat
