@@ -9,11 +9,11 @@ from fastapi import APIRouter, HTTPException
 from openai import OpenAI
 from pydantic import BaseModel
 
-from app.api.file\_ops.ingest import process\_file
-from app.api.memory\_ops.session\_memory import retrieve\_memory, save\_message
-from app.api.file\_ops.search\_docs import perform\_search
-from app.api.file\_ops.ingestion\_worker import run\_ingestion\_once
-from app.core.supabase\_client import supabase
+from app.api.file_ops.ingest import process_file
+from app.api.memory_ops.session_memory import retrieve_memory, save_message
+from app.api.file_ops.search_docs import perform_search
+from app.api.file_ops.ingestion_worker import run_ingestion_once
+from app.core.supabase_client import supabase
 
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
@@ -21,35 +21,35 @@ logger.setLevel(logging.DEBUG)
 
 client = OpenAI()
 
-GENERAL\_CONTEXT\_PROJECT\_ID = "00000000-0000-0000-0000-000000000000"
+GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 
 class ChatRequest(BaseModel):
-user\_prompt: str
-user\_id: str
-session\_id: str
+user_prompt: str
+user_id: str
+session_id: str
 
-OPENAI\_TOOLS = \[
+OPENAI_TOOLS = [
 {
 "type": "function",
 "function": {
-"name": "delete\_project",
+"name": "delete_project",
 "description": "Delete a project and all its associated data (requires exact project name match)",
 "parameters": {
 "type": "object",
 "properties": {
-"project\_name": {
+"project_name": {
 "type": "string",
 "description": "The exact name of the project to delete",
 }
 },
-"required": \["project\_name"],
+"required": ["project_name"],
 },
 },
 },
 {
 "type": "function",
 "function": {
-"name": "search\_docs",
+"name": "search_docs",
 "description": "Search stored documents and memory for relevant information",
 "parameters": {
 "type": "object",
@@ -59,68 +59,68 @@ OPENAI\_TOOLS = \[
 "items": {"type": "number"},
 "description": "Embedding vector for the query"
 },
-"project\_name": {
+"project_name": {
 "type": "string",
 "description": "Optional project name to limit scope",
 },
-"project\_names": {
+"project_names": {
 "type": "array",
 "items": {"type": "string"},
 "description": "Optional list of multiple project names to include in the search",
 },
-"keyword\_hint": {
+"keyword_hint": {
 "type": "string",
-"description": "Optional keyword to filter by file\_name matches, e.g. 'minutes', 'agenda', etc."
+"description": "Optional keyword to filter by file_name matches, e.g. 'minutes', 'agenda', etc."
 }
 },
-"required": \["embedding"],
+"required": ["embedding"],
 },
 },
 },
 {
 "type": "function",
 "function": {
-"name": "search\_web",
+"name": "search_web",
 "description": "Search the public internet using Brave Search API",
 "parameters": {
 "type": "object",
 "properties": {
 "query": {"type": "string", "description": "Search query text"}
 },
-"required": \["query"],
+"required": ["query"],
 },
 },
 },
 {
 "type": "function",
 "function": {
-"name": "retrieve\_memory",
+"name": "retrieve_memory",
 "description": "Search past conversations and assistant memory for related information",
 "parameters": {
 "type": "object",
 "properties": {
 "query": {"type": "string", "description": "Memory search phrase"}
 },
-"required": \["query"],
+"required": ["query"],
 },
 },
 },
 {
 "type": "function",
 "function": {
-"name": "sync\_storage\_files",
+"name": "sync_storage_files",
 "description": "Scan Supabase storage and ingest any missing or unprocessed files",
-"parameters": {"type": "object", "properties": {}, "required": \[]},
+"parameters": {"type": "object", "properties": {}, "required": []},
 },
 },
 ]
 
 @router.post("/chat")
-async def chat\_with\_context(payload: ChatRequest):
+async def chat_with_context(payload: ChatRequest):
 try:
-prompt = payload.user\_prompt.strip()
+prompt = payload.user_prompt.strip()
 logger.debug(f"🔍 User prompt: {prompt}")
-logger.debug(f"👤 User ID: {payload.user\_id}")
+logger.debug(f"👤 User ID: {payload.user_id}")
 
 ```
     try:
@@ -158,10 +158,10 @@ logger.debug(f"👤 User ID: {payload.user\_id}")
 
     memory_result = retrieve_memory({"query": prompt})
     if memory_result.get("results"):
-        memory_snippets = "\n".join([m["content"] for m in memory_result["results"][:3]])
+        memory_snippets = "n".join([m["content"] for m in memory_result["results"][:3]])
         messages.insert(1, {
             "role": "system",
-            "content": f"Relevant past memory:\n{memory_snippets}",
+            "content": f"Relevant past memory:n{memory_snippets}",
         })
 
     messages.append({"role": "user", "content": prompt})
