@@ -1,105 +1,113 @@
 import logging
 import os
+import time
 from datetime import datetime
+from typing import List, Dict, Optional
 
 import requests
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from openai import OpenAI
-
-from app.core.supabase_client import supabase
 
 router = APIRouter()
 logger = logging.getLogger("nerdgpt")
 logger.setLevel(logging.DEBUG)
 
+# ---- OpenAI client ----
 client = OpenAI()
+ASSISTANT_ID = "asst_Yr6XMC7i92tCpHJNVykekJ9N"
 
+# ---- GitHub token ----
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 class CodeChatRequest(BaseModel):
-    user_id: str
-    message: str
-    github_repo: str
-    file_path: str | None = None
-    inject_full_repo: bool | None = False
+    user_id: str = Field(..., description="User UUID")
+    message: str = Field(..., description="User prompt")
+    github_repo: str = Field(..., description="owner/repo")
+    file_path: Optional[str] = Field(None, description="Path of a single file to inject")
+    inject_full_repo: Optional[bool] = False
 
+# ---- GitHub helpers ----
+GH_HEADERS = {
+    "Authorization": f"token {GITHUB_TOKEN}",
+    "Accept": "application/vnd.github.v3.raw"
+} if GITHUB_TOKEN else {}
 
-def fetch_file_from_github(repo: str, path: str) -> str:
+def fetch_file(repo: str, path: str) -> str:
+    """Return raw text of a file; empty string if not found."""
     url = f"https://api.github.com/repos/{repo}/contents/{path}"
-    headers = {
-        "Authorization": f"token {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github.v3.raw"
-    }
-    r = requests.get(url, headers=headers)
+    r = requests.get(url, headers=GH_HEADERS)
     if r.status_code == 200:
         return r.text
     logger.warning("GitHub fetch %s returned %s", url, r.status_code)
     return ""
 
+# ---- OpenAI Assistants helpers ----
+def run_assistant_with_messages(system_messages: List[Dict[str, str]], user_message: str) -> str:
+    """Create a thread, send messages, run assistant, return assistant reply."""
+    # 1. Create thread
+    thread = client.beta.threads.create()
+    thread_id = thread.id
+
+    # 2. Add system / context messages
+    for m in system_messages:
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=m["content"]
+        )
+
+    # 3. Add user prompt
+    client.beta.threads.messages.create(
+        thread_id=thread_id,
+        role="user",
+        content=user_message
+    )
+
+    # 4. Run assistant
+    run = client.beta.threads.runs.create(
+        thread_id=thread_id,
+        assistant_id=ASSISTANT_ID
+    )
+
+    # 5. Poll until completed
+    while run.status not in ("completed", "failed", "cancelled", "expired"):
+        time.sleep(1)
+        run = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+
+    if run.status != "completed":
+        logger.error("Run ended with status %s", run.status)
+        raise HTTPException(status_code=500, detail="Assistant run failed")
+
+    # 6. Retrieve latest assistant message
+    msgs = client.beta.threads.messages.list(thread_id=thread_id, order="desc", limit=1)
+    if msgs.data:
+        return msgs.data[0].content
+    return "(no response)"
 
 @router.post("/codechat")
 def code_chat(req: CodeChatRequest):
-    # Build thread history (last 10)
-    prior = (
-        supabase.table("code_session_logs")
-        .select("speaker_role, content")
-        .eq("user_id", req.user_id)
-        .order("message_index", desc=False)
-        .limit(10)
-        .execute()
-    )
-
-    messages = []
-    if prior.data:
-        messages.extend(
-            {"role": row["speaker_role"], "content": row["content"]}
-            for row in prior.data
-        )
-
-    # Repo context
-    if req.inject_full_repo:
-        messages.append({
-            "role": "system",
-            "content": f"You have full context of repo `{req.github_repo}`. Answer questions using that code."
-        })
+    # Build context messages
+    context_msgs = []
 
     if req.file_path:
-        code_text = fetch_file_from_github(req.github_repo, req.file_path)
+        code_text = fetch_file(req.github_repo, req.file_path)
         if code_text:
-            messages.append({
-                "role": "system",
-                "content": f"Content of `{req.file_path}` from `{req.github_repo}`:\n\n{code_text}"
+            context_msgs.append({
+                "content": f"Here is the content of `{req.file_path}` from repo `{req.github_repo}`:\n\n{code_text}"
             })
 
-    messages.append({"role": "user", "content": req.message})
+    if req.inject_full_repo:
+        context_msgs.append({
+            "content": f"The entire repository `{req.github_repo}` should be considered as context."
+        })
 
     try:
-        chat_resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages
-        )
-        reply = chat_resp.choices[0].message.content
+        reply = run_assistant_with_messages(context_msgs, req.message)
+    except HTTPException:
+        raise
     except Exception:
-        logger.exception("Chat completion failed")
-        raise HTTPException(status_code=500, detail="NerdGPT failed to respond")
-
-    base_idx = len(messages) - 1
-    supabase.table("code_session_logs").insert([
-        {
-            "user_id": req.user_id,
-            "message_index": base_idx,
-            "speaker_role": "user",
-            "content": req.message,
-            "created_at": datetime.utcnow().isoformat()
-        },
-        {
-            "user_id": req.user_id,
-            "message_index": base_idx + 1,
-            "speaker_role": "assistant",
-            "content": reply,
-            "created_at": datetime.utcnow().isoformat()
-        }
-    ]).execute()
+        logger.exception("Assistant API call failed")
+        raise HTTPException(status_code=500, detail="Assistant call failed")
 
     return {"reply": reply}
