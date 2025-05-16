@@ -15,16 +15,25 @@ def list_github_repos():
         raise HTTPException(status_code=500, detail="GitHub token not configured.")
 
     headers = {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Authorization": f"token {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json"
     }
 
-    url = "https://api.github.com/user/repos"
-    response = requests.get(url, headers=headers)
-
-    if response.status_code != 200:
-        logger.error(f"GitHub API error: {response.status_code} - {response.text}")
-        raise HTTPException(status_code=500, detail="Failed to fetch repositories from GitHub.")
+    # Fetch all repositories (handles pagination)
+    repos = []
+    page = 1
+    per_page = 100
+    while True:
+        url = f"https://api.github.com/user/repos?per_page={per_page}&page={page}"
+        resp = requests.get(url, headers=headers)
+        if resp.status_code != 200:
+            logger.error(f"GitHub API error: {resp.status_code} - {resp.text}")
+            raise HTTPException(status_code=500, detail="Failed to fetch repositories from GitHub.")
+        batch = resp.json()
+        repos.extend(batch)
+        if len(batch) < per_page:
+            break
+        page += 1
 
     repos = response.json()
     return [{
