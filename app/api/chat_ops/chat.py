@@ -90,7 +90,11 @@ async def chat_with_context(payload: ChatRequest):
 
         # 🧠 Inject document search context ONLY for SearchGPT
         if assistant_id == SEARCH_ASSISTANT_ID:
-            search_terms = ["arpa funds", "covid money", "covid funds"]
+            # 🔍 Custom logic for special cases like roll call absences
+            if "roll call" in lower_prompt and ("chuck king" in lower_prompt or "mayor" in lower_prompt):
+                search_terms = ["roll call", "roll was called", "roll call vote"]
+            else:
+                search_terms = ["arpa funds", "covid money", "covid funds"]
             all_chunks = []
 
             for term in search_terms:
