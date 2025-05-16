@@ -28,89 +28,6 @@ class ChatRequest(BaseModel):
     user_id: str
     session_id: str
 
-OPENAI_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "delete_project",
-            "description": "Delete a project and all its associated data (requires exact project name match)",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "project_name": {
-                        "type": "string",
-                        "description": "The exact name of the project to delete",
-                    }
-                },
-                "required": ["project_name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_docs",
-            "description": "Search stored documents and memory for relevant information",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "embedding": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Embedding vector for the query"
-                    },
-                    "project_name": {
-                        "type": "string",
-                        "description": "Optional project name to limit scope",
-                    },
-                    "project_names": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional list of multiple project names to include in the search",
-                    },
-                },
-                "required": ["embedding"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_web",
-            "description": "Search the public internet using Brave Search API",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query text"}
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "retrieve_memory",
-            "description": "Search past conversations and assistant memory for related information",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Memory search phrase"}
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "sync_storage_files",
-            "description": "Scan Supabase storage and ingest any missing or unprocessed files",
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-]
-
 @router.post("/chat")
 async def chat_with_context(payload: ChatRequest):
     try:
@@ -125,6 +42,16 @@ async def chat_with_context(payload: ChatRequest):
                 status_code=400, detail="Invalid user_id format. Must be a UUID."
             )
 
+        # Save user prompt to memory
+        save_message(
+            user_id=payload.user_id,
+            project_id=GENERAL_CONTEXT_PROJECT_ID,
+            content=prompt,
+            session_id=payload.session_id,
+            speaker_role="user"
+        )
+
+        # Retrieve session context
         session_response = (
             supabase.table("session_logs")
             .select("speaker_role, content")
@@ -147,11 +74,10 @@ async def chat_with_context(payload: ChatRequest):
             past_messages = reversed(session_response.data)
             for row in past_messages:
                 if row["speaker_role"] in ("user", "assistant"):
-                    messages.append(
-                        {"role": row["speaker_role"], "content": row["content"]}
-                    )
+                    messages.append({"role": row["speaker_role"], "content": row["content"]})
 
-        memory_result = retrieve_memory({"query": prompt})
+        # Inject memory
+        memory_result = retrieve_memory({"query": prompt, "user_id": payload.user_id, "session_id": payload.session_id})
         if memory_result.get("results"):
             memory_snippets = "\n".join([m["content"] for m in memory_result["results"][:3]])
             messages.insert(1, {
@@ -159,6 +85,7 @@ async def chat_with_context(payload: ChatRequest):
                 "content": f"Relevant past memory:\n{memory_snippets}",
             })
 
+        # Embed and search
         embedding_response = client.embeddings.create(
             model="text-embedding-3-small",
             input=prompt
@@ -183,54 +110,26 @@ async def chat_with_context(payload: ChatRequest):
             })
 
         messages.append({"role": "user", "content": prompt})
-        save_message(payload.user_id, payload.session_id, prompt)
 
+        # Generate assistant reply
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=messages,
-            tools=OPENAI_TOOLS,
             tool_choice="auto"
         )
         logger.debug(f"🧪 OpenAI raw response: {response}")
 
-        tool_calls = (
-            response.choices[0].message.tool_calls if response.choices else None
+        reply = response.choices[0].message.content if response.choices else "(No reply)"
+
+        # Save assistant reply
+        save_message(
+            user_id=payload.user_id,
+            project_id=GENERAL_CONTEXT_PROJECT_ID,
+            content=reply,
+            session_id=payload.session_id,
+            speaker_role="HubGPT"
         )
 
-        if tool_calls:
-            for tool_call in tool_calls:
-                tool_name = tool_call.function.name
-                raw_args = tool_call.function.arguments
-                tool_args = (
-                    json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                )
-                logger.debug(f"🔨 Tool call: {tool_name} → args: {tool_args}")
-
-                if tool_name == "sync_storage_files":
-                    await run_ingestion_once()
-                    tool_response = "✅ Sync complete. Ingestion triggered manually."
-                else:
-                    tool_response = f"Unsupported tool call: {tool_name}"
-
-                messages.append(
-                    {"role": "function", "name": tool_name, "content": tool_response}
-                )
-
-            followup = client.chat.completions.create(
-                model="gpt-4o", messages=messages
-            )
-            reply = (
-                followup.choices[0].message.content
-                if followup.choices
-                else "(No reply)"
-            )
-            save_message(payload.user_id, payload.session_id, reply)
-            return {"answer": reply}
-
-        reply = (
-            response.choices[0].message.content if response.choices else "(No reply)"
-        )
-        save_message(payload.user_id, payload.session_id, reply)
         return {"answer": reply}
 
     except Exception as e:
