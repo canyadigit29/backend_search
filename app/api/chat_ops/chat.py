@@ -82,7 +82,8 @@ async def chat_with_context(payload: ChatRequest):
         elif last_assistant == "SearchGPT":
             assistant_id = SEARCH_ASSISTANT_ID
         else:
-        assistant_id = HUB_ASSISTANT_ID
+            fallback_reply = "🤖 I'm not sure which assistant should help. Is this a coding question, a document search, or something else?"
+            return {"answer": fallback_reply}
 
         thread = client.beta.threads.create()
 
@@ -140,6 +141,7 @@ async def chat_with_context(payload: ChatRequest):
         if reply.strip() == "[handoff_to_hub]":
             logger.info("↩️ Assistant handed off back to hub")
             fallback_reply = "Just to make sure I understood — is this something related to code, documents, or something else?"
+            return {"answer": fallback_reply}
 
         save_message(
             user_id=payload.user_id,
