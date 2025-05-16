@@ -1,10 +1,11 @@
 import logging
 import os
+from datetime import datetime
+
+import requests
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from datetime import datetime
 from openai import OpenAI
-import requests
 
 from app.core.supabase_client import supabase
 
@@ -13,92 +14,88 @@ logger = logging.getLogger("nerdgpt")
 logger.setLevel(logging.DEBUG)
 
 client = OpenAI()
-NERDGPT_ID = os.getenv("NERDGPT_ID", "asst_Yr6XMC7i92tCpHJNVykekJ9N")
+
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 class CodeChatRequest(BaseModel):
     user_id: str
     message: str
-    github_repo: str  # e.g. "username/repo"
-    file_path: str = None  # Optional file to pull context from
+    github_repo: str
+    file_path: str | None = None
+    inject_full_repo: bool | None = False
 
 
-def fetch_file_from_github(repo: str, file_path: str) -> str:
-    url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
-    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3.raw"}
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.text
-    else:
-        logger.warning(f"Failed to fetch file from GitHub: {response.status_code}")
-        return ""
+def fetch_file_from_github(repo: str, path: str) -> str:
+    url = f"https://api.github.com/repos/{repo}/contents/{path}"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3.raw"
+    }
+    r = requests.get(url, headers=headers)
+    if r.status_code == 200:
+        return r.text
+    logger.warning("GitHub fetch %s returned %s", url, r.status_code)
+    return ""
 
 
 @router.post("/codechat")
-def code_chat(request: CodeChatRequest):
-    user_id = request.user_id
-    user_message = request.message
-    repo = request.github_repo
-    file_path = request.file_path
-
-    # Optional file context from GitHub
-    file_context = ""
-    if file_path:
-        file_context = fetch_file_from_github(repo, file_path)
-
-    # Get recent memory (last 10)
-    prior_messages = (
+def code_chat(req: CodeChatRequest):
+    # Build thread history (last 10)
+    prior = (
         supabase.table("code_session_logs")
         .select("speaker_role, content")
-        .eq("user_id", user_id)
+        .eq("user_id", req.user_id)
         .order("message_index", desc=False)
         .limit(10)
         .execute()
     )
 
-    thread_messages = []
+    messages = []
+    if prior.data:
+        messages.extend(
+            {"role": row["speaker_role"], "content": row["content"]}
+            for row in prior.data
+        )
 
-    if prior_messages.data:
-        for row in prior_messages.data:
-            thread_messages.append({
-                "role": row["speaker_role"],
-                "content": row["content"]
-            })
-
-    # Prepend file context if present
-    if file_context:
-        thread_messages.append({
-            "role": "user",
-            "content": f"Here's the content of `{file_path}` from repo `{repo}`:\n\n{file_context}"
+    # Repo context
+    if req.inject_full_repo:
+        messages.append({
+            "role": "system",
+            "content": f"You have full context of repo `{req.github_repo}`. Answer questions using that code."
         })
 
-    # Append user message
-    thread_messages.append({"role": "user", "content": user_message})
+    if req.file_path:
+        code_text = fetch_file_from_github(req.github_repo, req.file_path)
+        if code_text:
+            messages.append({
+                "role": "system",
+                "content": f"Content of `{req.file_path}` from `{req.github_repo}`:\n\n{code_text}"
+            })
+
+    messages.append({"role": "user", "content": req.message})
 
     try:
-        assistant_response = client.beta.assistants.messages.create(
-            assistant_id=NERDGPT_ID,
-            thread={"messages": thread_messages},
+        chat_resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages
         )
-        reply = assistant_response.choices[0].message.content
-
-    except Exception as e:
-        logger.exception("Failed to call NerdGPT assistant")
+        reply = chat_resp.choices[0].message.content
+    except Exception:
+        logger.exception("Chat completion failed")
         raise HTTPException(status_code=500, detail="NerdGPT failed to respond")
 
-    # Save both user and assistant messages
-    base_index = len(thread_messages) - 1
+    base_idx = len(messages) - 1
     supabase.table("code_session_logs").insert([
         {
-            "user_id": user_id,
-            "message_index": base_index,
+            "user_id": req.user_id,
+            "message_index": base_idx,
             "speaker_role": "user",
-            "content": user_message,
+            "content": req.message,
             "created_at": datetime.utcnow().isoformat()
         },
         {
-            "user_id": user_id,
-            "message_index": base_index + 1,
+            "user_id": req.user_id,
+            "message_index": base_idx + 1,
             "speaker_role": "assistant",
             "content": reply,
             "created_at": datetime.utcnow().isoformat()
