@@ -78,17 +78,28 @@ def cosine_similarity(vec1, vec2):
 
 def retrieve_memory(tool_args):
     query = tool_args.get("query")
-    if not query:
-        return {"error": "Missing query"}
+    user_id = tool_args.get("user_id")
+    session_id = tool_args.get("session_id")
+    speaker_role = tool_args.get("speaker_role")
+
+    if not query or not user_id:
+        return {"error": "Missing query or user_id"}
 
     try:
         query_embedding = retry_embed_text(query)
 
-        response = (
-            supabase.table("memory_log")
-            .select("content, embedding, timestamp")
-            .execute()
-        )
+        query_builder = supabase.table("memory_log").select("content, embedding, timestamp")
+
+        # Filter by user ID (always)
+        query_builder = query_builder.eq("user_id", user_id)
+
+        # Optional filters
+        if speaker_role:
+            query_builder = query_builder.eq("speaker_role", speaker_role)
+        if session_id:
+            query_builder = query_builder.eq("session_id", session_id)
+
+        response = query_builder.execute()
 
         if getattr(response, "error", None):
             return {"error": f"Supabase query failed: {response.error.message}"}
@@ -107,9 +118,7 @@ def retrieve_memory(tool_args):
             for row in rows
         ]
 
-        top_matches = sorted(scored, key=lambda x: (-x["score"], x["timestamp"] or ""))[
-            :10
-        ]
+        top_matches = sorted(scored, key=lambda x: (-x["score"], x["timestamp"] or ""))[:10]
 
         return {"results": top_matches}
 
