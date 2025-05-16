@@ -8,6 +8,7 @@ import requests
 from fastapi import APIRouter, HTTPException
 from openai import OpenAI
 from pydantic import BaseModel
+import tiktoken
 
 from app.api.file_ops.ingest import process_file
 from app.api.memory_ops.session_memory import retrieve_memory, save_message
@@ -106,26 +107,44 @@ async def chat_with_context(payload: ChatRequest):
                 clarification_msg = "I found a large number of potentially relevant records. Could you help narrow it down — perhaps by specifying a year, topic, or department?"
                 return {"answer": clarification_msg}
 
-            # Feed in batches of 20 chunks
-            batch_size = 20
-            for i in range(0, len(chunks), batch_size):
-                batch = chunks[i:i + batch_size]
+            encoding = tiktoken.encoding_for_model("gpt-4o")
+            max_tokens_per_batch = 4000
+            batch = []
+            token_count = 0
+            batch_index = 1
+
+            for chunk in chunks:
+                content = chunk.get("content", "")
+                tokens = len(encoding.encode(content))
+                if token_count + tokens > max_tokens_per_batch and batch:
+                    joined_text = "\n\n".join(c.get("content", "[MISSING CONTENT]") for c in batch)
+                    logger.debug(f"📤 Injecting batch {batch_index} — {token_count} tokens")
+                    client.beta.threads.messages.create(
+                        thread_id=thread.id,
+                        role="user",
+                        content=f"Document context batch {batch_index}:\n{joined_text}"
+                    )
+                    batch_index += 1
+                    batch = []
+                    token_count = 0
+                batch.append(chunk)
+                token_count += tokens
+
+            if batch:
                 joined_text = "\n\n".join(c.get("content", "[MISSING CONTENT]") for c in batch)
-                logger.debug(f"📤 Injecting batch {i//batch_size + 1} with content length: {len(joined_text)}")
+                logger.debug(f"📤 Injecting batch {batch_index} — {token_count} tokens")
                 client.beta.threads.messages.create(
                     thread_id=thread.id,
                     role="user",
-                    content=f"Document context batch {i//batch_size + 1}:\n{joined_text}"
+                    content=f"Document context batch {batch_index}:\n{joined_text}"
                 )
 
-            # Final prompt to generate response
             client.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
                 content=f"Based on all the previous document context, answer the question: {prompt}"
             )
         else:
-            # Non-search assistants get original prompt + memory context
             client.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
@@ -141,9 +160,9 @@ async def chat_with_context(payload: ChatRequest):
             run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
         messages = client.beta.threads.messages.list(thread_id=thread.id)
-        reply = messages.data[0].content[0].text.value if messages.data else "(No reply)"
+        reply_msg = next((m for m in messages.data if m.role == "assistant"), None)
+        reply = reply_msg.content[0].text.value if reply_msg else "(No assistant reply found)"
 
-        # 🔁 Check for silent handoff signal
         if reply.strip() == "[handoff_to_hub]":
             logger.info("↩️ Assistant handed off back to hub")
             fallback_reply = "Just to make sure I understood — is this something related to code, documents, or something else?"
