@@ -80,7 +80,6 @@ def retrieve_memory(tool_args):
     query = tool_args.get("query")
     user_id = tool_args.get("user_id")
     session_id = tool_args.get("session_id")
-    speaker_role = tool_args.get("speaker_role")
 
     if not query or not user_id:
         return {"error": "Missing query or user_id"}
@@ -88,14 +87,12 @@ def retrieve_memory(tool_args):
     try:
         query_embedding = retry_embed_text(query)
 
-        query_builder = supabase.table("memory_log").select("content, embedding, timestamp")
+        query_builder = supabase.table("memory_log").select("content, embedding, timestamp, speaker_role")
 
         # Filter by user ID (always)
         query_builder = query_builder.eq("user_id", user_id)
 
-        # Optional filters
-        if speaker_role:
-            query_builder = query_builder.eq("speaker_role", speaker_role)
+        # Optional: session_id scope
         if session_id:
             query_builder = query_builder.eq("session_id", session_id)
 
@@ -114,6 +111,7 @@ def retrieve_memory(tool_args):
                 "content": row["content"],
                 "score": cosine_similarity(query_embedding, row["embedding"]),
                 "timestamp": row.get("timestamp"),
+                "speaker_role": row.get("speaker_role")
             }
             for row in rows
         ]
