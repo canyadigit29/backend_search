@@ -82,7 +82,11 @@ def run_assistant_with_messages(system_messages: List[Dict[str, str]], user_mess
     # 6. Retrieve latest assistant message
     msgs = client.beta.threads.messages.list(thread_id=thread_id, order="desc", limit=1)
     if msgs.data:
-        return msgs.data[0].content
+        content = msgs.data[0].content
+        if isinstance(content, list):
+            text_parts = [blk["text"]["value"] for blk in content if blk.get("type")=="text"]
+            return "\n\n".join(text_parts)
+        return content if isinstance(content,str) else str(content)
     return "(no response)"
 
 @router.post("/codechat")
