@@ -35,7 +35,6 @@ def list_github_repos():
             break
         page += 1
 
-    repos = response.json()
     return [{
         "name": repo["name"],
         "full_name": repo["full_name"],
