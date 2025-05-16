@@ -90,16 +90,20 @@ async def chat_with_context(payload: ChatRequest):
 
         # 🧠 Inject document search context ONLY for SearchGPT
         if assistant_id == SEARCH_ASSISTANT_ID:
-            embedding_response = client.embeddings.create(
-                model="text-embedding-3-small",
-                input=prompt
-            )
-            embedding = embedding_response.data[0].embedding
-            doc_results = perform_search({"embedding": embedding})
-            all_chunks = doc_results.get("results", [])
-            logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
+            search_terms = ["arpa funds", "covid money", "covid funds"]
+            all_chunks = []
 
-            # 🔍 Log score stats for filter tuning
+            for term in search_terms:
+                embedding_response = client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=term
+                )
+                embedding = embedding_response.data[0].embedding
+                results = perform_search({"embedding": embedding})
+                all_chunks.extend(results.get("results", []))
+
+            logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks across all terms.")
+
             scores = [c["score"] for c in all_chunks if "score" in c]
             if scores:
                 logger.debug(
@@ -111,9 +115,8 @@ async def chat_with_context(payload: ChatRequest):
             else:
                 logger.debug("📭 No score data available for results")
 
-            chunks = [c for c in all_chunks if c.get("score", 1.0) >= 0.30][:500]
+            chunks = [c for c in all_chunks if c.get("score", 1.0) >= 0.35][:100]
 
-            # 🔍 Log score stats for filter tuning
             scores = [c["score"] for c in chunks if "score" in c]
             if scores:
                 logger.debug(
