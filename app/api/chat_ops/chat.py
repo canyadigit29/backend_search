@@ -97,6 +97,10 @@ async def chat_with_context(payload: ChatRequest):
             doc_results = perform_search({"embedding": embedding})
             chunks = doc_results.get("results", [])
 
+            if len(chunks) > 40:
+                clarification_msg = "I found a large number of potentially relevant records. Could you help narrow it down — perhaps by specifying a year, topic, or department?"
+                return {"answer": clarification_msg}
+
             # Feed in batches of 20 chunks
             batch_size = 20
             for i in range(0, len(chunks), batch_size):
