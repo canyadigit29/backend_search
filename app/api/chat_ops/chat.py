@@ -97,6 +97,11 @@ async def chat_with_context(payload: ChatRequest):
             doc_results = perform_search({"embedding": embedding})
             chunks = doc_results.get("results", [])
 
+            logger.debug(f"📦 Found {len(chunks)} document chunks from search.")
+            if chunks:
+                logger.debug(f"🧾 First result keys: {list(chunks[0].keys())}")
+                logger.debug(f"📄 Sample content preview: {chunks[0].get('content', 'NO CONTENT')[:200]}")
+
             if len(chunks) > 40:
                 clarification_msg = "I found a large number of potentially relevant records. Could you help narrow it down — perhaps by specifying a year, topic, or department?"
                 return {"answer": clarification_msg}
@@ -105,7 +110,8 @@ async def chat_with_context(payload: ChatRequest):
             batch_size = 20
             for i in range(0, len(chunks), batch_size):
                 batch = chunks[i:i + batch_size]
-                joined_text = "\n\n".join(c["content"] for c in batch)
+                joined_text = "\n\n".join(c.get("content", "[MISSING CONTENT]") for c in batch)
+                logger.debug(f"📤 Injecting batch {i//batch_size + 1} with content length: {len(joined_text)}")
                 client.beta.threads.messages.create(
                     thread_id=thread.id,
                     role="user",
