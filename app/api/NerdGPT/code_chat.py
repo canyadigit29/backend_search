@@ -83,6 +83,18 @@ def run_assistant_with_messages(system_messages: List[Dict[str, str]], user_mess
     msgs = client.beta.threads.messages.list(thread_id=thread_id, order="desc", limit=1)
     if msgs.data:
         content = msgs.data[0].content
+        # content may be Pydantic objects, handle generically
+        if isinstance(content, list):
+            text_parts = []
+            for blk in content:
+                blk_type = getattr(blk, "type", None) or (blk.get("type") if isinstance(blk, dict) else None)
+                if blk_type == "text":
+                    if hasattr(blk, "text"):
+                        text_val = getattr(blk.text, "value", blk.text)
+                    else:
+                        text_val = blk["text"]["value"]
+                    text_parts.append(text_val)
+            return "\n\n".join(text_parts)
         if isinstance(content, list):
             text_parts = [blk["text"]["value"] for blk in content if blk.get("type")=="text"]
             return "\n\n".join(text_parts)
