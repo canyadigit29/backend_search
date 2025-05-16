@@ -98,6 +98,18 @@ async def chat_with_context(payload: ChatRequest):
             doc_results = perform_search({"embedding": embedding})
             chunks = doc_results.get("results", [])
 
+            # 🔍 Log score stats for filter tuning
+            scores = [c["score"] for c in chunks if "score" in c]
+            if scores:
+                logger.debug(
+                    f"📊 Score stats — total: {len(scores)}, min: {min(scores):.4f}, max: {max(scores):.4f}, avg: {sum(scores)/len(scores):.4f}"
+                )
+                sorted_chunks = sorted(chunks, key=lambda x: x["score"])
+                for i, low_chunk in enumerate(sorted_chunks[:3]):
+                    logger.debug(f"🧹 Low score sample {i+1} — score: {low_chunk['score']:.4f}, preview: {low_chunk.get('content', '')[:150]}")
+            else:
+                logger.debug("📭 No score data available for results")
+
             logger.debug(f"📦 Found {len(chunks)} document chunks from search.")
             if chunks:
                 logger.debug(f"🧾 First result keys: {list(chunks[0].keys())}")
