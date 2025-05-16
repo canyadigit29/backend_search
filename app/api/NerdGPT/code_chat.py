@@ -1,129 +1,108 @@
 import logging
 import os
-import time
-from datetime import datetime
-from typing import List, Dict, Optional
-
-import requests
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+from datetime import datetime
 from openai import OpenAI
+import requests
+
+from app.core.supabase_client import supabase
 
 router = APIRouter()
 logger = logging.getLogger("nerdgpt")
 logger.setLevel(logging.DEBUG)
 
-# ---- OpenAI client ----
 client = OpenAI()
-ASSISTANT_ID = "asst_Yr6XMC7i92tCpHJNVykekJ9N"
-
-# ---- GitHub token ----
+NERDGPT_ID = os.getenv("NERDGPT_ID", "asst_Yr6XMC7i92tCpHJNVykekJ9N")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 class CodeChatRequest(BaseModel):
-    user_id: str = Field(..., description="User UUID")
-    message: str = Field(..., description="User prompt")
-    github_repo: str = Field(..., description="owner/repo")
-    file_path: Optional[str] = Field(None, description="Path of a single file to inject")
-    inject_full_repo: Optional[bool] = False
+    user_id: str
+    message: str
+    github_repo: str  # e.g. "username/repo"
+    file_path: str = None  # Optional file to pull context from
 
-# ---- GitHub helpers ----
-GH_HEADERS = {
-    "Authorization": f"token {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github.v3.raw"
-} if GITHUB_TOKEN else {}
 
-def fetch_file(repo: str, path: str) -> str:
-    """Return raw text of a file; empty string if not found."""
-    url = f"https://api.github.com/repos/{repo}/contents/{path}"
-    r = requests.get(url, headers=GH_HEADERS)
-    if r.status_code == 200:
-        return r.text
-    logger.warning("GitHub fetch %s returned %s", url, r.status_code)
-    return ""
+def fetch_file_from_github(repo: str, file_path: str) -> str:
+    url = f"https://api.github.com/repos/{repo}/contents/{file_path}"
+    headers = {"Authorization": f"Bearer {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3.raw"}
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        return response.text
+    else:
+        logger.warning(f"Failed to fetch file from GitHub: {response.status_code}")
+        return ""
 
-# ---- OpenAI Assistants helpers ----
-def run_assistant_with_messages(system_messages: List[Dict[str, str]], user_message: str) -> str:
-    """Create a thread, send messages, run assistant, return assistant reply."""
-    # 1. Create thread
-    thread = client.beta.threads.create()
-    thread_id = thread.id
-
-    # 2. Add system / context messages
-    for m in system_messages:
-        client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=m["content"]
-        )
-
-    # 3. Add user prompt
-    client.beta.threads.messages.create(
-        thread_id=thread_id,
-        role="user",
-        content=user_message
-    )
-
-    # 4. Run assistant
-    run = client.beta.threads.runs.create(
-        thread_id=thread_id,
-        assistant_id=ASSISTANT_ID
-    )
-
-    # 5. Poll until completed
-    while run.status not in ("completed", "failed", "cancelled", "expired"):
-        time.sleep(1)
-        run = client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
-
-    if run.status != "completed":
-        logger.error("Run ended with status %s", run.status)
-        raise HTTPException(status_code=500, detail="Assistant run failed")
-
-    # 6. Retrieve latest assistant message
-    msgs = client.beta.threads.messages.list(thread_id=thread_id, order="desc", limit=1)
-    if msgs.data:
-        content = msgs.data[0].content
-        # content may be Pydantic objects, handle generically
-        if isinstance(content, list):
-            text_parts = []
-            for blk in content:
-                blk_type = getattr(blk, "type", None) or (blk.get("type") if isinstance(blk, dict) else None)
-                if blk_type == "text":
-                    if hasattr(blk, "text"):
-                        text_val = getattr(blk.text, "value", blk.text)
-                    else:
-                        text_val = blk["text"]["value"]
-                    text_parts.append(text_val)
-            return "\n\n".join(text_parts)
-        if isinstance(content, list):
-            text_parts = [blk["text"]["value"] for blk in content if blk.get("type")=="text"]
-            return "\n\n".join(text_parts)
-        return content if isinstance(content,str) else str(content)
-    return "(no response)"
 
 @router.post("/codechat")
-def code_chat(req: CodeChatRequest):
-    # Build context messages
-    context_msgs = []
+def code_chat(request: CodeChatRequest):
+    user_id = request.user_id
+    user_message = request.message
+    repo = request.github_repo
+    file_path = request.file_path
 
-    if req.file_path:
-        code_text = fetch_file(req.github_repo, req.file_path)
-        if code_text:
-            context_msgs.append({
-                "content": f"Here is the content of `{req.file_path}` from repo `{req.github_repo}`:\n\n{code_text}"
+    # Optional file context from GitHub
+    file_context = ""
+    if file_path:
+        file_context = fetch_file_from_github(repo, file_path)
+
+    # Get recent memory (last 10)
+    prior_messages = (
+        supabase.table("code_session_logs")
+        .select("speaker_role, content")
+        .eq("user_id", user_id)
+        .order("message_index", desc=False)
+        .limit(10)
+        .execute()
+    )
+
+    thread_messages = []
+
+    if prior_messages.data:
+        for row in prior_messages.data:
+            thread_messages.append({
+                "role": row["speaker_role"],
+                "content": row["content"]
             })
 
-    if req.inject_full_repo:
-        context_msgs.append({
-            "content": f"The entire repository `{req.github_repo}` should be considered as context."
+    # Prepend file context if present
+    if file_context:
+        thread_messages.append({
+            "role": "user",
+            "content": f"Here's the content of `{file_path}` from repo `{repo}`:\n\n{file_context}"
         })
 
+    # Append user message
+    thread_messages.append({"role": "user", "content": user_message})
+
     try:
-        reply = run_assistant_with_messages(context_msgs, req.message)
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Assistant API call failed")
-        raise HTTPException(status_code=500, detail="Assistant call failed")
+        assistant_response = client.beta.assistants.messages.create(
+            assistant_id=NERDGPT_ID,
+            thread={"messages": thread_messages},
+        )
+        reply = assistant_response.choices[0].message.content
+
+    except Exception as e:
+        logger.exception("Failed to call NerdGPT assistant")
+        raise HTTPException(status_code=500, detail="NerdGPT failed to respond")
+
+    # Save both user and assistant messages
+    base_index = len(thread_messages) - 1
+    supabase.table("code_session_logs").insert([
+        {
+            "user_id": user_id,
+            "message_index": base_index,
+            "speaker_role": "user",
+            "content": user_message,
+            "created_at": datetime.utcnow().isoformat()
+        },
+        {
+            "user_id": user_id,
+            "message_index": base_index + 1,
+            "speaker_role": "assistant",
+            "content": reply,
+            "created_at": datetime.utcnow().isoformat()
+        }
+    ]).execute()
 
     return {"reply": reply}
