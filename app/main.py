@@ -22,8 +22,8 @@ app = FastAPI(
 # ✅ CORS middleware for local testing
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "https://temp-frontend-orcin.vercel.app,http://localhost:3000").split(",") ,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
