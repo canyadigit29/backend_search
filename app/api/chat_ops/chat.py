@@ -53,14 +53,35 @@ async def chat_with_context(payload: ChatRequest):
             speaker_role="user"
         )
 
+        # 🧠 Pull last assistant who replied (non-user speaker_role)
+        last_reply = (
+            supabase.table("memory_log")
+            .select("speaker_role")
+            .eq("user_id", payload.user_id)
+            .eq("session_id", payload.session_id)
+            .neq("speaker_role", "user")
+            .order("message_index", desc=True)
+            .limit(1)
+            .execute()
+        )
+        last_assistant = None
+        if last_reply.data:
+            last_assistant = last_reply.data[0]["speaker_role"]
+        logger.debug(f"🤖 Last assistant speaker: {last_assistant}")
+
         memory_result = retrieve_memory({"query": prompt, "user_id": payload.user_id, "session_id": payload.session_id})
         context = "\n".join([m["content"] for m in memory_result.get("results", [])[:5]]) if memory_result.get("results") else None
 
+        # 🔀 Intelligent routing
         assistant_id = HUB_ASSISTANT_ID
         lower_prompt = prompt.lower()
         if any(kw in lower_prompt for kw in ["code", "script", "function"]):
             assistant_id = CODE_ASSISTANT_ID
         elif any(kw in lower_prompt for kw in ["search", "scan", "find"]):
+            assistant_id = SEARCH_ASSISTANT_ID
+        elif last_assistant == "NerdGPT":
+            assistant_id = CODE_ASSISTANT_ID
+        elif last_assistant == "SearchGPT":
             assistant_id = SEARCH_ASSISTANT_ID
 
         thread = client.beta.threads.create()
