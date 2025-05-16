@@ -73,7 +73,7 @@ async def chat_with_context(payload: ChatRequest):
         context = "\n".join([m["content"] for m in memory_result.get("results", [])[:5]]) if memory_result.get("results") else None
 
         # 🔀 Intelligent routing
-        assistant_id = HUB_ASSISTANT_ID
+        assistant_id = None
         lower_prompt = prompt.lower()
         if any(kw in lower_prompt for kw in ["code", "script", "function"]):
             assistant_id = CODE_ASSISTANT_ID
@@ -83,6 +83,9 @@ async def chat_with_context(payload: ChatRequest):
             assistant_id = CODE_ASSISTANT_ID
         elif last_assistant == "SearchGPT":
             assistant_id = SEARCH_ASSISTANT_ID
+        else:
+            fallback_reply = "🤖 I'm not sure which assistant should help. Is this a coding question, a document search, or something else?"
+            return {"answer": fallback_reply}
 
         thread = client.beta.threads.create()
         client.beta.threads.messages.create(
