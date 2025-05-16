@@ -86,11 +86,41 @@ async def chat_with_context(payload: ChatRequest):
             return {"answer": fallback_reply}
 
         thread = client.beta.threads.create()
-        client.beta.threads.messages.create(
-            thread_id=thread.id,
-            role="user",
-            content=(f"{prompt}\n\nRelevant context:\n{context}" if context else prompt)
-        )
+
+        # 🧠 Inject document search context ONLY for SearchGPT
+        if assistant_id == SEARCH_ASSISTANT_ID:
+            embedding_response = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=prompt
+            )
+            embedding = embedding_response.data[0].embedding
+            doc_results = perform_search({"embedding": embedding})
+            chunks = doc_results.get("results", [])
+
+            # Feed in batches of 20 chunks
+            batch_size = 20
+            for i in range(0, len(chunks), batch_size):
+                batch = chunks[i:i + batch_size]
+                joined_text = "\n\n".join(c["content"] for c in batch)
+                client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content=f"Document context batch {i//batch_size + 1}:\n{joined_text}"
+                )
+
+            # Final prompt to generate response
+            client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content=f"Based on all the previous document context, answer the question: {prompt}"
+            )
+        else:
+            # Non-search assistants get original prompt + memory context
+            client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content=(f"{prompt}\n\nRelevant context:\n{context}" if context else prompt)
+            )
 
         run = client.beta.threads.runs.create(
             thread_id=thread.id,
