@@ -111,7 +111,7 @@ async def chat_with_context(payload: ChatRequest):
             else:
                 logger.debug("📭 No score data available for results")
 
-            chunks = [c for c in all_chunks if c.get("score", 1.0) >= 0.35][:100]
+            chunks = [c for c in all_chunks if c.get("score", 1.0) >= 0.30][:500]
 
             # 🔍 Log score stats for filter tuning
             scores = [c["score"] for c in chunks if "score" in c]
