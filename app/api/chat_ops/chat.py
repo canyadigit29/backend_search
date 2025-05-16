@@ -53,7 +53,6 @@ async def chat_with_context(payload: ChatRequest):
             speaker_role="user"
         )
 
-        # 🧠 Pull last assistant who replied (non-user speaker_role)
         last_reply = (
             supabase.table("memory_log")
             .select("speaker_role")
@@ -72,7 +71,6 @@ async def chat_with_context(payload: ChatRequest):
         memory_result = retrieve_memory({"query": prompt, "user_id": payload.user_id, "session_id": payload.session_id})
         context = "\n".join([m["content"] for m in memory_result.get("results", [])[:5]]) if memory_result.get("results") else None
 
-        # 🔀 Intelligent routing
         assistant_id = None
         lower_prompt = prompt.lower()
         if any(kw in lower_prompt for kw in ["code", "script", "function"]):
@@ -104,6 +102,12 @@ async def chat_with_context(payload: ChatRequest):
 
         messages = client.beta.threads.messages.list(thread_id=thread.id)
         reply = messages.data[0].content[0].text.value if messages.data else "(No reply)"
+
+        # 🔁 Check for silent handoff signal
+        if reply.strip() == "[handoff_to_hub]":
+            logger.info("↩️ Assistant handed off back to hub")
+            fallback_reply = "Just to make sure I understood — is this something related to code, documents, or something else?"
+            return {"answer": fallback_reply}
 
         save_message(
             user_id=payload.user_id,
