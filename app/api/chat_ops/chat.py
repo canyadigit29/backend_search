@@ -76,9 +76,21 @@ async def chat_with_context(payload: ChatRequest):
 
         # 🧠 Inject document search context ONLY for SearchGPT
         if True:  # Always inject document context when available
+            # 🔍 Clean prompt before embedding
+            def extract_core_search_phrase(prompt: str) -> str:
+                junk_phrases = [
+                    "hi max", "can you", "please", "could you", "would you", "i was wondering",
+                    "thanks", "thank you", "do you mind", "hey", "hey max"
+                ]
+                prompt_lower = prompt.lower()
+                for junk in junk_phrases:
+                    prompt_lower = prompt_lower.replace(junk, "")
+                return prompt_lower.strip()
+
+            cleaned_prompt = extract_core_search_phrase(prompt)
             embedding_response = client.embeddings.create(
                 model="text-embedding-3-small",
-                input=prompt
+                input=cleaned_prompt
             )
             embedding = embedding_response.data[0].embedding
             doc_results = perform_search({"embedding": embedding})
