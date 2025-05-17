@@ -4,7 +4,7 @@ import os
 import uuid
 from datetime import datetime
 
-import requests
+from app.api.writing_ops.report_writer import generate_pdf_report
 from fastapi import APIRouter, HTTPException
 from openai import OpenAI
 from pydantic import BaseModel
@@ -145,14 +145,7 @@ async def chat_with_context(payload: ChatRequest):
                     if tool_call.function.name == "generate_report":
                         args = json.loads(tool_call.function.arguments)
                         logger.info(f"🛠️ Executing tool: generate_report with args {args}")
-                        report_response = requests.post(
-                            url="/api/generate-report",
-                            json={"title": args["title"], "content": args["content"]},
-                            timeout=30
-                        )
-                        if report_response.status_code != 200:
-                            raise Exception(f"Report generation failed: {report_response.text}")
-                        report_url = report_response.json().get("url")
+                        report_url = generate_pdf_report(args["title"], args["content"])
                         tool_outputs.append({
                             "tool_call_id": tool_call.id,
                             "output": f"Here's your report: {report_url}"
