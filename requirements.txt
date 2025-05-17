@@ -15,3 +15,7 @@ supabase
 uvicorn
 numpy
 tiktoken>=0.5.1
+reportlab
+matplotlib
+pandas
+python-slugify
