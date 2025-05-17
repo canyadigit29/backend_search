@@ -23,10 +23,12 @@ def perform_search(tool_args):
     project_name = tool_args.get("project_name")
     project_names = tool_args.get("project_names")
     query_embedding = tool_args.get("embedding")
+    expected_phrase = tool_args.get("expected_phrase")
 
     logger.debug(f"🔍 Searching for documents with the following parameters:")
     logger.debug(f"Project Name: {project_name}, Project Names: {project_names}")
     logger.debug(f"🔑 Received embedding: {query_embedding[:5]}...")
+    logger.debug(f"🔎 Filtering by omission: {expected_phrase}")
 
     if not query_embedding:
         logger.error("❌ No embedding provided in tool_args.")
@@ -70,6 +72,9 @@ def perform_search(tool_args):
 
         if project_ids:
             base_query = base_query.in_("project_id", project_ids)
+        else:
+            logger.info("🔍 No project specified — searching all user documents.")
+            base_query = base_query.eq("user_id", USER_ID)
 
         response = base_query.execute()
 
@@ -100,8 +105,15 @@ def perform_search(tool_args):
 
         # Sort by score and get top matches
         top_matches = sorted(scored, key=lambda x: x["score"], reverse=True)[:15]
-        logger.debug(f"✅ Top matches: {top_matches}")
 
+        # Apply omission filter if expected_phrase is set
+        if expected_phrase:
+            expected_lower = expected_phrase.lower()
+            filtered = [x for x in top_matches if expected_lower not in x["content"].lower()]
+            logger.debug(f"🔍 {len(filtered)} results after omitting phrase: '{expected_phrase}'")
+            top_matches = filtered
+
+        logger.debug(f"✅ Top matches: {top_matches}")
         return {"results": top_matches}
 
     except Exception as e:
