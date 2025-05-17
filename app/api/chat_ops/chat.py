@@ -74,107 +74,61 @@ async def chat_with_context(payload: ChatRequest):
 
         thread = client.beta.threads.create()
 
-        # 🧠 Inject document search context ONLY for SearchGPT
-        if True:  # Always inject document context when available
-            # 🔍 Clean prompt before embedding
-            def extract_core_search_phrase(prompt: str) -> str:
-                junk_phrases = [
-                    "hi max", "can you", "please", "could you", "would you", "i was wondering",
-                    "thanks", "thank you", "do you mind", "hey", "hey max"
-                ]
-                prompt_lower = prompt.lower()
-                for junk in junk_phrases:
-                    prompt_lower = prompt_lower.replace(junk, "")
-                return prompt_lower.strip()
+        def extract_core_search_phrase(prompt: str) -> str:
+            junk_phrases = [
+                "hi max", "can you", "please", "could you", "would you", "i was wondering",
+                "thanks", "thank you", "do you mind", "hey", "hey max"
+            ]
+            prompt_lower = prompt.lower()
+            for junk in junk_phrases:
+                prompt_lower = prompt_lower.replace(junk, "")
+            return prompt_lower.strip()
 
-            cleaned_prompt = extract_core_search_phrase(prompt)
-            embedding_response = client.embeddings.create(
-                model="text-embedding-3-small",
-                input=cleaned_prompt
-            )
-            embedding = embedding_response.data[0].embedding
-            doc_results = perform_search({"embedding": embedding})
-            all_chunks = doc_results.get("results", [])
-            logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
+        cleaned_prompt = extract_core_search_phrase(prompt)
+        embedding_response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=cleaned_prompt
+        )
+        embedding = embedding_response.data[0].embedding
+        doc_results = perform_search({"embedding": embedding})
+        all_chunks = doc_results.get("results", [])
+        logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
 
-            # 🔍 Log score stats for filter tuning
-            scores = [c["score"] for c in all_chunks if "score" in c]
-            if scores:
-                logger.debug(
-                    f"📊 Score stats — total: {len(scores)}, min: {min(scores):.4f}, max: {max(scores):.4f}, avg: {sum(scores)/len(scores):.4f}"
-                )
-                sorted_chunks = sorted(all_chunks, key=lambda x: x["score"])
-                for i, low_chunk in enumerate(sorted_chunks[:3]):
-                    logger.debug(f"🧹 Low score sample {i+1} — score: {low_chunk['score']:.4f}, preview: {low_chunk.get('content', '')[:150]}")
-            else:
-                logger.debug("📭 No score data available for results")
+        encoding = tiktoken.encoding_for_model("gpt-4o")
+        max_tokens_per_batch = 4000
+        current_batch = []
+        token_count = 0
+        batches = []
 
-            chunks = all_chunks
+        for chunk in all_chunks:
+            content = chunk.get("content", "")
+            tokens = len(encoding.encode(content))
+            if token_count + tokens > max_tokens_per_batch and current_batch:
+                batches.append(current_batch)
+                current_batch = []
+                token_count = 0
+            current_batch.append(chunk)
+            token_count += tokens
+        if current_batch:
+            batches.append(current_batch)
 
-            # 🔍 Log score stats for filter tuning
-            scores = [c["score"] for c in chunks if "score" in c]
-            if scores:
-                logger.debug(
-                    f"📊 Score stats — total: {len(scores)}, min: {min(scores):.4f}, max: {max(scores):.4f}, avg: {sum(scores)/len(scores):.4f}"
-                )
-                sorted_chunks = sorted(chunks, key=lambda x: x["score"])
-                for i, low_chunk in enumerate(sorted_chunks[:3]):
-                    logger.debug(f"🧹 Low score sample {i+1} — score: {low_chunk['score']:.4f}, preview: {low_chunk.get('content', '')[:150]}")
-            else:
-                logger.debug("📭 No score data available for results")
+        total_batches = len(batches)
+        logger.debug(f"📦 Prepared {total_batches} token-aware batches for injection.")
 
-            logger.debug(f"📦 Found {len(chunks)} document chunks from search.")
-            if chunks:
-                logger.debug(f"🧾 First result keys: {list(chunks[0].keys())}")
-                logger.debug(f"📄 Sample content preview: {chunks[0].get('content', 'NO CONTENT')[:200]}")
-
-            if len(chunks) > 40:
-                clarification_msg = "I found a large number of potentially relevant records. Could you help narrow it down — perhaps by specifying a year, topic, or department?"
-                return {"answer": clarification_msg}
-
-            encoding = tiktoken.encoding_for_model("gpt-4o")
-            max_tokens_per_batch = 4000
-            batch = []
-            token_count = 0
-            batch_index = 1
-
-            for chunk in chunks:
-                content = chunk.get("content", "")
-                tokens = len(encoding.encode(content))
-                if token_count + tokens > max_tokens_per_batch and batch:
-                    joined_text = "\n\n".join(c.get("content", "[MISSING CONTENT]") for c in batch)
-                    logger.debug(f"📤 Injecting batch {batch_index} — {token_count} tokens")
-                    client.beta.threads.messages.create(
-                        thread_id=thread.id,
-                        role="user",
-                        content=f"Document context batch {batch_index}:\n{joined_text}"
-                    )
-                    batch_index += 1
-                    batch = []
-                    token_count = 0
-                batch.append(chunk)
-                token_count += tokens
-
-            if batch:
-                joined_text = "\n\n".join(c.get("content", "[MISSING CONTENT]") for c in batch)
-                logger.debug(f"📤 Injecting batch {batch_index} — {token_count} tokens")
-                client.beta.threads.messages.create(
-                    thread_id=thread.id,
-                    role="user",
-                    content=f"Document context batch {batch_index}:\n{joined_text}"
-                )
-
+        for i, batch in enumerate(batches):
+            joined_text = "\n\n".join(c.get("content", "[MISSING CONTENT]") for c in batch)
+            final = (i == total_batches - 1)
             client.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
-                content=f"Based on all the previous document context, answer the question: {prompt}"
+                content=f"Document context batch {i + 1} of {total_batches} (final_batch: {final}):\n{joined_text}"
             )
-        else:
-            client.beta.threads.messages.create(
-                thread_id=thread.id,
-                role="user",
-                content=(f"{prompt}\n\nRelevant context:\n{context}" if context else prompt)
-            )
+
+        client.beta.threads.messages.create(
+            thread_id=thread.id,
+            role="user",
+            content=f"Based on document context batches 1 through {total_batches}, answer the question: {prompt}"
+        )
 
         run = client.beta.threads.runs.create(
             thread_id=thread.id,
