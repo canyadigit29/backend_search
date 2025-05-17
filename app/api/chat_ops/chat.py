@@ -173,7 +173,7 @@ async def chat_with_context(payload: ChatRequest):
             run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
         messages = client.beta.threads.messages.list(thread_id=thread.id)
-        reply_msg = next((m for m in messages.data if m.role == "assistant" and m.content and m.content[0].type == "text"), None), None)
+        reply_msg = next((m for m in messages.data if m.role == "assistant" and m.content and m.content[0].type == "text"), None)
         reply = reply_msg.content[0].text.value if reply_msg else "(No assistant reply found)"
 
         if reply.strip() == "[handoff_to_hub]":
