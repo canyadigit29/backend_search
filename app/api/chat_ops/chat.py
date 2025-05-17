@@ -90,24 +90,16 @@ async def chat_with_context(payload: ChatRequest):
 
         # 🧠 Inject document search context ONLY for SearchGPT
         if assistant_id == SEARCH_ASSISTANT_ID:
-            # 🔍 Custom logic for special cases like roll call absences
-            if "roll call" in lower_prompt and ("chuck king" in lower_prompt or "mayor" in lower_prompt):
-                search_terms = ["roll call", "roll was called", "roll call vote"]
-            else:
-                search_terms = ["arpa funds", "covid money", "covid funds"]
-            all_chunks = []
+            embedding_response = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=prompt
+            )
+            embedding = embedding_response.data[0].embedding
+            doc_results = perform_search({"embedding": embedding})
+            all_chunks = doc_results.get("results", [])
+            logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
 
-            for term in search_terms:
-                embedding_response = client.embeddings.create(
-                    model="text-embedding-3-small",
-                    input=term
-                )
-                embedding = embedding_response.data[0].embedding
-                results = perform_search({"embedding": embedding})
-                all_chunks.extend(results.get("results", []))
-
-            logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks across all terms.")
-
+            # 🔍 Log score stats for filter tuning
             scores = [c["score"] for c in all_chunks if "score" in c]
             if scores:
                 logger.debug(
@@ -119,8 +111,9 @@ async def chat_with_context(payload: ChatRequest):
             else:
                 logger.debug("📭 No score data available for results")
 
-            chunks = [c for c in all_chunks if c.get("score", 1.0) >= 0.35][:100]
+            chunks = [c for c in all_chunks if c.get("score", 1.0) >= 0.30][:500]
 
+            # 🔍 Log score stats for filter tuning
             scores = [c["score"] for c in chunks if "score" in c]
             if scores:
                 logger.debug(
