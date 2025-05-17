@@ -104,7 +104,7 @@ def perform_search(tool_args):
         logger.debug(f"✅ Cosine similarity scores calculated.")
 
         # Sort by score and get top matches
-        top_matches = sorted(scored, key=lambda x: x["score"], reverse=True)[:15]
+        top_matches = [m for m in sorted(scored, key=lambda x: x["score"], reverse=True) if m["score"] >= 0.30]
 
         # Apply omission filter if expected_phrase is set
         if expected_phrase:
