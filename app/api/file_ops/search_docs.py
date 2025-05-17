@@ -123,3 +123,6 @@ def perform_search(tool_args):
 # ✅ Async wrapper for internal use
 async def semantic_search(request, payload):
     return perform_search(payload)
+
+
+    return top_matches
