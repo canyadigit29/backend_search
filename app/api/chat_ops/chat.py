@@ -97,7 +97,7 @@ async def chat_with_context(payload: ChatRequest):
             else:
                 logger.debug("📭 No score data available for results")
 
-            chunks = [c for c in all_chunks if c.get("score", 1.0) >= 0.30][:500]
+            chunks = all_chunks
 
             # 🔍 Log score stats for filter tuning
             scores = [c["score"] for c in chunks if "score" in c]
@@ -173,7 +173,7 @@ async def chat_with_context(payload: ChatRequest):
             run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
         messages = client.beta.threads.messages.list(thread_id=thread.id)
-        reply_msg = next((m for m in messages.data if m.role == "assistant"), None)
+        reply_msg = next((m for m in messages.data if m.role == "assistant" and m.content and m.content[0].type == "text"), None), None)
         reply = reply_msg.content[0].text.value if reply_msg else "(No assistant reply found)"
 
         if reply.strip() == "[handoff_to_hub]":
