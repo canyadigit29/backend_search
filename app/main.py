@@ -10,6 +10,7 @@ from app.api.project_ops import project, session_log
 from app.api.NerdGPT import code_chat, github_api
 from app.api.file_ops.search_docs import perform_search as search_documents
 from app.api.memory_ops.session_memory import retrieve_memory
+from app.api.writing_ops import report_routes
 from app.core.config import settings
 
 # 🔍 Optional: Print env variables for debugging
@@ -45,5 +46,6 @@ app.include_router(ingest.router, prefix=settings.API_PREFIX)
 app.include_router(chat.router, prefix=settings.API_PREFIX)
 app.include_router(code_chat.router, prefix=settings.API_PREFIX)  # 🔹 NerdGPT route mounted
 app.include_router(github_api.router, prefix=settings.API_PREFIX)  # 🔹 GitHub route mounted
+app.include_router(report_routes.router, prefix=f"{settings.API_PREFIX}/writing", tags=["writing"])  # 📝 Writing/report route mounted
 
 # 🚫 No ingestion worker trigger on startup — now called manually from chat
