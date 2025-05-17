@@ -23,8 +23,6 @@ logger.setLevel(logging.DEBUG)
 client = OpenAI()
 
 GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
-CODE_ASSISTANT_ID = os.getenv("CODE_ASSISTANT_ID")
-SEARCH_ASSISTANT_ID = os.getenv("SEARCH_ASSISTANT_ID")
 HUB_ASSISTANT_ID = os.getenv("HUB_ASSISTANT_ID")
 
 class ChatRequest(BaseModel):
@@ -72,24 +70,12 @@ async def chat_with_context(payload: ChatRequest):
         memory_result = retrieve_memory({"query": prompt, "user_id": payload.user_id, "session_id": payload.session_id})
         context = "\n".join([m["content"] for m in memory_result.get("results", [])[:5]]) if memory_result.get("results") else None
 
-        assistant_id = None
-        lower_prompt = prompt.lower()
-        if any(kw in lower_prompt for kw in ["code", "script", "function"]):
-            assistant_id = CODE_ASSISTANT_ID
-        elif any(kw in lower_prompt for kw in ["search", "scan", "find"]):
-            assistant_id = SEARCH_ASSISTANT_ID
-        elif last_assistant == "NerdGPT":
-            assistant_id = CODE_ASSISTANT_ID
-        elif last_assistant == "SearchGPT":
-            assistant_id = SEARCH_ASSISTANT_ID
-        else:
-            fallback_reply = "🤖 I'm not sure which assistant should help. Is this a coding question, a document search, or something else?"
-            return {"answer": fallback_reply}
+        assistant_id = HUB_ASSISTANT_ID
 
         thread = client.beta.threads.create()
 
         # 🧠 Inject document search context ONLY for SearchGPT
-        if assistant_id == SEARCH_ASSISTANT_ID:
+        if True:  # Always inject document context when available
             embedding_response = client.embeddings.create(
                 model="text-embedding-3-small",
                 input=prompt
@@ -200,11 +186,7 @@ async def chat_with_context(payload: ChatRequest):
             project_id=GENERAL_CONTEXT_PROJECT_ID,
             content=reply,
             session_id=payload.session_id,
-            speaker_role=(
-                "NerdGPT" if assistant_id == CODE_ASSISTANT_ID else
-                "SearchGPT" if assistant_id == SEARCH_ASSISTANT_ID else
-                "HubGPT"
-            )
+            speaker_role="HubGPT"
         )
 
         return {"answer": reply}
