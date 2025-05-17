@@ -8,12 +8,20 @@ from app.api.file_ops import (background_tasks,  # Removed: embed, chunk
                               ingest, upload)
 from app.api.project_ops import project, session_log
 from app.api.NerdGPT import code_chat, github_api
+from app.api.file_ops.search_docs import perform_search as search_documents
+from app.api.memory_ops.session_memory import retrieve_memory
 from app.core.config import settings
 
 # 🔍 Optional: Print env variables for debugging
 print("🔍 Environment Variable Check:")
 print("OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
 print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
+HUB_ASSISTANT_ID = "asst_Rf28N6knMj0TjwBgfG6JfOkF"
+
+assistant_tools = {
+    HUB_ASSISTANT_ID: [search_documents, retrieve_memory],
+}
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME, openapi_url=f"{settings.API_PREFIX}/openapi.json"
