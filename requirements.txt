@@ -15,3 +15,4 @@ supabase
 uvicorn
 numpy
 tiktoken>=0.5.1
+pdfdocument
