@@ -16,12 +16,6 @@ from app.core.config import settings
 print("🔍 Environment Variable Check:")
 print("OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
 print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
-HUB_ASSISTANT_ID = "asst_Rf28N6knMj0TjwBgfG6JfOkF"
-
-assistant_tools = {
-    HUB_ASSISTANT_ID: [search_documents, retrieve_memory],
-}
-
 
 app = FastAPI(
     title=settings.PROJECT_NAME, openapi_url=f"{settings.API_PREFIX}/openapi.json"
