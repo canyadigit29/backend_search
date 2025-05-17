@@ -146,6 +146,38 @@ async def chat_with_context(payload: ChatRequest):
                     args = json.loads(tool_call.function.arguments)
                     logger.info(f"🛠️ Executing tool: generate_report with args {args}")
 
+                    # Make internal POST to /api/generate-report
+                    report_response = requests.post(
+                        url="/api/generate-report",
+                        json={"title": args["title"], "content": args["content"]},
+                        timeout=30
+                    )
+                    if report_response.status_code != 200:
+                        raise Exception(f"Report generation failed: {report_response.text}")
+                    report_url = report_response.json().get("url")
+                    tool_outputs.append({
+                        "tool_call_id": tool_call.id,
+                        "output": f"Here's your report: {report_url}"
+                    })
+
+            run = client.beta.threads.runs.submit_tool_outputs(
+                thread_id=thread.id,
+                run_id=run.id,
+                tool_outputs=tool_outputs
+            )
+
+            while run.status in ["queued", "in_progress"]:
+                run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+
+
+        # 🔧 TOOL EXECUTION: Handle generate_report
+        if run.status == "requires_action" and run.required_action:
+            tool_outputs = []
+            for tool_call in run.required_action.submit_tool_outputs.tool_calls:
+                if tool_call.function.name == "generate_report":
+                    args = json.loads(tool_call.function.arguments)
+                    logger.info(f"🛠️ Executing tool: generate_report with args {args}")
+
                     # Make backend call to generate PDF
                     report_response = requests.post(
                         url=f"{os.getenv('API_BASE_URL')}/generate-report",
