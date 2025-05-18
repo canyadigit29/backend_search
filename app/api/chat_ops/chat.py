@@ -74,64 +74,13 @@ async def chat_with_context(payload: ChatRequest):
         logger.debug(f"🌟 Using assistant ID: {assistant_id}")
 
         thread = client.beta.threads.create()
+        initial_prompt = context + "\n" + prompt if context else prompt
 
-        def extract_core_search_phrase(prompt: str) -> str:
-            junk_phrases = [
-                "hi max", "can you", "please", "could you", "would you", "i was wondering",
-                "thanks", "thank you", "do you mind", "hey", "hey max"
-            ]
-            prompt_lower = prompt.lower()
-            for junk in junk_phrases:
-                prompt_lower = prompt_lower.replace(junk, "")
-            return prompt_lower.strip()
-
-        cleaned_prompt = extract_core_search_phrase(prompt)
-        embedding_response = client.embeddings.create(
-            model="text-embedding-3-small",
-            input=cleaned_prompt
-        )
-        embedding = embedding_response.data[0].embedding
-        doc_results = perform_search({"embedding": embedding})
-        all_chunks = doc_results.get("results", [])
-        logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
-
-        encoding = tiktoken.encoding_for_model("gpt-4o")
-        max_tokens_per_batch = 4000
-        current_batch = []
-        token_count = 0
-        batches = []
-
-        for chunk in all_chunks:
-            content = chunk.get("content", "")
-            tokens = len(encoding.encode(content))
-            if token_count + tokens > max_tokens_per_batch and current_batch:
-                batches.append(current_batch)
-                current_batch = []
-                token_count = 0
-            current_batch.append(chunk)
-            token_count += tokens
-        if current_batch:
-            batches.append(current_batch)
-
-        total_batches = len(batches)
-        logger.debug(f"📦 Prepared {total_batches} token-aware batches for injection.")
-
-        for i, batch in enumerate(batches):
-            joined_text = "\n\n".join(c.get("content", "[MISSING CONTENT]") for c in batch)
-            final = (i == total_batches - 1)
-            client.beta.threads.messages.create(
-                thread_id=thread.id,
-                role="user",
-                content=f"Document context batch {i + 1} of {total_batches} (final_batch: {final}):\n{joined_text}"
-            )
-
-        final_prompt = f"Based on document context batches 1 through {total_batches}, answer the question: {prompt}"
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
-            content=final_prompt
+            content=initial_prompt
         )
-        logger.debug(f"📬 Final user message to thread: {final_prompt}")
 
         run = client.beta.threads.runs.create(
             thread_id=thread.id,
@@ -141,7 +90,6 @@ async def chat_with_context(payload: ChatRequest):
         while run.status in ["queued", "in_progress"]:
             run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
-            # 🔧 TOOL EXECUTION: Handle generate_report and sync_storage_files
             if run.status == "requires_action" and run.required_action:
                 tool_outputs = []
                 for tool_call in run.required_action.submit_tool_outputs.tool_calls:
@@ -154,7 +102,7 @@ async def chat_with_context(payload: ChatRequest):
                             "output": f"Here's your report: {report_url}"
                         })
                     elif tool_call.function.name == "sync_storage_files":
-                        logger.info("\ud83d\udd27 Executing tool: sync_storage_files")
+                        logger.info("🔧 Executing tool: sync_storage_files")
                         await run_ingestion_once()
                         tool_outputs.append({
                             "tool_call_id": tool_call.id,
@@ -172,12 +120,72 @@ async def chat_with_context(payload: ChatRequest):
                     run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
         messages = client.beta.threads.messages.list(thread_id=thread.id)
-        for msg in messages.data:
-            if msg.role == "assistant":
-                logger.debug(f"🤖 Assistant reply candidate: {msg.content}")
-
         reply_msg = next((m for m in messages.data if m.role == "assistant" and m.content and m.content[0].type == "text"), None)
         reply = reply_msg.content[0].text.value if reply_msg else "(No assistant reply found)"
+
+        logger.debug(f"🤖 Assistant reply: {reply}")
+
+        # 🔎 Conditional search trigger
+        if "[run_search:" in reply:
+            search_query = reply.split("[run_search:", 1)[-1].split("]", 1)[0].strip()
+            logger.info(f"🔍 Triggered document search with query: {search_query}")
+
+            embedding_response = client.embeddings.create(
+                model="text-embedding-3-small",
+                input=search_query
+            )
+            embedding = embedding_response.data[0].embedding
+            doc_results = perform_search({"embedding": embedding})
+            all_chunks = doc_results.get("results", [])
+            logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
+
+            encoding = tiktoken.encoding_for_model("gpt-4o")
+            max_tokens_per_batch = 4000
+            current_batch = []
+            token_count = 0
+            batches = []
+
+            for chunk in all_chunks:
+                content = chunk.get("content", "")
+                tokens = len(encoding.encode(content))
+                if token_count + tokens > max_tokens_per_batch and current_batch:
+                    batches.append(current_batch)
+                    current_batch = []
+                    token_count = 0
+                current_batch.append(chunk)
+                token_count += tokens
+            if current_batch:
+                batches.append(current_batch)
+
+            total_batches = len(batches)
+            logger.debug(f"📦 Prepared {total_batches} token-aware batches for injection.")
+
+            for i, batch in enumerate(batches):
+                joined_text = "\n\n".join(c.get("content", "[MISSING CONTENT]") for c in batch)
+                final = (i == total_batches - 1)
+                client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content=f"Document context batch {i + 1} of {total_batches} (final_batch: {final}):\n{joined_text}"
+                )
+
+            final_prompt = f"Based on document context batches 1 through {total_batches}, answer the question: {search_query}"
+            client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content=final_prompt
+            )
+
+            run = client.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=assistant_id,
+            )
+            while run.status in ["queued", "in_progress"]:
+                run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+
+            messages = client.beta.threads.messages.list(thread_id=thread.id)
+            reply_msg = next((m for m in messages.data if m.role == "assistant" and m.content and m.content[0].type == "text"), None)
+            reply = reply_msg.content[0].text.value if reply_msg else "(No assistant reply found)"
 
         if reply.strip() == "[handoff_to_hub]":
             logger.info("↩️ Assistant handed off back to hub")
