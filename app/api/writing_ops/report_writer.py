@@ -29,9 +29,13 @@ def generate_pdf_report(title: str, content: str, user_id: str = "2532a036-5988-
     filename = f"{title.replace(' ', '_')}_{timestamp}.pdf"
     upload_path = f"{user_id}/Uploads/{filename}"
 
-    # Upload to Supabase
+    # Upload to Supabase using raw bytes
     buffer.seek(0)
-    upload = supabase.storage.from_("maxgptstorage").upload(upload_path, buffer, file_options={"content-type": "application/pdf", "upsert": True})
+    upload = supabase.storage.from_("maxgptstorage").upload(
+        upload_path,
+        buffer.getvalue(),  # ✅ converted from BytesIO to raw bytes
+        file_options={"content-type": "application/pdf", "upsert": True}
+    )
 
     # Generate public URL (as raw string)
     public_url = supabase.storage.from_("maxgptstorage").get_public_url(upload_path).get("publicUrl")
