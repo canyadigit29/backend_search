@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat_ops import chat
-from app.api.file_ops import (background_tasks,  # Removed: embed, chunk
+from app.api.file_ops import (background_tasks, ingestion_routes,  # Removed: embed, chunk
                               ingest, upload)
 from app.api.project_ops import project, session_log
 from app.api.NerdGPT import code_chat, github_api
@@ -47,6 +47,7 @@ app.include_router(chat.router, prefix=settings.API_PREFIX)
 app.include_router(code_chat.router, prefix=settings.API_PREFIX)  # 🔹 NerdGPT route mounted
 app.include_router(github_api.router, prefix=settings.API_PREFIX)  # 🔹 GitHub route mounted
 
+app.include_router(ingestion_routes.router, prefix=settings.API_PREFIX)
 app.include_router(report.router, prefix=settings.API_PREFIX)
 
 # 🚫 No ingestion worker trigger on startup — now called manually from chat
