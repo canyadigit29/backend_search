@@ -55,8 +55,8 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         logging.error(f"❌ Failed to extract text from {file_path}: {str(e)}")
         return
 
-    max_chunk_size = 1000
-    overlap = 200
+    max_chunk_size = 400
+    overlap = 50
     chunks = []
 
     if len(text.strip()) == 0:
