@@ -138,17 +138,24 @@ async def chat_with_context(payload: ChatRequest):
         while run.status in ["queued", "in_progress"]:
             run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
-            # 🔧 TOOL EXECUTION: Handle generate_report
+            # 🔧 TOOL EXECUTION: Handle generate_report and sync_storage_files
             if run.status == "requires_action" and run.required_action:
                 tool_outputs = []
                 for tool_call in run.required_action.submit_tool_outputs.tool_calls:
                     if tool_call.function.name == "generate_report":
                         args = json.loads(tool_call.function.arguments)
-                        logger.info(f"🛠️ Executing tool: generate_report with args {args}")
+                        logger.info(f"🔧 Executing tool: generate_report with args {args}")
                         report_url = generate_pdf_report(args["title"], args["content"])
                         tool_outputs.append({
                             "tool_call_id": tool_call.id,
                             "output": f"Here's your report: {report_url}"
+                        })
+                    elif tool_call.function.name == "sync_storage_files":
+                        logger.info("🔧 Executing tool: sync_storage_files")
+                        await run_ingestion_once()
+                        tool_outputs.append({
+                            "tool_call_id": tool_call.id,
+                            "output": "Ingestion completed."
                         })
 
                 if tool_outputs:
