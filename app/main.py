@@ -1,4 +1,4 @@
-
+from app.api.file_ops import ingestion_worker
 import os  # Moved up as per PEP8
 
 from fastapi import FastAPI
@@ -51,3 +51,5 @@ app.include_router(github_api.router, prefix=settings.API_PREFIX)  # 🔹 GitHub
 app.include_router(report.router, prefix=settings.API_PREFIX)
 
 # 🚫 No ingestion worker trigger on startup — now called manually from chat
+
+app.include_router(ingestion_worker.router)
