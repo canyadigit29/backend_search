@@ -83,3 +83,14 @@ async def run_ingestion_once():
                     )
 
     logger.info("✅ Ingestion cycle complete")
+
+
+from fastapi import APIRouter
+import asyncio
+
+router = APIRouter()
+
+@router.post("/run-ingestion")
+async def run_ingestion_endpoint():
+    asyncio.create_task(run_ingestion_once())
+    return {"status": "Ingestion started"}
