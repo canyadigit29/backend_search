@@ -24,6 +24,7 @@ def perform_search(tool_args):
     project_names = tool_args.get("project_names")
     query_embedding = tool_args.get("embedding")
     expected_phrase = tool_args.get("expected_phrase")
+    limit = tool_args.get("limit", 3000)  # ✅ Default to 3000 if not passed
 
     logger.debug(f"🔍 Searching for documents with the following parameters:")
     logger.debug(f"Project Name: {project_name}, Project Names: {project_names}")
@@ -76,7 +77,7 @@ def perform_search(tool_args):
             logger.info("🔍 No project specified — searching all user documents.")
             base_query = base_query.eq("user_id", USER_ID)
 
-        response = base_query.execute()
+        response = base_query.limit(limit).execute()  # ✅ Apply limit here
 
         if getattr(response, "error", None):
             logger.error(f"❌ Supabase query failed: {response.error.message}")
@@ -123,6 +124,3 @@ def perform_search(tool_args):
 # ✅ Async wrapper for internal use
 async def semantic_search(request, payload):
     return perform_search(payload)
-
-
-    return top_matches
