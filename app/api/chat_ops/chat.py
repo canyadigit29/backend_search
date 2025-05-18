@@ -71,6 +71,7 @@ async def chat_with_context(payload: ChatRequest):
         context = "\n".join([m["content"] for m in memory_result.get("results", [])[:5]]) if memory_result.get("results") else None
 
         assistant_id = HUB_ASSISTANT_ID
+        logger.debug(f"🌟 Using assistant ID: {assistant_id}")
 
         thread = client.beta.threads.create()
 
@@ -124,11 +125,13 @@ async def chat_with_context(payload: ChatRequest):
                 content=f"Document context batch {i + 1} of {total_batches} (final_batch: {final}):\n{joined_text}"
             )
 
+        final_prompt = f"Based on document context batches 1 through {total_batches}, answer the question: {prompt}"
         client.beta.threads.messages.create(
             thread_id=thread.id,
             role="user",
-            content=f"Based on document context batches 1 through {total_batches}, answer the question: {prompt}"
+            content=final_prompt
         )
+        logger.debug(f"📬 Final user message to thread: {final_prompt}")
 
         run = client.beta.threads.runs.create(
             thread_id=thread.id,
@@ -151,7 +154,7 @@ async def chat_with_context(payload: ChatRequest):
                             "output": f"Here's your report: {report_url}"
                         })
                     elif tool_call.function.name == "sync_storage_files":
-                        logger.info("🔧 Executing tool: sync_storage_files")
+                        logger.info("\ud83d\udd27 Executing tool: sync_storage_files")
                         await run_ingestion_once()
                         tool_outputs.append({
                             "tool_call_id": tool_call.id,
@@ -169,6 +172,10 @@ async def chat_with_context(payload: ChatRequest):
                     run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
 
         messages = client.beta.threads.messages.list(thread_id=thread.id)
+        for msg in messages.data:
+            if msg.role == "assistant":
+                logger.debug(f"🤖 Assistant reply candidate: {msg.content}")
+
         reply_msg = next((m for m in messages.data if m.role == "assistant" and m.content and m.content[0].type == "text"), None)
         reply = reply_msg.content[0].text.value if reply_msg else "(No assistant reply found)"
 
