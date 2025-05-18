@@ -52,4 +52,4 @@ app.include_router(report.router, prefix=settings.API_PREFIX)
 
 # 🚫 No ingestion worker trigger on startup — now called manually from chat
 
-app.include_router(ingestion_worker.router)
+app.include_router(ingestion_worker.router, prefix=settings.API_PREFIX)
