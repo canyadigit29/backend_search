@@ -151,15 +151,15 @@ async def chat_with_context(payload: ChatRequest):
                             "output": f"Here's your report: {report_url}"
                         })
 
-                run = client.beta.threads.runs.submit_tool_outputs(
-                    thread_id=thread.id,
-                    run_id=run.id,
-                    tool_outputs=tool_outputs
-                )
+                if tool_outputs:
+                    run = client.beta.threads.runs.submit_tool_outputs(
+                        thread_id=thread.id,
+                        run_id=run.id,
+                        tool_outputs=tool_outputs
+                    )
 
                 while run.status in ["queued", "in_progress"]:
                     run = client.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-
 
         messages = client.beta.threads.messages.list(thread_id=thread.id)
         reply_msg = next((m for m in messages.data if m.role == "assistant" and m.content and m.content[0].type == "text"), None)
