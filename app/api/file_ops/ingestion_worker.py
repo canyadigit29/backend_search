@@ -46,7 +46,7 @@ async def run_ingestion_once():
                     .execute()
                 )
 
-                if not exists.data:
+                if not exists or not exists.data:
                     project_id_result = (
                         supabase.table("projects")
                         .select("id")
@@ -75,7 +75,7 @@ async def run_ingestion_once():
                 else:
                     file_id = exists.data["id"]
 
-                if not exists.data or not exists.data.get("ingested"):
+                if not exists or not exists.data or not exists.data.get("ingested"):
                     process_file(
                         file_path=file_path,
                         file_id=file_id,
