@@ -68,16 +68,26 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         if not chunk_text:
             continue
 
-        embedding = client.embeddings.create(
+        # ✅ Validate input and output of embedding
+        if not isinstance(chunk_text, str):
+            logging.error(f"❌ Invalid chunk_text type: expected str, got {type(chunk_text)}")
+            continue
+
+        embedding_response = client.embeddings.create(
             model="text-embedding-3-large",
             input=chunk_text
-        ).data[0].embedding
+        )
+        embedding = embedding_response.data[0].embedding
+
+        if len(embedding) != 1536:
+            logging.error(f"❌ Embedding shape mismatch: expected 1536-dim, got {len(embedding)}")
+            continue
 
         chunk_data = {
             "id": str(uuid.uuid4()),
             "file_id": file_id,
             "content": chunk_text,
-            "embedding": embedding,  # ✅ Stored as raw float[] for pgvector
+            "embedding": embedding,
             "chunk_index": len(chunks),
             "project_id": project_id,
             "file_name": file_name,
