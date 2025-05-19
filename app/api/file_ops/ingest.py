@@ -82,8 +82,8 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         )
         embedding = embedding_response.data[0].embedding
 
-        if len(embedding) != 1536:
-            logging.error(f"❌ Embedding shape mismatch: expected 1536-dim, got {len(embedding)}")
+        if len(embedding) != 3072:
+            logging.error(f"❌ Embedding shape mismatch: expected 3072-dim, got {len(embedding)}")
             continue
 
         chunk_data = {
