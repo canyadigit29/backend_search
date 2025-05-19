@@ -68,6 +68,9 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         if not chunk_text:
             continue
 
+        # ✅ Log type and preview of input
+        logging.debug(f"🧠 Embedding input type: {type(chunk_text)}, preview: {str(chunk_text)[:50]}")
+
         # ✅ Validate input and output of embedding
         if not isinstance(chunk_text, str):
             logging.error(f"❌ Invalid chunk_text type: expected str, got {type(chunk_text)}")
