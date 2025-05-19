@@ -67,14 +67,18 @@ async def chat_with_context(payload: ChatRequest):
             last_assistant = last_reply.data[0]["speaker_role"]
         logger.debug(f"🤖 Last assistant speaker: {last_assistant}")
 
-        memory_result = retrieve_memory({"query": prompt, "user_id": payload.user_id, "session_id": payload.session_id})
+        memory_result = retrieve_memory({
+            "query": prompt,
+            "user_id": payload.user_id,
+            "session_id": payload.session_id
+        })
         context = "\n".join([m["content"] for m in memory_result.get("results", [])[:5]]) if memory_result.get("results") else None
 
         assistant_id = HUB_ASSISTANT_ID
         logger.debug(f"🌟 Using assistant ID: {assistant_id}")
 
         thread = client.beta.threads.create()
-        initial_prompt = context + "\n" + prompt if context else prompt
+        initial_prompt = f"{context}\n{prompt}" if context else prompt  # ✅ PATCHED
 
         client.beta.threads.messages.create(
             thread_id=thread.id,
@@ -135,7 +139,7 @@ async def chat_with_context(payload: ChatRequest):
                 input=search_query
             )
             embedding = embedding_response.data[0].embedding
-            doc_results = perform_search({"embedding": embedding, "limit": 5000})  # ✅ PATCHED HERE
+            doc_results = perform_search({"embedding": embedding, "limit": 5000})
             all_chunks = doc_results.get("results", [])
             logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
 
