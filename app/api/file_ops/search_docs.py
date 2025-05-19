@@ -1,7 +1,6 @@
 import json
 import os
 import logging
-import numpy as np
 
 from app.core.supabase_client import create_client
 
@@ -15,16 +14,12 @@ supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
 USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
 
-def cosine_similarity(vec1, vec2):
-    v1, v2 = np.array(vec1), np.array(vec2)
-    return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
-
 def perform_search(tool_args):
     project_name = tool_args.get("project_name")
     project_names = tool_args.get("project_names")
     query_embedding = tool_args.get("embedding")
     expected_phrase = tool_args.get("expected_phrase")
-    limit = tool_args.get("limit", 3000)  # ✅ Default to 3000 if not passed
+    limit = tool_args.get("limit", 3000)
 
     logger.debug(f"🔍 Searching for documents with the following parameters:")
     logger.debug(f"Project Name: {project_name}, Project Names: {project_names}")
@@ -67,55 +62,30 @@ def perform_search(tool_args):
 
         logger.debug(f"✅ Project IDs found: {project_ids}")
 
-        base_query = supabase.table("document_chunks").select(
-            "content, embedding, chunk_index, file_name"
-        )
+        # Use Supabase RPC to perform pgvector search
+        rpc_args = {
+            "query_embedding": query_embedding,
+            "match_threshold": 0.3,
+            "match_count": limit,
+            "user_id_filter": USER_ID,
+            "project_ids_filter": project_ids or None
+        }
 
-        if project_ids:
-            base_query = base_query.in_("project_id", project_ids)
-        else:
-            logger.info("🔍 No project specified — searching all user documents.")
-            base_query = base_query.eq("user_id", USER_ID)
-
-        response = base_query.limit(limit).execute()  # ✅ Apply limit here
+        response = supabase.rpc("match_documents", rpc_args).execute()
 
         if getattr(response, "error", None):
-            logger.error(f"❌ Supabase query failed: {response.error.message}")
-            return {"error": f"Supabase query failed: {response.error.message}"}
+            logger.error(f"❌ Supabase RPC failed: {response.error.message}")
+            return {"error": f"Supabase RPC failed: {response.error.message}"}
 
-        rows = response.data
+        matches = response.data or []
+        logger.debug(f"✅ Retrieved {len(matches)} matches from pgvector RPC.")
 
-        if not rows:
-            logger.info("ℹ️ No document chunks found for the specified project(s).")
-            return {"message": "No document chunks found for the specified project(s)."}
-
-        logger.debug(f"✅ Retrieved {len(rows)} document chunks.")
-
-        # Calculate cosine similarity for each document
-        scored = [
-            {
-                "content": row["content"],
-                "score": cosine_similarity(query_embedding, row["embedding"]),
-                "file_name": row.get("file_name", "(unknown file)"),
-                "chunk_index": row.get("chunk_index", 0),
-            }
-            for row in rows
-        ]
-
-        logger.debug(f"✅ Cosine similarity scores calculated.")
-
-        # Sort by score and get top matches
-        top_matches = [m for m in sorted(scored, key=lambda x: x["score"], reverse=True) if m["score"] >= 0.30]
-
-        # Apply omission filter if expected_phrase is set
         if expected_phrase:
             expected_lower = expected_phrase.lower()
-            filtered = [x for x in top_matches if expected_lower not in x["content"].lower()]
-            logger.debug(f"🔍 {len(filtered)} results after omitting phrase: '{expected_phrase}'")
-            top_matches = filtered
+            matches = [x for x in matches if expected_lower not in x["content"].lower()]
+            logger.debug(f"🔍 {len(matches)} results after omitting phrase: '{expected_phrase}'")
 
-        logger.debug(f"✅ Top matches: {top_matches}")
-        return {"results": top_matches}
+        return {"results": matches}
 
     except Exception as e:
         logger.error(f"❌ Error during search: {str(e)}")

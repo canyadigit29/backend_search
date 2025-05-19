@@ -77,7 +77,7 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
             "id": str(uuid.uuid4()),
             "file_id": file_id,
             "content": chunk_text,
-            "embedding": embedding,
+            "embedding": embedding,  # ✅ Stored as raw float[] for pgvector
             "chunk_index": len(chunks),
             "project_id": project_id,
             "file_name": file_name,

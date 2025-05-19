@@ -51,6 +51,7 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
         embedding = retry_embed_text(chunk_text)
         timestamp = datetime.utcnow().isoformat()
 
+        # ✅ Store raw float list directly (pgvector-compatible)
         data = {
             "id": str(uuid.uuid4()),
             "content": chunk_text,
