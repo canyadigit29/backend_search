@@ -140,7 +140,7 @@ async def chat_with_context(payload: ChatRequest):
             logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
 
             encoding = tiktoken.encoding_for_model("gpt-4o")
-            max_tokens_per_batch = 4000
+            max_tokens_per_batch = 6000
             current_batch = []
             token_count = 0
             batches = []
