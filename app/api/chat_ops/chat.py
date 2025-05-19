@@ -131,7 +131,7 @@ async def chat_with_context(payload: ChatRequest):
             logger.info(f"🔍 Triggered document search with query: {search_query}")
 
             embedding_response = client.embeddings.create(
-                model="text-embedding-3-small",
+                model="text-embedding-3-large",
                 input=search_query
             )
             embedding = embedding_response.data[0].embedding
