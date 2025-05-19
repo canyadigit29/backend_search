@@ -19,7 +19,7 @@ def embed_text(text: str) -> list[float]:
     response = client.embeddings.create(model="text-embedding-3-large", input=text)
     embedding = response.data[0].embedding
 
-    if not isinstance(embedding, list) or len(embedding) != 1536:
+    if not isinstance(embedding, list) or len(embedding) != 3072:
         raise ValueError(f"Embedding shape mismatch: expected 1536-dim vector, got {len(embedding)}")
 
     return embedding
