@@ -4,18 +4,25 @@ import uuid
 from datetime import datetime
 
 from openai import OpenAI
-
 from app.core.supabase_client import supabase
 
 logging.basicConfig(level=logging.INFO)
 client = OpenAI()
 
 def embed_text(text: str) -> list[float]:
+    if not isinstance(text, str):
+        raise ValueError(f"Expected string input to embed_text(), got {type(text)}")
+
     if not text.strip():
         raise ValueError("Cannot embed empty text")
 
     response = client.embeddings.create(model="text-embedding-3-large", input=text)
-    return response.data[0].embedding
+    embedding = response.data[0].embedding
+
+    if not isinstance(embedding, list) or len(embedding) != 1536:
+        raise ValueError(f"Embedding shape mismatch: expected 1536-dim vector, got {len(embedding)}")
+
+    return embedding
 
 def is_valid_uuid(value):
     try:
@@ -51,7 +58,6 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
         embedding = retry_embed_text(chunk_text)
         timestamp = datetime.utcnow().isoformat()
 
-        # ✅ Store raw float list directly (pgvector-compatible)
         data = {
             "id": str(uuid.uuid4()),
             "content": chunk_text,
