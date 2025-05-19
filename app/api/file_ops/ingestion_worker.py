@@ -29,58 +29,68 @@ async def run_ingestion_once():
             project_name = project_folder["name"].rstrip("/")
             logger.info(f"📁 Scanning project folder: {project_name}")
 
-            files = supabase.storage.from_(BUCKET).list(f"{user_id}/{project_name}/")
-            for file in files:
-                logger.info(f"🧾 Found file: {file['name']}")
-                file_name = file["name"]
-                if not file_name or file_name.startswith("."):
-                    continue
-
-                file_path = f"{user_id}/{project_name}/{file_name}"
-
-                exists = (
-                    supabase.table("files")
-                    .select("id, ingested")
-                    .eq("file_path", file_path)
-                    .maybe_single()
-                    .execute()
+            offset = 0
+            page_size = 100
+            while True:
+                files = supabase.storage.from_(BUCKET).list(
+                    f"{user_id}/{project_name}/", {"limit": page_size, "offset": offset}
                 )
+                if not files:
+                    break
 
-                if not exists or not exists.data:
-                    project_id_result = (
-                        supabase.table("projects")
-                        .select("id")
-                        .eq("user_id", user_id)
-                        .eq("name", project_name)
+                for file in files:
+                    logger.info(f"🧾 Found file: {file['name']}")
+                    file_name = file["name"]
+                    if not file_name or file_name.startswith("."):
+                        continue
+
+                    file_path = f"{user_id}/{project_name}/{file_name}"
+
+                    exists = (
+                        supabase.table("files")
+                        .select("id, ingested")
+                        .eq("file_path", file_path)
                         .maybe_single()
                         .execute()
                     )
-                    if not project_id_result.data:
-                        logger.warning(f"⚠️ Project not found for: {project_name}")
-                        continue
 
-                    file_id = str(uuid.uuid4())
-                    supabase.table("files").insert(
-                        {
-                            "id": file_id,
-                            "file_path": file_path,
-                            "file_name": file_name,
-                            "project_id": project_id_result.data["id"],
-                            "user_id": user_id,
-                            "uploaded_at": datetime.utcnow().isoformat(),
-                            "ingested": False,
-                            "ingested_at": None,
-                        }
-                    ).execute()
-                else:
-                    file_id = exists.data["id"]
+                    if not exists or not exists.data:
+                        project_id_result = (
+                            supabase.table("projects")
+                            .select("id")
+                            .eq("user_id", user_id)
+                            .eq("name", project_name)
+                            .maybe_single()
+                            .execute()
+                        )
+                        if not project_id_result.data:
+                            logger.warning(f"⚠️ Project not found for: {project_name}")
+                            continue
 
-                if not exists or not exists.data or not exists.data.get("ingested"):
-                    process_file(
-                        file_path=file_path,
-                        file_id=file_id,
-                        user_id=user_id,
-                    )
+                        file_id = str(uuid.uuid4())
+                        supabase.table("files").insert(
+                            {
+                                "id": file_id,
+                                "file_path": file_path,
+                                "file_name": file_name,
+                                "project_id": project_id_result.data["id"],
+                                "user_id": user_id,
+                                "uploaded_at": datetime.utcnow().isoformat(),
+                                "ingested": False,
+                                "ingested_at": None,
+                            }
+                        ).execute()
+                    else:
+                        file_id = exists.data["id"]
+
+                    if not exists or not exists.data or not exists.data.get("ingested"):
+                        process_file(
+                            file_path=file_path,
+                            file_id=file_id,
+                            user_id=user_id,
+                        )
+
+                offset += page_size
 
     logger.info("✅ Ingestion cycle complete")
 
