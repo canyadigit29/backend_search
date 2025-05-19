@@ -104,3 +104,8 @@ router = APIRouter()
 async def run_ingestion_endpoint():
     asyncio.create_task(run_ingestion_once())
     return {"status": "Ingestion started"}
+
+
+@router.post("/sync-files")
+async def alias_sync_route():
+    return await run_ingestion_endpoint()
