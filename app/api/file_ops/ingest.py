@@ -69,7 +69,7 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
             continue
 
         embedding = client.embeddings.create(
-            model="text-embedding-3-small",
+            model="text-embedding-3-large",
             input=chunk_text
         ).data[0].embedding
 
