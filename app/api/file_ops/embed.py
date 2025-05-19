@@ -14,7 +14,7 @@ def embed_text(text: str) -> list[float]:
     if not text.strip():
         raise ValueError("Cannot embed empty text")
 
-    response = client.embeddings.create(model="text-embedding-3-small", input=text)
+    response = client.embeddings.create(model="text-embedding-3-large", input=text)
     return response.data[0].embedding
 
 def is_valid_uuid(value):
