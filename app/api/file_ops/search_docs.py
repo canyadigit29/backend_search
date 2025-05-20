@@ -72,6 +72,7 @@ def perform_search(tool_args):
         }
 
         response = supabase.rpc("match_documents", rpc_args).execute()
+        logger.debug(f"🧠 match_documents returned: {len(response.data or [])} chunks")
 
         if getattr(response, "error", None):
             logger.error(f"❌ Supabase RPC failed: {response.error.message}")
