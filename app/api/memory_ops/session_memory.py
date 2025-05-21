@@ -78,8 +78,8 @@ def retrieve_memory(tool_args):
 
         rpc_args = {
             "query_embedding": query_embedding,
-            "match_threshold": 0.4,
-            "match_count": 50,
+            "match_threshold": 0.3,
+            "match_count": 100,
             "user_id_filter": user_id,
             "session_id_filter": session_id or None
         }
