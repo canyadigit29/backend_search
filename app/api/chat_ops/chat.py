@@ -1,4 +1,3 @@
-
 import json
 import logging
 import os
@@ -6,7 +5,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
-import openai
+from openai import OpenAI
 from pydantic import BaseModel
 import tiktoken
 
@@ -18,9 +17,11 @@ router = APIRouter()
 logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
-if not openai.api_key:
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
     raise RuntimeError("OPENAI_API_KEY not set in environment")
+
+client = OpenAI(api_key=openai_api_key)
 
 GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
 
@@ -58,15 +59,25 @@ async def chat_with_context(payload: ChatRequest):
 
         messages = [{
             "role": "system",
-            "content": "You are Max, a sharp, capable assistant with a dry sense of humor and a distinctly human tone. You're candid, conversational, confident, and not afraid to be direct or witty when it helps. You're a collaborator and analyst engaging in every prompt as a conversation.\n\nUsers have uploaded documents that you can search. You cannot search them directly yourself, but you can trigger a document search through the backend.\n\n- First, clarify and refine the user’s request into a precise search phrase.\n- When ready, respond with: [run_search: FINAL QUERY HERE]\n  This is the signal that tells the backend to perform the actual search for you.\n- Do not include explanations or additional commentary alongside the [run_search: ...] line.\n- After the documents are returned to you, analyze and summarize them using bullet points, headers, and clear formatting.\n- Use memory context when it helps. Never fake confidence. Prioritize clarity."
+            "content": (
+                "You are Max, a sharp, capable assistant with a dry sense of humor and a distinctly human tone. You're candid, conversational, confident, and not afraid to be direct or witty when it helps. You're a collaborator and analyst engaging in every prompt as a conversation.\n\n"
+                "Users have uploaded documents that you can search. You cannot search them directly yourself, but you can trigger a document search through the backend.\n\n"
+                "- First, clarify and refine the user’s request into a precise search phrase.\n"
+                "- When ready, respond with: [run_search: FINAL QUERY HERE]\n"
+                "  This is the signal that tells the backend to perform the actual search for you.\n"
+                "- Do not include explanations or additional commentary alongside the [run_search: ...] line.\n"
+                "- After the documents are returned to you, analyze and summarize them using bullet points, headers, and clear formatting.\n"
+                "- Use memory context when it helps. Never fake confidence. Prioritize clarity.    "
+            )
         }]
+
         if context:
             messages.append({"role": "system", "content": f"Relevant memory: {context}"})
         messages.append({"role": "user", "content": prompt})
 
-        logger.debug(f"🧠 Final message list: {json.dumps(messages, indent=2)}")
+        logger.debug(f"🧐 Final message list: {json.dumps(messages, indent=2)}")
 
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=messages
         )
@@ -74,11 +85,12 @@ async def chat_with_context(payload: ChatRequest):
         reply = response.choices[0].message.content.strip()
         logger.debug(f"🤖 Assistant reply: {reply}")
 
+        # 🔎 Check for explicit search trigger
         if "[run_search:" in reply:
             search_query = reply.split("[run_search:", 1)[-1].split("]", 1)[0].strip()
             logger.info(f"🔍 Triggered document search with query: {search_query}")
 
-            embedding_response = openai.Embedding.create(
+            embedding_response = client.embeddings.create(
                 model="text-embedding-3-large",
                 input=search_query
             )
@@ -88,10 +100,10 @@ async def chat_with_context(payload: ChatRequest):
             logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
 
             encoding = tiktoken.encoding_for_model("gpt-4o")
-            max_tokens_per_batch = 12000
+            max_tokens_per_batch = 12000  # Raised from 6000 to 12000
             current_batch = []
             token_count = 0
-            total_token_count = 0
+            total_token_count = 0  # Track total tokens across all batches
             batches = []
 
             for chunk in all_chunks:
@@ -107,7 +119,8 @@ async def chat_with_context(payload: ChatRequest):
             if current_batch:
                 batches.append(current_batch)
 
-            logger.debug(f"🧮 Total injected document tokens: {total_token_count} across {len(batches)} batches")
+            total_token_count = sum(len(encoding.encode(c.get('content', ''))) for b in batches for c in b)
+            logger.debug(f"🧾 Total injected document tokens: {total_token_count} across {len(batches)} batches")
             total_batches = len(batches)
             logger.debug(f"📦 Prepared {total_batches} token-aware batches for injection.")
 
@@ -125,17 +138,12 @@ async def chat_with_context(payload: ChatRequest):
                 "content": f"Based on document context batches 1 through {total_batches}, answer the question: {search_query}"
             })
 
-            response = openai.ChatCompletion.create(
+            response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=messages
             )
             reply = response.choices[0].message.content.strip()
-            logger.debug(f"🧠 Assistant follow-up reply: {reply}")
-
-        if reply.strip() == "[handoff_to_hub]":
-            logger.info("↩️ Assistant handed off back to hub")
-            fallback_reply = "Just to make sure I understood — is this something related to code, documents, or something else?"
-            return {"answer": fallback_reply}
+            logger.debug(f"🧐 Assistant follow-up reply: {reply}")
 
         save_message(
             user_id=payload.user_id,
