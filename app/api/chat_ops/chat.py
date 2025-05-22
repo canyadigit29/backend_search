@@ -99,7 +99,7 @@ logger.debug(f"🧠 Final message list: {json.dumps(messages, indent=2)}")
             logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
 
             encoding = tiktoken.encoding_for_model("gpt-4o")
-            max_tokens_per_batch = 6000
+            max_tokens_per_batch = 12000  # Raised from 6000 to 12000
             current_batch = []
             token_count = 0
             batches = []
@@ -116,6 +116,8 @@ logger.debug(f"🧠 Final message list: {json.dumps(messages, indent=2)}")
             if current_batch:
                 batches.append(current_batch)
 
+            total_token_count = sum(len(encoding.encode(c.get('content', ''))) for b in batches for c in b)
+            logger.debug(f"🧮 Total injected document tokens: {total_token_count} across {len(batches)} batches")
             total_batches = len(batches)
             logger.debug(f"📦 Prepared {total_batches} token-aware batches for injection.")
 
