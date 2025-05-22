@@ -1,30 +1,12 @@
-import os
-import fitz  # PyMuPDF
-from docx import Document
 
-def extract_text(local_path: str) -> str:
-    _, ext = os.path.splitext(local_path.lower())
+import pdfplumber
 
-    if ext == ".txt":
-        with open(local_path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
-
-    elif ext == ".pdf":
-        text = ""
-        try:
-            doc = fitz.open(local_path)
-            for page in doc:
-                text += page.get_text()
+def extract_text(path):
+    try:
+        with pdfplumber.open(path) as pdf:
+            text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+            print(f"📜 Extracted {len(text)} characters using pdfplumber.")
             return text
-        except Exception as e:
-            raise RuntimeError(f"PDF extraction failed: {e}") from e
-
-    elif ext in [".doc", ".docx"]:
-        try:
-            doc = Document(local_path)
-            return "\n".join(p.text for p in doc.paragraphs)
-        except Exception as e:
-            raise RuntimeError(f"DOCX extraction failed: {e}") from e
-
-    else:
-        raise ValueError(f"Unsupported file type: {ext}")
+    except Exception as e:
+        print(f"🛑 pdfplumber failed: {e}")
+        return ""
