@@ -8,7 +8,6 @@ python-docx
 python-dotenv
 python-multipart
 pytesseract
-PyMuPDF
 requests
 striprtf
 supabase
@@ -17,4 +16,4 @@ numpy
 tiktoken>=0.5.1
 pdfdocument
 nltk
-
+pdfplumber
