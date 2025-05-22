@@ -66,13 +66,15 @@ async def chat_with_context(payload: ChatRequest):
                 "- Clarify and distill the user’s intent into a core search phrase before triggering a search. "
                 "Once refined, output: [run_search: FINAL QUERY HERE]\n"
                 "- Present results using headers, bullet points, and summaries.\n"
-                "- Use memory context to personalize responses. Never fake confidence. Prioritize clarity and usefulness."
+                "- Use memory context to personalize ses. Never fake confidence. Prioritize clarity and usefulness."
             )
         }]
 
         if context:
             messages.append({"role": "system", "content": f"Relevant memory: {context}"})
         messages.append({"role": "user", "content": prompt})
+
+logger.debug(f"🧠 Final message list: {json.dumps(messages, indent=2)}")
 
         response = client.chat.completions.create(
             model="gpt-4o",
