@@ -3,11 +3,16 @@ import time
 import uuid
 from datetime import datetime
 
+import numpy as np
 from openai import OpenAI
 from app.core.supabase_client import supabase
 
 logging.basicConfig(level=logging.INFO)
 client = OpenAI()
+
+def normalize_vector(v):
+    norm = np.linalg.norm(v)
+    return (v / norm).tolist() if norm > 0 else v
 
 def embed_text(text: str) -> list[float]:
     if not isinstance(text, str):
@@ -17,7 +22,7 @@ def embed_text(text: str) -> list[float]:
         raise ValueError("Cannot embed empty text")
 
     response = client.embeddings.create(model="text-embedding-3-large", input=text)
-    embedding = response.data[0].embedding
+    embedding = normalize_vector(np.array(response.data[0].embedding))
 
     if not isinstance(embedding, list) or len(embedding) != 3072:
         raise ValueError(f"Embedding shape mismatch: expected 3072-dim vector, got {len(embedding)}")
