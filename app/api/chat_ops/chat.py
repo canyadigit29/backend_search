@@ -102,6 +102,7 @@ logger.debug(f"🧠 Final message list: {json.dumps(messages, indent=2)}")
             max_tokens_per_batch = 12000  # Raised from 6000 to 12000
             current_batch = []
             token_count = 0
+            total_token_count = 0  # Track total tokens across all batches
             batches = []
 
             for chunk in all_chunks:
@@ -112,6 +113,7 @@ logger.debug(f"🧠 Final message list: {json.dumps(messages, indent=2)}")
                     current_batch = []
                     token_count = 0
                 current_batch.append(chunk)
+                total_token_count += tokens
                 token_count += tokens
             if current_batch:
                 batches.append(current_batch)
