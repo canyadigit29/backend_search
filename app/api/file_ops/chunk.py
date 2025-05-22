@@ -1,9 +1,14 @@
+
 import re
+import nltk
 from pathlib import Path
 from uuid import uuid4
 
 from app.core.extract_text import extract_text  # Assumed
 from app.core.supabase_client import supabase
+
+nltk.download('punkt', quiet=True)
+from nltk.tokenize import sent_tokenize
 
 def chunk_file(file_id: str, user_id: str = None):
     print(f"🔍 Starting chunking for file_id: {file_id}")
@@ -41,45 +46,57 @@ def chunk_file(file_id: str, user_id: str = None):
             print(f"❌ Failed to extract text from {file_path}: {str(e)}")
             return
 
-        max_chunk_size = 1000
-        overlap = 150
+        max_chunk_size = 1600
+        overlap = 200
+        sentences = sent_tokenize(text)
         chunks = []
+        current_chunk = []
 
-        if len(text) <= max_chunk_size:
+        def chunk_text_block(sentences):
+            return " ".join(sentences)
+
+        token_length = 0
+        for sentence in sentences:
+            sentence_length = len(sentence)
+            if token_length + sentence_length > max_chunk_size:
+                if current_chunk:
+                    chunks.append(chunk_text_block(current_chunk))
+                    token_length = 0
+                    current_chunk = []
+            current_chunk.append(sentence)
+            token_length += sentence_length
+
+        if current_chunk:
+            chunks.append(chunk_text_block(current_chunk))
+
+        # Add overlap
+        final_chunks = []
+        for i, chunk in enumerate(chunks):
+            start_idx = max(0, i - 1)
+            combined = " ".join(chunks[start_idx:i + 1])
+            final_chunks.append(combined)
+
+        db_chunks = []
+        for i, chunk_text in enumerate(final_chunks):
             chunk_id = str(uuid4())
             chunk = {
                 "id": chunk_id,
                 "file_id": file_entry["id"],
-                "content": text,
-                "chunk_index": 0,
+                "content": chunk_text,
+                "chunk_index": i,
             }
             if actual_user_id:
                 chunk["user_id"] = actual_user_id
             if project_id:
                 chunk["project_id"] = project_id
-            chunks.append(chunk)
-        else:
-            for i in range(0, len(text), max_chunk_size - overlap):
-                chunk_text = text[i : i + max_chunk_size]
-                chunk_id = str(uuid4())
-                chunk = {
-                    "id": chunk_id,
-                    "file_id": file_entry["id"],
-                    "content": chunk_text,
-                    "chunk_index": len(chunks),
-                }
-                if actual_user_id:
-                    chunk["user_id"] = actual_user_id
-                if project_id:
-                    chunk["project_id"] = project_id
-                chunks.append(chunk)
+            db_chunks.append(chunk)
 
-        print(f"🧹 Got {len(chunks)} chunks from {file_path}")
+        print(f"🧹 Got {len(db_chunks)} semantic-aware chunks from {file_path}")
 
-        if chunks:
-            supabase.table("document_chunks").insert(chunks).execute()
-            print(f"✅ Inserted {len(chunks)} chunks.")
-            return [chunk["content"] for chunk in chunks]  # ✅ PATCHED
+        if db_chunks:
+            supabase.table("document_chunks").insert(db_chunks).execute()
+            print(f"✅ Inserted {len(db_chunks)} chunks.")
+            return [chunk["content"] for chunk in db_chunks]
 
     except Exception as e:
         print(f"❌ Error during chunking: {str(e)}")
