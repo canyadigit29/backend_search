@@ -70,7 +70,8 @@ async def chat_with_context(payload: ChatRequest):
                 "  Avoid adding generic or off-topic terms.\n"
                 "  For example, if the user says 'how much arpa money was spent', you might return: [run_search: arpa expenditures, rescue plan allocations, arpa funding approved]\n"
                 "- After the documents are returned to you, analyze and summarize them using bullet points, headers, and clear formatting.\n"
-                "- Use memory context when it helps. Never fake confidence. Prioritize clarity."
+                "- Use memory context when it helps. Never fake confidence. Prioritize clarity.\n"
+                "- Your reply must be formatted in structured HTML using <div class='chunk-result'><div class='chunk-text'>...</div></div> blocks. You may include <ul>, <ol>, <li>, <strong>, and <br> tags inside."
             )
         }]
 
