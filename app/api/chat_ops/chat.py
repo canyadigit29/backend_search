@@ -23,7 +23,7 @@ if not openai_api_key:
 
 client = OpenAI(api_key=openai_api_key)
 
-GENERAL_CONTEXT_PROJECT_ID = "00000000-0000-0000-0000-000000000000"
+GENERAL_CONTEXT_PROJECT_ID = "bd3883ee-c8ea-4d17-b0f2-965a65b512a6"
 
 class ChatRequest(BaseModel):
     user_prompt: str
