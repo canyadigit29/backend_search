@@ -69,9 +69,9 @@ async def chat_with_context(payload: ChatRequest):
                 "- When determining the best search phrase, use 2–3 alternate phrasings or closely related terms that broaden the query while preserving its core meaning.\n"
                 "  Avoid adding generic or off-topic terms.\n"
                 "  For example, if the user says 'how much arpa money was spent', you might return: [run_search: arpa expenditures, rescue plan allocations, arpa funding approved]\n"
-                "- After the documents are returned to you, analyze and summarize them using bullet points, headers, and clear formatting.\n"
-                "- Use memory context when it helps. Never fake confidence. Prioritize clarity.\n"
-                "- Your reply must be formatted in structured HTML using <div class='chunk-result'><div class='chunk-text'>...</div></div> blocks. You may include <ul>, <ol>, <li>, <strong>, and <br> tags inside."
+                "- After the documents are returned to you, analyze and summarize them using bullet points, headers, and clear formatting (HTML is supported).\n"
+                "- Wrap summaries in <div class='chunk-result'><div class='chunk-text'> ... </div></div>.\n"
+                "- Use memory context when it helps. Never fake confidence. Prioritize clarity."
             )
         }]
 
@@ -87,6 +87,8 @@ async def chat_with_context(payload: ChatRequest):
         )
 
         reply = response.choices[0].message.content.strip()
+        if "<div class='chunk-result'>" not in reply:
+            reply = f"<div class='chunk-result'><div class='chunk-text'>{reply}</div></div>"
         logger.debug(f"🤖 Assistant reply: {reply}")
 
         if "[run_search:" in reply:
@@ -146,6 +148,8 @@ async def chat_with_context(payload: ChatRequest):
                 messages=messages
             )
             reply = response.choices[0].message.content.strip()
+        if "<div class='chunk-result'>" not in reply:
+            reply = f"<div class='chunk-result'><div class='chunk-text'>{reply}</div></div>"
             logger.debug(f"🧐 Assistant follow-up reply: {reply}")
 
         save_message(
