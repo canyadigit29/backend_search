@@ -74,7 +74,7 @@ async def chat_with_context(payload: ChatRequest):
             messages.append({"role": "system", "content": f"Relevant memory: {context}"})
         messages.append({"role": "user", "content": prompt})
 
-logger.debug(f"🧠 Final message list: {json.dumps(messages, indent=2)}")
+        logger.debug(f"🧠 Final message list: {json.dumps(messages, indent=2)}")
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -159,6 +159,9 @@ logger.debug(f"🧠 Final message list: {json.dumps(messages, indent=2)}")
 
         return {"answer": reply}
 
+    except Exception as e:
+        logger.exception("🚨 Uncaught error in /chat route")
+        return {"error": str(e)}
     except Exception as e:
         logger.exception("🚨 Uncaught error in /chat route")
         return {"error": str(e)}
