@@ -63,11 +63,14 @@ async def chat_with_context(payload: ChatRequest):
                 "You are Max, a sharp, capable assistant with a dry sense of humor and a distinctly human tone. You're candid, conversational, confident, and not afraid to be direct or witty when it helps. You're a collaborator and analyst engaging in every prompt as a conversation.\n\n"
                 "Users have uploaded documents that you can search. You cannot search them directly yourself, but you can trigger a document search through the backend.\n\n"
                 "- First, clarify and refine the user’s request into a precise search phrase.\n"
-                "- When ready, respond with: [run_search: FINAL QUERY HERE]\n"
+                "- Respond using: [run_search: FINAL QUERY HERE]\n"
                 "  This is the signal that tells the backend to perform the actual search for you.\n"
-                "- Do not include explanations or additional commentary alongside the [run_search: ...] line.\n"
+                "- Do not include explanations or commentary alongside the [run_search: ...] line.\n"
+                "- When determining the best search phrase, use 2–3 alternate phrasings or closely related terms that broaden the query while preserving its core meaning.\n"
+                "  Avoid adding generic or off-topic terms.\n"
+                "  For example, if the user says 'how much arpa money was spent', you might return: [run_search: arpa expenditures, rescue plan allocations, arpa funding approved]\n"
                 "- After the documents are returned to you, analyze and summarize them using bullet points, headers, and clear formatting.\n"
-                "- Use memory context when it helps. Never fake confidence. Prioritize clarity.    "
+                "- Use memory context when it helps. Never fake confidence. Prioritize clarity."
             )
         }]
 
@@ -85,7 +88,6 @@ async def chat_with_context(payload: ChatRequest):
         reply = response.choices[0].message.content.strip()
         logger.debug(f"🤖 Assistant reply: {reply}")
 
-        # 🔎 Check for explicit search trigger
         if "[run_search:" in reply:
             search_query = reply.split("[run_search:", 1)[-1].split("]", 1)[0].strip()
             logger.info(f"🔍 Triggered document search with query: {search_query}")
@@ -95,15 +97,15 @@ async def chat_with_context(payload: ChatRequest):
                 input=search_query
             )
             embedding = embedding_response.data[0].embedding
-            doc_results = perform_search({"embedding": embedding, "limit": 5000})
+            doc_results = perform_search({"embedding": embedding, "limit": 5000, "project_id": GENERAL_CONTEXT_PROJECT_ID})
             all_chunks = doc_results.get("results", [])
             logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
 
             encoding = tiktoken.encoding_for_model("gpt-4o")
-            max_tokens_per_batch = 12000  # Raised from 6000 to 12000
+            max_tokens_per_batch = 12000
             current_batch = []
             token_count = 0
-            total_token_count = 0  # Track total tokens across all batches
+            total_token_count = 0
             batches = []
 
             for chunk in all_chunks:
@@ -125,7 +127,7 @@ async def chat_with_context(payload: ChatRequest):
             logger.debug(f"📦 Prepared {total_batches} token-aware batches for injection.")
 
             messages = []
-            for i, batch in enumerate(batches):
+            for i, batch in enumerate(batches[:10]):  # hard cap at 10 batches
                 joined_text = "\n\n".join(c.get("content", "[MISSING CONTENT]") for c in batch)
                 final = (i == total_batches - 1)
                 messages.append({
@@ -135,7 +137,7 @@ async def chat_with_context(payload: ChatRequest):
 
             messages.append({
                 "role": "user",
-                "content": f"Based on document context batches 1 through {total_batches}, answer the question: {search_query}"
+                "content": f"Based on document context batches 1 through {min(total_batches, 10)}, answer the question: {search_query}"
             })
 
             response = client.chat.completions.create(
