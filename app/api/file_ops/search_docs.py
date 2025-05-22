@@ -1,6 +1,7 @@
 import json
 import os
 import logging
+from collections import defaultdict
 
 from app.core.supabase_client import create_client
 
@@ -79,7 +80,28 @@ def perform_search(tool_args):
             return {"error": f"Supabase RPC failed: {response.error.message}"}
 
         matches = response.data or []
-        logger.debug(f"✅ Retrieved {len(matches)} matches from pgvector RPC.")
+
+        # Sort by descending similarity score
+        matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+        logger.debug("🔽 Matches sorted by descending score")
+
+        # Log preview of top match
+        if matches:
+            top = matches[0]
+            preview = top["content"][:200].replace("\n", " ")
+            logger.debug(f"🔝 Top match (score {top.get('score')}): {preview}")
+
+        # Group chunks by file_id and select top file group
+        grouped = defaultdict(list)
+        for match in matches:
+            file_id = match.get("file_id")
+            if file_id:
+                grouped[file_id].append(match)
+
+        top_file_id = matches[0].get("file_id") if matches else None
+        if top_file_id and top_file_id in grouped:
+            matches = grouped[top_file_id]
+            logger.debug(f"📂 Returning {len(matches)} chunks from top file_id: {top_file_id}")
 
         if expected_phrase:
             expected_lower = expected_phrase.lower()
