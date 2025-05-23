@@ -66,7 +66,7 @@ def perform_search(tool_args):
         # Use Supabase RPC to perform pgvector search
         rpc_args = {
             "query_embedding": query_embedding,
-            "match_threshold": 0.8,
+            "match_threshold": 0.9,
             "match_count": limit,
             "user_id_filter": USER_ID,
             "project_ids_filter": project_ids if project_ids else None
