@@ -23,11 +23,12 @@ if not openai_api_key:
 
 client = OpenAI(api_key=openai_api_key)
 
+GENERAL_CONTEXT_PROJECT_ID = "bd3883ee-c8ea-4d17-b0f2-965a65b512a6"
+
 class ChatRequest(BaseModel):
     user_prompt: str
     user_id: str
     session_id: str
-    project_id: str
 
 @router.post("/chat")
 async def chat_with_context(payload: ChatRequest):
@@ -35,17 +36,15 @@ async def chat_with_context(payload: ChatRequest):
         prompt = payload.user_prompt.strip()
         logger.debug(f"🔍 User prompt: {prompt}")
         logger.debug(f"👤 User ID: {payload.user_id}")
-        logger.debug(f"📁 Project ID: {payload.project_id}")
 
         try:
             uuid.UUID(str(payload.user_id))
-            uuid.UUID(str(payload.project_id))
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid UUID format in user_id or project_id")
+            raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
 
         save_message(
             user_id=payload.user_id,
-            project_id=payload.project_id,
+            project_id=GENERAL_CONTEXT_PROJECT_ID,
             content=prompt,
             session_id=payload.session_id,
             speaker_role="user"
@@ -98,7 +97,7 @@ async def chat_with_context(payload: ChatRequest):
                 input=search_query
             )
             embedding = embedding_response.data[0].embedding
-            doc_results = perform_search({"embedding": embedding, "limit": 5000, "project_id": payload.project_id})
+            doc_results = perform_search({"embedding": embedding, "limit": 5000, "project_id": GENERAL_CONTEXT_PROJECT_ID})
             all_chunks = doc_results.get("results", [])
             logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
 
@@ -152,7 +151,7 @@ async def chat_with_context(payload: ChatRequest):
 
         save_message(
             user_id=payload.user_id,
-            project_id=payload.project_id,
+            project_id=GENERAL_CONTEXT_PROJECT_ID,
             content=reply,
             session_id=payload.session_id,
             speaker_role="HubGPT"
