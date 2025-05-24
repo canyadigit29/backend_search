@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat_ops import chat
 from app.api.file_ops import (background_tasks,  # Removed: embed, chunk
-                              ingest, upload)
+                              ingest, upload, download)
 from app.api.project_ops import project, session_log
 from app.api.NerdGPT import code_chat, github_api
 from app.api.file_ops.search_docs import perform_search as search_documents
@@ -40,6 +40,7 @@ async def root():
 
 # ✅ Route mounts (memory routes removed)
 app.include_router(upload.router, prefix=settings.API_PREFIX)
+app.include_router(download.router, prefix=settings.API_PREFIX)
 app.include_router(project.router, prefix=settings.API_PREFIX)
 app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
 app.include_router(session_log.router, prefix=settings.API_PREFIX)
