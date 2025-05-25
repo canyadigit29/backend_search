@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 async def upload_file(
     file: UploadFile = File(...),
     user_id: str = Form(...),
-    name: str = Form(...)
+    name: str = Form(...),
+    file_id: str = Form(None)  # Accept it but ignore it
 ):
     try:
         file_path = f"{user_id}/{file.filename}"
