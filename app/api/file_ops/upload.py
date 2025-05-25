@@ -21,29 +21,13 @@ router = APIRouter()
 async def upload_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    project_id: str = Form(...),
     user_id: str = Form(...),
     file_id: str = Form(...),
     name: str = Form(...)
 ):
     try:
         contents = await file.read()
-
-        project_lookup = (
-            supabase.table("projects")
-            .select("name")
-            .eq("id", project_id)
-            .eq("user_id", user_id)
-            .single()
-            .execute()
-        )
-
-        if not project_lookup.data:
-            raise HTTPException(status_code=404, detail="Invalid project_id")
-
-        project_name = project_lookup.data["name"]
-        folder_path = f"{user_id}/{project_name}/"
-
+        folder_path = f"{user_id}/"
         final_name = name or file.filename
 
         if final_name.endswith(".zip"):
@@ -67,7 +51,6 @@ async def upload_file(
                             "ingested": False,
                             "ingested_at": None,
                             "user_id": user_id,
-                            "project_id": project_id,
                         },
                         on_conflict="file_path"
                     ).execute()
@@ -98,7 +81,6 @@ async def upload_file(
                     "ingested": False,
                     "ingested_at": None,
                     "user_id": user_id,
-                    "project_id": project_id,
                 },
                 on_conflict="file_path"
             ).execute()
