@@ -4,7 +4,6 @@ import logging
 from datetime import datetime
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from app.core.supabase_client import supabase
-from app.utils.storage import upload_to_storage
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -20,27 +19,24 @@ async def upload_file(
 
         # 🔍 Lookup file_id based on name and user_id
         result = supabase.table("files").select("id").eq("name", name).eq("user_id", user_id).single().execute()
-        if not result.data:
-            raise HTTPException(status_code=404, detail="No matching file found for name")
-        file_id = result.data["id"]
+        if result.data:
+            file_id = result.data["id"]
+        else:
+            # Insert a new record if it doesn't exist
+            file_id = str(uuid.uuid4())
+            supabase.table("files").insert({
+                "id": file_id,
+                "file_path": file_path,
+                "user_id": user_id,
+                "name": file.filename,
+                "status": "uploaded",
+                "uploaded_at": datetime.utcnow().isoformat(),
+            }).execute()
 
-        upload_to_storage(file, file_path)
-
-        # ✅ Check for existing file_path before insert
-        try:
-            existing = supabase.table("files").select("id").eq("file_path", file_path).execute()
-            if not existing.data:
-                supabase.table("files").insert({
-                    "id": file_id,
-                    "file_path": file_path,
-                    "user_id": user_id,
-                    "name": file.filename,
-                    "status": "uploaded",
-                    "uploaded_at": datetime.utcnow().isoformat(),
-                }).execute()
-        except Exception as e:
-            logger.error(f"🚩 Failed checking/inserting file record: {e}")
-            raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+        contents = await file.read()
+        supabase.storage.from_("maxgptstorage").upload(
+            file_path, contents, {"content-type": file.content_type}
+        )
 
         return {"filePath": file_path}
 
