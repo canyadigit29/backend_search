@@ -43,18 +43,21 @@ async def upload_file(
 
                     supabase.storage.from_(os.getenv("SUPABASE_STORAGE_BUCKET", "maxgptstorage")).upload(inner_path, inner_file)
 
-                    supabase.table("files").upsert(
-                        {
-                            "id": inner_file_id,
-                            "file_path": inner_path,
-                            "file_name": name,
-                            "uploaded_at": datetime.utcnow().isoformat(),
-                            "ingested": False,
-                            "ingested_at": None,
-                            "user_id": user_id,
-                        },
-                        on_conflict="file_path"
-                    ).execute()
+                    
+existing = supabase.table("files").select("id").eq("file_path", file_path).execute()
+
+if existing.data:
+    file_id = existing.data[0]["id"]  # Reuse existing ID
+else:
+    supabase.table("files").insert({
+        "id": file_id,
+        "file_path": file_path,
+        "user_id": user_id,
+        "name": file.filename,
+        "status": "uploaded",
+        "uploaded_at": datetime.utcnow().isoformat(),
+    }).execute()
+
 
                     background_tasks.add_task(
                         process_file,
@@ -73,18 +76,21 @@ async def upload_file(
                 file_path, contents, {"content-type": file.content_type}
             )
 
-            supabase.table("files").upsert(
-                {
-                    "id": file_id,
-                    "file_path": file_path,
-                    "file_name": final_name,
-                    "uploaded_at": datetime.utcnow().isoformat(),
-                    "ingested": False,
-                    "ingested_at": None,
-                    "user_id": user_id,
-                },
-                on_conflict="file_path"
-            ).execute()
+            
+existing = supabase.table("files").select("id").eq("file_path", file_path).execute()
+
+if existing.data:
+    file_id = existing.data[0]["id"]  # Reuse existing ID
+else:
+    supabase.table("files").insert({
+        "id": file_id,
+        "file_path": file_path,
+        "user_id": user_id,
+        "name": file.filename,
+        "status": "uploaded",
+        "uploaded_at": datetime.utcnow().isoformat(),
+    }).execute()
+
 
             background_tasks.add_task(
                 process_file,
