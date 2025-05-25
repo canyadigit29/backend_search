@@ -33,7 +33,7 @@ async def run_ingestion_once():
         # Check if file exists in Supabase storage
         file_name = file_path.split("/")[-1]
         folder = "/".join(file_path.split("/")[:-1])
-        file_check = supabase.storage.from_(BUCKET).list(folder).json()
+        file_check = supabase.storage.from_(BUCKET).list(folder)
 
         if not any(f.get("name") == file_name for f in file_check):
             logger.warning(f"🚫 File not found in storage: {file_path}")
