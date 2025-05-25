@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 import uuid
@@ -9,7 +10,7 @@ from app.api.file_ops.ingest import process_file
 logger = logging.getLogger("ingestion_worker")
 logger.setLevel(logging.INFO)
 
-BUCKET = "maxgptstorage"
+BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 
 
 async def run_ingestion_once():
