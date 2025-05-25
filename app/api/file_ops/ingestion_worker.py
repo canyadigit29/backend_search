@@ -1,9 +1,9 @@
 import os
 import asyncio
 import logging
-import uuid
 from datetime import datetime
 
+from fastapi import APIRouter
 from app.core.supabase_client import supabase
 from app.api.file_ops.ingest import process_file
 
@@ -12,92 +12,43 @@ logger.setLevel(logging.INFO)
 
 BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 
-
 async def run_ingestion_once():
-    logger.info("🔁 Starting ingestion cycle (manual trigger)")
+    logger.info("🔁 Starting ingestion cycle (refactored logic)")
 
-    user_folders = supabase.storage.from_(BUCKET).list("")
-    if not user_folders:
-        logger.info("📭 No user folders found in storage bucket.")
+    files_to_ingest = supabase.table("files").select("*").neq("ingested", True).execute()
+
+    if not files_to_ingest or not files_to_ingest.data:
+        logger.info("📭 No un-ingested files found.")
         return
 
-    for user_folder in user_folders:
-        user_id = user_folder["name"].rstrip("/")
-        logger.info(f"📂 Scanning user folder: {user_id}")
+    for file in files_to_ingest.data:
+        file_path = file.get("file_path")
+        file_id = file.get("id")
+        user_id = file.get("user_id")
 
-        project_folders = supabase.storage.from_(BUCKET).list(f"{user_id}/")
-        for project_folder in project_folders:
-            project_name = project_folder["name"].rstrip("/")
-            logger.info(f"📁 Scanning project folder: {project_name}")
+        if not file_path or not user_id or not file_id:
+            logger.warning(f"⚠️ Skipping invalid row: {file}")
+            continue
 
-            offset = 0
-            page_size = 100
-            while True:
-                files = supabase.storage.from_(BUCKET).list(
-                    f"{user_id}/{project_name}/", {"limit": page_size, "offset": offset}
-                )
-                if not files:
-                    break
+        # Check if file exists in Supabase storage
+        file_name = file_path.split("/")[-1]
+        folder = "/".join(file_path.split("/")[:-1])
+        file_check = supabase.storage.from_(BUCKET).list(folder).json()
 
-                for file in files:
-                    logger.info(f"🧾 Found file: {file['name']}")
-                    file_name = file["name"]
-                    if not file_name or file_name.startswith("."):
-                        continue
+        if not any(f.get("name") == file_name for f in file_check):
+            logger.warning(f"🚫 File not found in storage: {file_path}")
+            continue
 
-                    file_path = f"{user_id}/{project_name}/{file_name}"
+        logger.info(f"🧾 Ingesting: {file_path}")
+        process_file(file_path=file_path, file_id=file_id, user_id=user_id)
 
-                    exists = (
-                        supabase.table("files")
-                        .select("id, ingested")
-                        .eq("file_path", file_path)
-                        .maybe_single()
-                        .execute()
-                    )
-
-                    if not exists or not exists.data:
-                        project_id_result = (
-                            supabase.table("projects")
-                            .select("id")
-                            .eq("user_id", user_id)
-                            .eq("name", project_name)
-                            .maybe_single()
-                            .execute()
-                        )
-                        if not project_id_result.data:
-                            logger.warning(f"⚠️ Project not found for: {project_name}")
-                            continue
-
-                        file_id = str(uuid.uuid4())
-                        supabase.table("files").insert(
-                            {
-                                "id": file_id,
-                                "file_path": file_path,
-                                "file_name": file_name,
-                                "project_id": project_id_result.data["id"],
-                                "user_id": user_id,
-                                "uploaded_at": datetime.utcnow().isoformat(),
-                                "ingested": False,
-                                "ingested_at": None,
-                            }
-                        ).execute()
-                    else:
-                        file_id = exists.data["id"]
-
-                    if not exists or not exists.data or not exists.data.get("ingested"):
-                        process_file(
-                            file_path=file_path,
-                            file_id=file_id,
-                            user_id=user_id,
-                        )
-
-                offset += page_size
+        supabase.table("files").update({
+            "ingested": True,
+            "ingested_at": datetime.utcnow().isoformat()
+        }).eq("id", file_id).execute()
 
     logger.info("✅ Ingestion cycle complete")
 
-
-from fastapi import APIRouter
-import asyncio
 
 router = APIRouter()
 
@@ -105,7 +56,6 @@ router = APIRouter()
 async def run_ingestion_endpoint():
     asyncio.create_task(run_ingestion_once())
     return {"status": "Ingestion started"}
-
 
 @router.post("/sync-files")
 async def alias_sync_route():
