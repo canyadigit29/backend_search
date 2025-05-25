@@ -1,3 +1,4 @@
+import os
 import io
 import uuid
 import zipfile
@@ -40,7 +41,7 @@ async def upload_file(
                     inner_path = f"{folder_path}{name}"
                     inner_file_id = str(uuid.uuid4())
 
-                    supabase.storage.from_("maxgptstorage").upload(inner_path, inner_file)
+                    supabase.storage.from_(os.getenv("SUPABASE_STORAGE_BUCKET", "maxgptstorage")).upload(inner_path, inner_file)
 
                     supabase.table("files").upsert(
                         {
@@ -68,7 +69,7 @@ async def upload_file(
         else:
             file_path = f"{folder_path}{final_name}"
 
-            supabase.storage.from_("maxgptstorage").upload(
+            supabase.storage.from_(os.getenv("SUPABASE_STORAGE_BUCKET", "maxgptstorage")).upload(
                 file_path, contents, {"content-type": file.content_type}
             )
 
