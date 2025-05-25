@@ -8,6 +8,10 @@ from app.core.supabase_client import supabase
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
+if not SUPABASE_STORAGE_BUCKET:
+    raise RuntimeError("SUPABASE_STORAGE_BUCKET environment variable is not set")
+
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
@@ -25,7 +29,7 @@ async def upload_file(
         file_path = result.data["file_path"]
 
         contents = await file.read()
-        supabase.storage.from_("maxgptstorage").upload(
+        supabase.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
             file_path, contents, {"content-type": file.content_type}
         )
 
