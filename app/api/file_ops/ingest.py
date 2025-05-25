@@ -1,3 +1,4 @@
+import os
 import time
 import uuid
 from datetime import datetime
@@ -37,7 +38,7 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
 
     file_name = file_record["file_name"]
     project_id = file_record["project_id"]
-    bucket = "maxgptstorage"
+    bucket = os.getenv("SUPABASE_STORAGE_BUCKET")
 
     response = supabase.storage.from_(bucket).download(file_path)
     if not response:
