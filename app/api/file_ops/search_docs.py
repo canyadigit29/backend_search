@@ -2,71 +2,18 @@ import json
 import os
 import logging
 from collections import defaultdict
-from typing import Optional
-from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
-from openai import OpenAI
 from app.core.supabase_client import create_client
 
-# Logger and client setup
+# Initialize logger
 logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
-client = OpenAI()
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
-router = APIRouter()
-
-# Request model
-class ExtendedSearchRequest(BaseModel):
-    query: str
-    user_id: str
-    project_name: Optional[str] = None
-    expected_phrase: Optional[str] = None
-    document_type: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    limit: int = 3000
-
-@router.post("/search_docs")
-async def search_docs_api(request: ExtendedSearchRequest):
-    try:
-        embedding_response = client.embeddings.create(
-            input=request.query,
-            model="text-embedding-3-small"
-        )
-        embedding = embedding_response.data[0].embedding
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Embedding failed: {str(e)}")
-
-    # Validate and parse date range
-    date_range = {}
-    if request.start_date and request.end_date:
-        try:
-            start = datetime.fromisoformat(request.start_date)
-            end = datetime.fromisoformat(request.end_date)
-            date_range["start"] = start.isoformat()
-            date_range["end"] = end.isoformat()
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
-
-    tool_args = {
-        "embedding": embedding,
-        "user_id": request.user_id,
-        "project_name": request.project_name,
-        "expected_phrase": request.expected_phrase,
-        "document_type": request.document_type,
-        "date_range": date_range,
-        "limit": request.limit,
-    }
-
-    results = perform_search(tool_args)
-    return results
-
+USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
 
 def perform_search(tool_args):
     project_name = tool_args.get("project_name")
@@ -91,7 +38,7 @@ def perform_search(tool_args):
             result = (
                 supabase.table("projects")
                 .select("id")
-                .eq("user_id", tool_args["user_id"])
+                .eq("user_id", USER_ID)
                 .eq("name", project_name)
                 .maybe_single()
                 .execute()
@@ -105,7 +52,7 @@ def perform_search(tool_args):
             result = (
                 supabase.table("projects")
                 .select("id, name")
-                .eq("user_id", tool_args["user_id"])
+                .eq("user_id", USER_ID)
                 .in_("name", project_names)
                 .execute()
             )
@@ -116,15 +63,13 @@ def perform_search(tool_args):
 
         logger.debug(f"✅ Project IDs found: {project_ids}")
 
+        # Use Supabase RPC to perform pgvector search
         rpc_args = {
             "query_embedding": query_embedding,
             "match_threshold": 0.9,
             "match_count": limit,
-            "user_id_filter": tool_args["user_id"],
-            "project_ids_filter": project_ids if project_ids else None,
-            "file_type_filter": tool_args.get("document_type"),
-            "start_date_filter": tool_args.get("date_range", {}).get("start"),
-            "end_date_filter": tool_args.get("date_range", {}).get("end"),
+            "user_id_filter": USER_ID,
+            "project_ids_filter": project_ids if project_ids else None
         }
 
         response = supabase.rpc("match_documents", rpc_args).execute()
@@ -136,14 +81,17 @@ def perform_search(tool_args):
 
         matches = response.data or []
 
+        # Sort by descending similarity score
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
         logger.debug("🔽 Matches sorted by descending score")
 
+        # Log preview of top match
         if matches:
             top = matches[0]
             preview = top["content"][:200].replace("\n", " ")
             logger.debug(f"🔝 Top match (score {top.get('score')}): {preview}")
 
+        # Group chunks by file_id and select top file group
         grouped = defaultdict(list)
         for match in matches:
             file_id = match.get("file_id")
@@ -166,6 +114,6 @@ def perform_search(tool_args):
         logger.error(f"❌ Error during search: {str(e)}")
         return {"error": f"Error during search: {str(e)}"}
 
-# ✅ Optional async wrapper
+# ✅ Async wrapper for internal use
 async def semantic_search(request, payload):
     return perform_search(payload)
