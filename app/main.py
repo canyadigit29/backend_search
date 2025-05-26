@@ -1,93 +1,58 @@
-import { ACCEPTED_FILE_TYPES } from "@/components/chat/chat-hooks/use-select-file-handler"
-import { SidebarCreateItem } from "@/components/sidebar/items/all/sidebar-create-item"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { ChatbotUIContext } from "@/context/context"
-import { FILE_DESCRIPTION_MAX, FILE_NAME_MAX } from "@/db/limits"
-import { TablesInsert } from "@/supabase/types"
-import { FC, useContext, useState } from "react"
+from app.api.file_ops import ingestion_worker
+import os  # Moved up as per PEP8
 
-interface CreateFileProps {
-  isOpen: boolean
-  onOpenChange: (isOpen: boolean) => void
-}
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-export const CreateFile: FC<CreateFileProps> = ({ isOpen, onOpenChange }) => {
-  const { profile, selectedWorkspace } = useContext(ChatbotUIContext)
+from app.api.chat_ops import chat
+from app.api.file_ops import (
+    background_tasks,  # Removed: embed, chunk
+    ingest, upload, download
+)
+from app.api.project_ops import project, session_log
+from app.api.NerdGPT import code_chat, github_api
+from app.api.file_ops.search_docs import perform_search as search_documents
+from app.api.file_ops import search_docs  # ✅ PATCHED
+from app.api.memory_ops.session_memory import retrieve_memory
+from app.api.writing_ops import report  # 📄 PDF Report Writer
+from app.core.config import settings
 
-  const [name, setName] = useState("")
-  const [isTyping, setIsTyping] = useState(false)
-  const [description, setDescription] = useState("")
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+# 🔍 Optional: Print env variables for debugging
+print("🔍 Environment Variable Check:")
+print("OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
+print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
 
-  const handleSelectedFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files) return
+app = FastAPI(
+    title=settings.PROJECT_NAME, openapi_url=f"{settings.API_PREFIX}/openapi.json"
+)
 
-    const file = e.target.files[0]
+# ✅ CORS middleware for local testing
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "https://maxgptfrontend.vercel.app,http://localhost:3000").split(","),
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-    if (!file) return
 
-    setSelectedFile(file)
-    const fileNameWithoutExtension = file.name.split(".").slice(0, -1).join(".")
-    setName(fileNameWithoutExtension)
-  }
+@app.get("/")
+async def root():
+    return {"message": f"{settings.PROJECT_NAME} is running."}
 
-  if (!profile) return null
-  if (!selectedWorkspace) return null
 
-  return (
-    <SidebarCreateItem
-      contentType="files"
-      createState={
-        {
-          file: selectedFile,
-          user_id: profile.user_id,
-          name,
-          description,
-          file_path: "",
-          size: selectedFile?.size || 0,
-          tokens: 0,
-          type: selectedFile?.type || 0
-        } as TablesInsert<"files">
-      }
-      isOpen={isOpen}
-      isTyping={isTyping}
-      onOpenChange={onOpenChange}
-      renderInputs={() => (
-        <>
-          <div className="space-y-1">
-            <Label>File</Label>
+# ✅ Route mounts (memory routes removed)
+app.include_router(upload.router, prefix=settings.API_PREFIX)
+app.include_router(download.router, prefix=settings.API_PREFIX)
+app.include_router(project.router, prefix=settings.API_PREFIX)
+app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
+app.include_router(session_log.router, prefix=settings.API_PREFIX)
+app.include_router(ingest.router, prefix=settings.API_PREFIX)
+app.include_router(chat.router, prefix=settings.API_PREFIX)
+app.include_router(code_chat.router, prefix=settings.API_PREFIX)  # 🔹 NerdGPT route mounted
+app.include_router(github_api.router, prefix=settings.API_PREFIX)  # 🔹 GitHub route mounted
+app.include_router(report.router, prefix=settings.API_PREFIX)
+app.include_router(search_docs.router, prefix=settings.API_PREFIX)  # ✅ PATCHED
 
-            <Input
-              type="file"
-              onChange={handleSelectedFile}
-              accept={ACCEPTED_FILE_TYPES}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <Label>Name</Label>
-
-            <Input
-              placeholder="File name..."
-              value={name}
-              onChange={e => setName(e.target.value)}
-              maxLength={FILE_NAME_MAX}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <Label>Description</Label>
-
-            <Input
-              placeholder="File description..."
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              maxLength={FILE_DESCRIPTION_MAX}
-            />
-          </div>
-        </>
-      )}
-    />
-  )
-}
+# 🚫 No ingestion worker trigger on startup — now called manually from chat
+app.include_router(ingestion_worker.router, prefix=settings.API_PREFIX)
