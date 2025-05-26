@@ -5,11 +5,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat_ops import chat
-from app.api.file_ops import (background_tasks,  # Removed: embed, chunk
-                              ingest, upload, download)
+from app.api.file_ops import (
+    background_tasks,  # Removed: embed, chunk
+    ingest, upload, download
+)
 from app.api.project_ops import project, session_log
 from app.api.NerdGPT import code_chat, github_api
 from app.api.file_ops.search_docs import perform_search as search_documents
+from app.api.file_ops import search_docs  # ✅ PATCHED
 from app.api.memory_ops.session_memory import retrieve_memory
 from app.api.writing_ops import report  # 📄 PDF Report Writer
 from app.core.config import settings
@@ -26,7 +29,7 @@ app = FastAPI(
 # ✅ CORS middleware for local testing
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("ALLOWED_ORIGINS", "https://maxgptfrontend.vercel.app,http://localhost:3000").split(",") ,
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "https://maxgptfrontend.vercel.app,http://localhost:3000").split(","),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,9 +51,8 @@ app.include_router(ingest.router, prefix=settings.API_PREFIX)
 app.include_router(chat.router, prefix=settings.API_PREFIX)
 app.include_router(code_chat.router, prefix=settings.API_PREFIX)  # 🔹 NerdGPT route mounted
 app.include_router(github_api.router, prefix=settings.API_PREFIX)  # 🔹 GitHub route mounted
-
 app.include_router(report.router, prefix=settings.API_PREFIX)
+app.include_router(search_docs.router, prefix=settings.API_PREFIX)  # ✅ PATCHED
 
 # 🚫 No ingestion worker trigger on startup — now called manually from chat
-
 app.include_router(ingestion_worker.router, prefix=settings.API_PREFIX)
