@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat_ops import chat
-from app.api.file_ops import (background_tasks,  # Removed: embed, chunk
+from app.api.file_ops import (background_tasks, search_docs,  # Added: search_docs
                               ingest, upload, download)
 from app.api.project_ops import project, session_log
 from app.api.NerdGPT import code_chat, github_api
@@ -54,3 +54,4 @@ app.include_router(report.router, prefix=settings.API_PREFIX)
 # 🚫 No ingestion worker trigger on startup — now called manually from chat
 
 app.include_router(ingestion_worker.router, prefix=settings.API_PREFIX)
+app.include_router(search_docs.router, prefix=settings.API_PREFIX)
