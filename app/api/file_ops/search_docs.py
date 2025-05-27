@@ -81,3 +81,13 @@ def perform_search(tool_args):
 
 async def semantic_search(request, payload):
     return perform_search(payload)
+
+
+from fastapi import APIRouter, Request
+
+router = APIRouter()
+
+@router.post("/search")
+async def api_search_documents(request: Request):
+    tool_args = await request.json()
+    return perform_search(tool_args)
