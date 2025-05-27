@@ -1,3 +1,4 @@
+
 import json
 import os
 import logging
@@ -5,7 +6,6 @@ from collections import defaultdict
 
 from app.core.supabase_client import create_client
 
-# Initialize logger
 logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
 
@@ -18,7 +18,6 @@ USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
 def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
     expected_phrase = tool_args.get("expected_phrase")
-    limit = tool_args.get("limit", 3000)
 
     # Optional filters
     file_name_filter = tool_args.get("file_name_filter")
@@ -31,13 +30,12 @@ def perform_search(tool_args):
     logger.debug(f"🔑 Embedding: {query_embedding[:5]}..." if query_embedding else "No embedding")
 
     if not query_embedding:
+        logger.error("❌ No embedding provided in tool_args.")
         return {"error": "Embedding must be provided to perform similarity search."}
 
     try:
         rpc_args = {
             "query_embedding": query_embedding,
-            "match_threshold": 0.9,
-            "match_count": limit,
             "user_id_filter": USER_ID,
             "file_name_filter": file_name_filter,
             "collection_filter": collection_filter,
@@ -60,7 +58,6 @@ def perform_search(tool_args):
             preview = top["content"][:200].replace("\n", " ")
             logger.debug(f"🔝 Top match (score {top.get('score')}): {preview}")
 
-        # Group by file_id and select the top group
         grouped = defaultdict(list)
         for match in matches:
             file_id = match.get("file_id")
@@ -82,6 +79,5 @@ def perform_search(tool_args):
         logger.error(f"❌ Error during search: {str(e)}")
         return {"error": f"Error during search: {str(e)}"}
 
-# ✅ Async wrapper for internal use
 async def semantic_search(request, payload):
     return perform_search(payload)
