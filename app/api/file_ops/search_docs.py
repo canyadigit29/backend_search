@@ -15,9 +15,6 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
-USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
-
-
 def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
     expected_phrase = tool_args.get("expected_phrase")
