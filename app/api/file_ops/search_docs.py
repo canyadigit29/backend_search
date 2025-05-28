@@ -78,7 +78,7 @@ def perform_search(tool_args):
             matches = [x for x in matches if expected_lower not in x["content"].lower()]
             logger.debug(f"🔍 {len(matches)} results after omitting phrase: '{expected_phrase}'")
 
-        return {"results": matches}
+        return {"retrieved_chunks": matches}
 
     except Exception as e:
         logger.error(f"❌ Error during search: {str(e)}")
