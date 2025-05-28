@@ -2,6 +2,8 @@ from app.api.file_ops import ingestion_worker
 import os  # Moved up as per PEP8
 
 from fastapi import FastAPI
+from app.api.file_ops import embed_api
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat_ops import chat
@@ -21,6 +23,7 @@ print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
 
 app = FastAPI(
     title=settings.PROJECT_NAME, openapi_url=f"{settings.API_PREFIX}/openapi.json"
+app.include_router(embed_api.router, prefix="/api")
 )
 
 # ✅ CORS middleware for local testing
