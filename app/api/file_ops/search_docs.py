@@ -1,10 +1,12 @@
-
 import json
 import os
 import logging
 from collections import defaultdict
 
 from app.core.supabase_client import create_client
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 logger = logging.getLogger("maxgpt")
 logger.setLevel(logging.DEBUG)
@@ -14,6 +16,7 @@ SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
 USER_ID = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9"
+
 
 def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
@@ -26,7 +29,9 @@ def perform_search(tool_args):
     start_date = tool_args.get("start_date")
     end_date = tool_args.get("end_date")
 
-    logger.debug(f"🔍 Searching with filters: file_name={file_name_filter}, collection={collection_filter}, date={start_date}–{end_date}")
+    logger.debug(
+        f"🔍 Searching with filters: file_name={file_name_filter}, collection={collection_filter}, date={start_date}–{end_date}"
+    )
     logger.debug(f"🔑 Embedding: {query_embedding[:5]}..." if query_embedding else "No embedding")
 
     if not query_embedding:
@@ -36,12 +41,12 @@ def perform_search(tool_args):
     try:
         rpc_args = {
             "query_embedding": query_embedding,
-            "user_id_filter": USER_ID,
+            "user_id_filter": tool_args.get("user_id_filter", USER_ID),
             "file_name_filter": file_name_filter,
             "collection_filter": collection_filter,
             "description_filter": description_filter,
             "start_date": start_date,
-            "end_date": end_date
+            "end_date": end_date,
         }
 
         response = supabase.rpc("match_documents", rpc_args).execute()
@@ -79,14 +84,58 @@ def perform_search(tool_args):
         logger.error(f"❌ Error during search: {str(e)}")
         return {"error": f"Error during search: {str(e)}"}
 
+
 async def semantic_search(request, payload):
     return perform_search(payload)
 
 
-from fastapi import APIRouter, Request
-
 router = APIRouter()
 
+
+@router.post("/file_ops/search_docs")
+async def api_search_docs(request: Request):
+    """Endpoint that receives an embedding vector and optional filters, performs a semantic search, and returns chunks formatted for the frontend."""
+    data = await request.json()
+
+    embedding = data.get("embedding")
+    if not embedding:
+        return JSONResponse({"error": "Missing embedding"}, status_code=400)
+
+    tool_args = {
+        "embedding": embedding,
+        "user_id_filter": data.get("user_id"),
+        "file_name_filter": data.get("file_name_filter"),
+        "collection_filter": data.get("collection_filter"),
+        "description_filter": data.get("description_filter"),
+        "start_date": data.get("start_date"),
+        "end_date": data.get("end_date"),
+    }
+
+    result = perform_search(tool_args)
+    if "error" in result:
+        return JSONResponse({"error": result["error"]}, status_code=500)
+
+    matches = result.get("results", [])
+    retrieved_chunks = [
+        {
+            "id": m.get("id"),
+            "file_id": m.get("file_id"),
+            "content": m.get("content"),
+            "score": m.get("score"),
+            "metadata": {
+                "file_name": m.get("file_name"),
+                "collection": m.get("collection"),
+                "description": m.get("description"),
+                "created_at": m.get("created_at"),
+            },
+        }
+        for m in matches
+    ]
+
+    return JSONResponse({"retrieved_chunks": retrieved_chunks})
+
+
+# Legacy endpoint maintained for backward compatibility
 @router.post("/search")
 async def api_search_documents(request: Request):
     tool_args = await request.json()
