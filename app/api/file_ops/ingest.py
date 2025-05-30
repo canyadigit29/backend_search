@@ -1,423 +1,114 @@
-import { ChatbotUIContext } from "@/context/context"
-import { getAssistantCollectionsByAssistantId } from "@/db/assistant-collections"
-import { getAssistantFilesByAssistantId } from "@/db/assistant-files"
-import { getAssistantToolsByAssistantId } from "@/db/assistant-tools"
-import { updateChat } from "@/db/chats"
-import { getCollectionFilesByCollectionId } from "@/db/collection-files"
-import { deleteMessagesIncludingAndAfter } from "@/db/messages"
-import { parseToolCall } from "@/lib/tools/parse-tool-call"
-import { buildFinalMessages } from "@/lib/build-prompt"
-import { Tables } from "@/supabase/types"
-import { ChatMessage, ChatPayload, LLMID, ModelProvider } from "@/types"
-import { useRouter } from "next/navigation"
-import { useContext, useEffect, useRef } from "react"
-import { LLM_LIST } from "../../../lib/models/llm/llm-list"
-import {
-  createTempMessages,
-  handleCreateChat,
-  handleCreateMessages,
-  handleHostedChat,
-  handleLocalChat,
-  handleRetrieval,
-  processResponse,
-  validateChatSettings
-} from "../chat-helpers"
+import os
+import time
+import uuid
+from datetime import datetime
+from pathlib import Path
+import logging
 
-export const useChatHandler = () => {
-  const router = useRouter()
+from fastapi import APIRouter
+from app.core.supabase_client import supabase
+from app.core.extract_text import extract_text
+from openai import OpenAI
 
-  const {
-    userInput,
-    chatFiles,
-    setUserInput,
-    setNewMessageImages,
-    profile,
-    setIsGenerating,
-    setChatMessages,
-    setFirstTokenReceived,
-    selectedChat,
-    selectedWorkspace,
-    setSelectedChat,
-    setChats,
-    setSelectedTools,
-    availableLocalModels,
-    availableOpenRouterModels,
-    abortController,
-    setAbortController,
-    chatSettings,
-    newMessageImages,
-    selectedAssistant,
-    chatMessages,
-    chatImages,
-    setChatImages,
-    setChatFiles,
-    setNewMessageFiles,
-    setShowFilesDisplay,
-    newMessageFiles,
-    chatFileItems,
-    setChatFileItems,
-    setToolInUse,
-    useRetrieval,
-    sourceCount,
-    setIsPromptPickerOpen,
-    setIsFilePickerOpen,
-    selectedTools,
-    selectedPreset,
-    setChatSettings,
-    models,
-    isPromptPickerOpen,
-    isFilePickerOpen,
-    isToolPickerOpen
-  } = useContext(ChatbotUIContext)
+router = APIRouter()
+logging.basicConfig(level=logging.INFO)
+client = OpenAI()
 
-  const chatInputRef = useRef<HTMLTextAreaElement>(null)
+@router.post("/process")
+def api_process_file(file_path: str, file_id: str, user_id: str = None):
+    process_file(file_path, file_id, user_id)
+    return {"status": "processing started"}
 
-  useEffect(() => {
-    if (!isPromptPickerOpen || !isFilePickerOpen || !isToolPickerOpen) {
-      chatInputRef.current?.focus()
-    }
-  }, [isPromptPickerOpen, isFilePickerOpen, isToolPickerOpen])
+def process_file(file_path: str, file_id: str, user_id: str = None):
+    logging.info(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
+    max_retries = 24
+    retry_interval = 5.0
+    file_record = None
 
-  const handleNewChat = async () => {
-    if (!selectedWorkspace) return
+    for attempt in range(max_retries):
+        result = supabase.table("files").select("*").eq("id", file_id).execute()
+        if result and result.data:
+            file_record = result.data[0]
+            break
+        logging.info(f"⏳ Waiting for file to appear in DB... attempt {attempt + 1}")
+        time.sleep(retry_interval)
 
-    setUserInput("")
-    setChatMessages([])
-    setSelectedChat(null)
-    setChatFileItems([])
+    if not file_record:
+        raise Exception(f"File record not found after {max_retries} retries: {file_path}")
 
-    setIsGenerating(false)
-    setFirstTokenReceived(false)
+    file_name = file_record["file_name"]
+    project_id = file_record["project_id"]
+    bucket = os.getenv("SUPABASE_STORAGE_BUCKET")
 
-    setChatFiles([])
-    setChatImages([])
-    setNewMessageFiles([])
-    setNewMessageImages([])
-    setShowFilesDisplay(false)
-    setIsPromptPickerOpen(false)
-    setIsFilePickerOpen(false)
+    response = supabase.storage.from_(bucket).download(file_path)
+    if not response:
+        logging.error(f"❌ Could not download file from Supabase: {file_path}")
+        return
 
-    setSelectedTools([])
-    setToolInUse("none")
+    local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
+    with open(local_temp_path, "wb") as f:
+        f.write(response)
 
-    if (selectedAssistant) {
-      setChatSettings({
-        model: selectedAssistant.model as LLMID,
-        prompt: selectedAssistant.prompt,
-        temperature: selectedAssistant.temperature,
-        contextLength: selectedAssistant.context_length,
-        includeProfileContext: selectedAssistant.include_profile_context,
-        includeWorkspaceInstructions:
-          selectedAssistant.include_workspace_instructions,
-        embeddingsProvider: selectedAssistant.embeddings_provider as
-          | "openai"
-          | "local"
-      })
+    try:
+        text = extract_text(local_temp_path)
+        logging.info(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
+    except Exception as e:
+        logging.error(f"❌ Failed to extract text from {file_path}: {str(e)}")
+        return
 
-      let allFiles = []
+    max_chunk_size = 1000
+    overlap = 150
+    chunks = []
 
-      const assistantFiles = (
-        await getAssistantFilesByAssistantId(selectedAssistant.id)
-      ).files
-      allFiles = [...assistantFiles]
-      const assistantCollections = (
-        await getAssistantCollectionsByAssistantId(selectedAssistant.id)
-      ).collections
-      for (const collection of assistantCollections) {
-        const collectionFiles = (
-          await getCollectionFilesByCollectionId(collection.id)
-        ).files
-        allFiles = [...allFiles, ...collectionFiles]
-      }
-      const assistantTools = (
-        await getAssistantToolsByAssistantId(selectedAssistant.id)
-      ).tools
+    if len(text.strip()) == 0:
+        logging.warning(f"⚠️ Skipping empty file: {file_path}")
+        return
 
-      setSelectedTools(assistantTools)
-      setChatFiles(
-        allFiles.map(file => ({
-          id: file.id,
-          name: file.name,
-          type: file.type,
-          file: null
-        }))
-      )
+    for i in range(0, len(text), max_chunk_size - overlap):
+        chunk_text = text[i : i + max_chunk_size].strip()
+        if not chunk_text:
+            continue
 
-      if (allFiles.length > 0) setShowFilesDisplay(true)
-    } else if (selectedPreset) {
-      setChatSettings({
-        model: selectedPreset.model as LLMID,
-        prompt: selectedPreset.prompt,
-        temperature: selectedPreset.temperature,
-        contextLength: selectedPreset.context_length,
-        includeProfileContext: selectedPreset.include_profile_context,
-        includeWorkspaceInstructions:
-          selectedPreset.include_workspace_instructions,
-        embeddingsProvider: selectedPreset.embeddings_provider as
-          | "openai"
-          | "local"
-      })
-    } else if (selectedWorkspace) {
-      // setChatSettings({
-      //   model: (selectedWorkspace.default_model ||
-      //     "gpt-4-1106-preview") as LLMID,
-      //   prompt:
-      //     selectedWorkspace.default_prompt ||
-      //     "You are a friendly, helpful AI assistant.",
-      //   temperature: selectedWorkspace.default_temperature || 0.5,
-      //   contextLength: selectedWorkspace.default_context_length || 4096,
-      //   includeProfileContext:
-      //     selectedWorkspace.include_profile_context || true,
-      //   includeWorkspaceInstructions:
-      //     selectedWorkspace.include_workspace_instructions || true,
-      //   embeddingsProvider:
-      //     (selectedWorkspace.embeddings_provider as "openai" | "local") ||
-      //     "openai"
-      // })
-    }
+        # ✅ Log type and preview of input
+        logging.debug(f"🧠 Embedding input type: {type(chunk_text)}, preview: {str(chunk_text)[:50]}")
 
-    return router.push(`/${selectedWorkspace.id}/chat`)
-  }
+        # ✅ Validate input and output of embedding
+        if not isinstance(chunk_text, str):
+            logging.error(f"❌ Invalid chunk_text type: expected str, got {type(chunk_text)}")
+            continue
 
-  const handleFocusChatInput = () => {
-    chatInputRef.current?.focus()
-  }
-
-  const handleStopMessage = () => {
-    if (abortController) {
-      abortController.abort()
-    }
-  }
-
-  const handleSendMessage = async (
-    messageContent: string,
-    chatMessages: ChatMessage[],
-    isRegeneration: boolean
-  ) => {
-    const startingInput = messageContent
-
-    try {
-      setUserInput("")
-      setIsGenerating(true)
-      setIsPromptPickerOpen(false)
-      setIsFilePickerOpen(false)
-      setNewMessageImages([])
-
-      const newAbortController = new AbortController()
-      setAbortController(newAbortController)
-
-      const modelData = [
-        ...models.map(model => ({
-          modelId: model.model_id as LLMID,
-          modelName: model.name,
-          provider: "custom" as ModelProvider,
-          hostedId: model.id,
-          platformLink: "",
-          imageInput: false
-        })),
-        ...LLM_LIST,
-        ...availableLocalModels,
-        ...availableOpenRouterModels
-      ].find(llm => llm.modelId === chatSettings?.model)
-
-      validateChatSettings(
-        chatSettings,
-        modelData,
-        profile,
-        selectedWorkspace,
-        messageContent
-      )
-
-      let currentChat = selectedChat ? { ...selectedChat } : null
-
-      const b64Images = newMessageImages.map(image => image.base64)
-
-      let retrievedFileItems: Tables<"file_items">[] = []
-
-      if (
-        (newMessageFiles.length > 0 || chatFiles.length > 0) &&
-        useRetrieval
-      ) {
-        setToolInUse("retrieval")
-
-        retrievedFileItems = await handleRetrieval(
-          userInput,
-          newMessageFiles,
-          chatFiles,
-          chatSettings!.embeddingsProvider,
-          sourceCount
+        embedding_response = client.embeddings.create(
+            model="text-embedding-3-large",
+            input=chunk_text
         )
-      }
+        embedding = embedding_response.data[0].embedding
 
-      const { tempUserChatMessage, tempAssistantChatMessage } =
-        createTempMessages(
-          messageContent,
-          chatMessages,
-          chatSettings!,
-          b64Images,
-          isRegeneration,
-          setChatMessages,
-          selectedAssistant
-        )
+        if len(embedding) != 3072:
+            logging.error(f"❌ Embedding shape mismatch: expected 3072-dim, got {len(embedding)}")
+            continue
 
-      let payload: ChatPayload = {
-        chatSettings: chatSettings!,
-        workspaceInstructions: selectedWorkspace!.instructions || "",
-        chatMessages: isRegeneration
-          ? [...chatMessages]
-          : [...chatMessages, tempUserChatMessage],
-        assistant: selectedChat?.assistant_id ? selectedAssistant : null,
-        messageFileItems: retrievedFileItems,
-        chatFileItems: chatFileItems
-      }
-
-      let generatedText = ""
-
-      if (selectedTools.length > 0) {
-        setToolInUse("Tools")
-
-        const formattedMessages = await buildFinalMessages(
-          payload,
-          profile!,
-          chatImages
-        )
-
-        const response = await fetch("/api/chat/tools", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            chatSettings: payload.chatSettings,
-            messages: formattedMessages,
-            selectedTools
-          })
-        })
-
-        setToolInUse("none")
-
-        generatedText = await processResponse(
-          response,
-          isRegeneration
-            ? payload.chatMessages[payload.chatMessages.length - 1]
-            : tempAssistantChatMessage,
-          true,
-          newAbortController,
-          setFirstTokenReceived,
-          setChatMessages,
-          setToolInUse
-        )
-      } else {
-        if (modelData!.provider === "ollama") {
-          generatedText = await handleLocalChat(
-            payload,
-            profile!,
-            chatSettings!,
-            tempAssistantChatMessage,
-            isRegeneration,
-            newAbortController,
-            setIsGenerating,
-            setFirstTokenReceived,
-            setChatMessages,
-            setToolInUse
-          )
-        } else {
-          generatedText = await handleHostedChat(
-            payload,
-            profile!,
-            modelData!,
-            tempAssistantChatMessage,
-            isRegeneration,
-            newAbortController,
-            newMessageImages,
-            chatImages,
-            setIsGenerating,
-            setFirstTokenReceived,
-            setChatMessages,
-            setToolInUse
-          )
+        chunk_data = {
+            "id": str(uuid.uuid4()),
+            "file_id": file_id,
+            "content": chunk_text,
+            "embedding": embedding,
+            "chunk_index": len(chunks),
+            "project_id": project_id,
+            "file_name": file_name,
+            "user_id": user_id,
+            "timestamp": datetime.utcnow().isoformat()
         }
-      }
+        chunks.append(chunk_data)
 
-      if (!currentChat) {
-        currentChat = await handleCreateChat(
-          chatSettings!,
-          profile!,
-          selectedWorkspace!,
-          messageContent,
-          selectedAssistant!,
-          newMessageFiles,
-          setSelectedChat,
-          setChats,
-          setChatFiles
-        )
-      } else {
-        const updatedChat = await updateChat(currentChat.id, {
-          updated_at: new Date().toISOString()
-        })
+    if chunks:
+        for chunk in chunks:
+        chunk.pop("project_id", None)
 
-        setChats(prevChats => {
-          const updatedChats = prevChats.map(prevChat =>
-            prevChat.id === updatedChat.id ? updatedChat : prevChat
-          )
-
-          return updatedChats
-        })
-      }
-
-      await handleCreateMessages(
-        chatMessages,
-        currentChat,
-        profile!,
-        modelData!,
-        messageContent,
-        generatedText,
-        newMessageImages,
-        isRegeneration,
-        retrievedFileItems,
-        setChatMessages,
-        setChatFileItems,
-        setChatImages,
-        selectedAssistant
-      )
-
-      setIsGenerating(false)
-      setFirstTokenReceived(false)
-    } catch (error) {
-      setIsGenerating(false)
-      setFirstTokenReceived(false)
-      setUserInput(startingInput)
-    }
-  }
-
-  const handleSendEdit = async (
-    editedContent: string,
-    sequenceNumber: number
-  ) => {
-    if (!selectedChat) return
-
-    await deleteMessagesIncludingAndAfter(
-      selectedChat.user_id,
-      selectedChat.id,
-      sequenceNumber
-    )
-
-    const filteredMessages = chatMessages.filter(
-      chatMessage => chatMessage.message.sequence_number < sequenceNumber
-    )
-
-    setChatMessages(filteredMessages)
-
-    handleSendMessage(editedContent, filteredMessages, false)
-  }
-
-  return {
-    chatInputRef,
-    prompt,
-    handleNewChat,
-    handleSendMessage,
-    handleFocusChatInput,
-    handleStopMessage,
-    handleSendEdit
-  }
-}
+    supabase.table("document_chunks").insert(chunks).execute()
+        logging.info(f"✅ Inserted and embedded {len(chunks)} chunks from {file_path}")
+        supabase.table("files").update(
+            {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
+        ).eq("id", file_id).execute()
+        logging.info(f"✅ Marked file as ingested: {file_id}")
+    else:
+        logging.warning(f"⚠️ No valid chunks generated for {file_path}; ingestion skipped.")
