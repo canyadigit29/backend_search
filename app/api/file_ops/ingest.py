@@ -102,9 +102,8 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
 
     if chunks:
         for chunk in chunks:
-        chunk.pop("project_id", None)
-
-    supabase.table("document_chunks").insert(chunks).execute()
+            chunk.pop("project_id", None)
+        supabase.table("document_chunks").insert(chunks).execute()
         logging.info(f"✅ Inserted and embedded {len(chunks)} chunks from {file_path}")
         supabase.table("files").update(
             {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
