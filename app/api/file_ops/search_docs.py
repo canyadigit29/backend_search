@@ -25,9 +25,10 @@ def perform_search(tool_args):
     description_filter = tool_args.get("description_filter")
     start_date = tool_args.get("start_date")
     end_date = tool_args.get("end_date")
+    user_id_filter = tool_args.get("user_id_filter")
 
     logger.debug(
-        f"🔍 Searching with filters: file_name={file_name_filter}, collection={collection_filter}, date={start_date}–{end_date}"
+        f"🔍 Searching with filters: file_name={file_name_filter}, collection={collection_filter}, date={start_date}–{end_date}, user_id={user_id_filter}"
     )
     logger.debug(f"🔑 Embedding: {query_embedding[:5]}..." if query_embedding else "No embedding")
 
@@ -35,10 +36,14 @@ def perform_search(tool_args):
         logger.error("❌ No embedding provided in tool_args.")
         return {"error": "Embedding must be provided to perform similarity search."}
 
+    if not user_id_filter:
+        logger.error("❌ No user_id provided in tool_args.")
+        return {"error": "user_id must be provided to perform search."}
+
     try:
         rpc_args = {
             "query_embedding": query_embedding,
-            "user_id_filter": tool_args.get("user_id_filter", USER_ID),
+            "user_id_filter": user_id_filter,
             "file_name_filter": file_name_filter,
             "collection_filter": collection_filter,
             "description_filter": description_filter,
@@ -91,16 +96,20 @@ router = APIRouter()
 
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
-    """Endpoint that receives an embedding vector and optional filters, performs a semantic search, and returns chunks formatted for the frontend."""
+    """Endpoint that receives an embedding vector and required user_id, plus optional filters, performs a semantic search, and returns chunks formatted for the frontend."""
     data = await request.json()
 
     embedding = data.get("embedding")
+    user_id = data.get("user_id")
+
     if not embedding:
         return JSONResponse({"error": "Missing embedding"}, status_code=400)
+    if not user_id:
+        return JSONResponse({"error": "Missing user_id"}, status_code=400)
 
     tool_args = {
         "embedding": embedding,
-        "user_id_filter": data.get("user_id"),
+        "user_id_filter": user_id,
         "file_name_filter": data.get("file_name_filter"),
         "collection_filter": data.get("collection_filter"),
         "description_filter": data.get("description_filter"),
