@@ -96,7 +96,10 @@ router = APIRouter()
 
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
-    """Endpoint that receives an embedding vector and required user_id, plus optional filters, performs a semantic search, and returns chunks formatted for the frontend."""
+    """
+    Endpoint that receives an embedding vector and required user_id, plus optional filters,
+    performs a semantic search, and returns chunks formatted for the frontend.
+    """
     data = await request.json()
 
     embedding = data.get("embedding")
@@ -121,22 +124,57 @@ async def api_search_docs(request: Request):
     if "error" in result:
         return JSONResponse({"error": result["error"]}, status_code=500)
 
-    matches = result.get("results", [])
-    retrieved_chunks = [
-        {
+    # matches are the raw file_items + joined file metadata
+    matches = result.get("retrieved_chunks", [])
+
+    # Compose output to include all required fields for frontend compatibility
+    retrieved_chunks = []
+    for m in matches:
+        retrieved_chunks.append({
+            # file_items table fields
             "id": m.get("id"),
             "file_id": m.get("file_id"),
+            "user_id": m.get("user_id"),
+            "created_at": m.get("created_at"),
+            "updated_at": m.get("updated_at"),
+            "sharing": m.get("sharing"),
             "content": m.get("content"),
+            "tokens": m.get("tokens"),
+            "local_embedding": m.get("local_embedding"),
+            "openai_embedding": m.get("openai_embedding"),
+            # search score
             "score": m.get("score"),
-            "metadata": {
-                "file_name": m.get("file_name"),
-                "collection": m.get("collection"),
+            # files table fields (as file_metadata)
+            "file_metadata": {
+                "file_id": m.get("file_id"),
+                "folder_id": m.get("folder_id"),
+                "created_at": m.get("file_created_at") or m.get("created_at"),
+                "updated_at": m.get("file_updated_at") or m.get("updated_at"),
+                "sharing": m.get("file_sharing"),
                 "description": m.get("description"),
-                "created_at": m.get("created_at"),
-            },
-        }
-        for m in matches
-    ]
+                "file_path": m.get("file_path"),
+                "name": m.get("name") or m.get("file_name"),
+                "size": m.get("size"),
+                "tokens": m.get("file_tokens"),
+                "type": m.get("type"),
+                "project_id": m.get("project_id"),
+                "message_index": m.get("message_index"),
+                "timestamp": m.get("timestamp"),
+                "topic_id": m.get("topic_id"),
+                "chunk_index": m.get("chunk_index"),
+                "embedding_json": m.get("embedding_json"),
+                "embedding": m.get("embedding"),
+                "session_id": m.get("session_id"),
+                "status": m.get("status"),
+                "content": m.get("file_content"),
+                "topic_name": m.get("topic_name"),
+                "speaker_role": m.get("speaker_role"),
+                "ingested": m.get("ingested"),
+                "ingested_at": m.get("ingested_at"),
+                "uploaded_at": m.get("uploaded_at"),
+                "relevant_date": m.get("relevant_date"),
+            }
+        })
 
     return JSONResponse({"retrieved_chunks": retrieved_chunks})
 
