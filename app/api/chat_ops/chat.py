@@ -97,7 +97,12 @@ async def chat_with_context(payload: ChatRequest):
                 input=search_query
             )
             embedding = embedding_response.data[0].embedding
-            doc_results = perform_search({"embedding": embedding, "limit": 5000, "project_id": GENERAL_CONTEXT_PROJECT_ID})
+            doc_results = perform_search({
+                "embedding": embedding,
+                "limit": 5000,
+                "user_id_filter": payload.user_id,
+                "project_id": GENERAL_CONTEXT_PROJECT_ID
+            })
             all_chunks = doc_results.get("results", [])
             logger.debug(f"✅ Retrieved {len(all_chunks)} document chunks.")
 
