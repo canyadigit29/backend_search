@@ -92,6 +92,7 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
             "file_id": file_id,
             "content": chunk_text,
             "embedding": embedding,
+            "openai_embedding": embedding,  # <-- Write to openai_embedding column
             "chunk_index": len(chunks),
             "project_id": project_id,
             "file_name": file_name,

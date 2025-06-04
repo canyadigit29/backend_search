@@ -67,6 +67,7 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
             "id": str(uuid.uuid4()),
             "content": chunk_text,
             "embedding": embedding,
+            "openai_embedding": embedding,  # <-- Write to openai_embedding column
             "project_id": project_id,
             "file_name": file_name,
             "chunk_index": chunk_index,

@@ -4,6 +4,7 @@ import logging
 from collections import defaultdict
 
 from app.core.supabase_client import create_client
+from app.api.file_ops.embed import embed_text
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -27,10 +28,9 @@ def perform_search(tool_args):
     end_date = tool_args.get("end_date")
     user_id_filter = tool_args.get("user_id_filter")
 
-    logger.debug(
-        f"🔍 Searching with filters: file_name={file_name_filter}, collection={collection_filter}, date={start_date}–{end_date}, user_id={user_id_filter}"
-    )
-    logger.debug(f"🔑 Embedding: {query_embedding[:5]}..." if query_embedding else "No embedding")
+    logger.debug(f"🔍 Searching with filters: file_name={file_name_filter}, collection={collection_filter}, description={description_filter}, start_date={start_date}, end_date={end_date}, user_id={user_id_filter}")
+    logger.debug(f"🔑 Embedding (first 10): {query_embedding[:10]}..." if query_embedding else "No embedding")
+    logger.debug(f"🛠 Tool args: {json.dumps(tool_args, default=str)[:500]}")
 
     if not query_embedding:
         logger.error("❌ No embedding provided in tool_args.")
@@ -41,6 +41,25 @@ def perform_search(tool_args):
         return {"error": "user_id must be provided to perform search."}
 
     try:
+        # Debug: Check document_chunks count and embedding population
+        try:
+            total_chunks = supabase.table("document_chunks").select("id").execute().data
+            logger.debug(f"📊 Total document_chunks: {len(total_chunks) if total_chunks else 0}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not count document_chunks: {e}")
+
+        try:
+            user_chunks = supabase.table("document_chunks").select("id").eq("user_id", user_id_filter).execute().data
+            logger.debug(f"📊 Chunks for user {user_id_filter}: {len(user_chunks) if user_chunks else 0}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not count user document_chunks: {e}")
+
+        try:
+            with_embedding = supabase.table("document_chunks").select("id").not_.is_("openai_embedding", None).execute().data
+            logger.debug(f"📊 Chunks with openai_embedding: {len(with_embedding) if with_embedding else 0}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not count chunks with openai_embedding: {e}")
+
         rpc_args = {
             "query_embedding": query_embedding,
             "user_id_filter": user_id_filter,
@@ -50,30 +69,24 @@ def perform_search(tool_args):
             "start_date": start_date,
             "end_date": end_date,
         }
-
+        logger.debug(f"📤 Calling match_documents with args: {json.dumps(rpc_args, default=str)[:500]}")
         response = supabase.rpc("match_documents", rpc_args).execute()
+        logger.debug(f"📥 Supabase RPC response: {str(response)[:500]}")
 
         if getattr(response, "error", None):
             logger.error(f"❌ Supabase RPC failed: {response.error.message}")
             return {"error": f"Supabase RPC failed: {response.error.message}"}
 
         matches = response.data or []
+        logger.debug(f"📊 Matches returned: {len(matches)}")
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         if matches:
             top = matches[0]
             preview = top["content"][:200].replace("\n", " ")
             logger.debug(f"🔝 Top match (score {top.get('score')}): {preview}")
-
-        grouped = defaultdict(list)
-        for match in matches:
-            file_id = match.get("file_id")
-            if file_id:
-                grouped[file_id].append(match)
-
-        top_file_id = matches[0].get("file_id") if matches else None
-        if top_file_id and top_file_id in grouped:
-            matches = grouped[top_file_id]
+        else:
+            logger.debug("⚠️ No matches found.")
 
         if expected_phrase:
             expected_lower = expected_phrase.lower()
@@ -102,13 +115,19 @@ async def api_search_docs(request: Request):
     """
     data = await request.json()
 
-    embedding = data.get("embedding")
+    query = data.get("query") or data.get("user_prompt")
     user_id = data.get("user_id")
 
-    if not embedding:
-        return JSONResponse({"error": "Missing embedding"}, status_code=400)
+    if not query:
+        return JSONResponse({"error": "Missing query"}, status_code=400)
     if not user_id:
         return JSONResponse({"error": "Missing user_id"}, status_code=400)
+
+    try:
+        embedding = embed_text(query)
+    except Exception as e:
+        logger.error(f"❌ Failed to generate embedding: {e}")
+        return JSONResponse({"error": f"Failed to generate embedding: {e}"}, status_code=500)
 
     tool_args = {
         "embedding": embedding,
@@ -140,7 +159,6 @@ async def api_search_docs(request: Request):
             "sharing": m.get("sharing"),
             "content": m.get("content"),
             "tokens": m.get("tokens"),
-            "local_embedding": m.get("local_embedding"),
             "openai_embedding": m.get("openai_embedding"),
             # search score
             "score": m.get("score"),
@@ -163,7 +181,6 @@ async def api_search_docs(request: Request):
                 "topic_id": m.get("topic_id"),
                 "chunk_index": m.get("chunk_index"),
                 "embedding_json": m.get("embedding_json"),
-                "embedding": m.get("embedding"),
                 "session_id": m.get("session_id"),
                 "status": m.get("status"),
                 "content": m.get("file_content"),
