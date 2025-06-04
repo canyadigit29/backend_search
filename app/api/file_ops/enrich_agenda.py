@@ -153,3 +153,36 @@ async def enrich_agenda(
         # Use perform_search to get history (reuse your backend search)
         # Pass instructions to the LLM for summarization
         search_args = {"embedding": embedding, "query": section, "user_id_filter": "*"} if embedding is not None else {"query": section, "user_id_filter": "*"}
+        history = perform_search(**search_args)
+        print(f"[enrich_agenda] Search history for section '{section}': {history}")
+        # Enrich section with AI-generated summary and history
+        prompt = [
+            {"role": "system", "content": "You are an expert at summarizing documents. Given the user's instructions and the history of previous discussions, summarize the following section."},
+            {"role": "user", "content": f"Instructions: {instructions}\n\nSection: {section}\n\nHistory: {history}\n\n"}
+        ]
+        try:
+            llm_response = chat_completion(prompt)
+            print(f"[enrich_agenda] LLM enrichment response for section '{section}': {llm_response}")
+            enriched_sections[section] = llm_response
+        except Exception as e:
+            print(f"[enrich_agenda] Failed to enrich section '{section}' with LLM: {e}")
+            enriched_sections[section] = lines  # Fallback to original lines
+
+    # --- PDF GENERATION AND RETURN ---
+    import io
+    from pdfdocument.document import PDFDocument
+
+    buffer = io.BytesIO()
+    pdf = PDFDocument(buffer)
+    pdf.init_report()
+    for section, lines in enriched_sections.items():
+        pdf.h2(section)
+        pdf.p("\n".join(lines))
+    pdf.generate()
+    buffer.seek(0)
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as out_pdf:
+        out_pdf.write(buffer.read())
+        out_pdf_path = out_pdf.name
+
+    return FileResponse(out_pdf_path, media_type="application/pdf", filename="enriched_agenda.pdf")
