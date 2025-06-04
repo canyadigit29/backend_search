@@ -159,7 +159,13 @@ async def enrich_agenda(
         section_text = "\n".join(lines)
         # 1. Extract topics from the section using LLM
         topic_extraction_prompt = [
-            {"role": "system", "content": "You are an expert at analyzing meeting agendas. Given the following section of a meeting agenda, extract a JSON array of the main topics, motions, or action items discussed in this section. Only output the JSON array, no explanation."},
+            {"role": "system", "content": (
+                "You are an expert at analyzing meeting agendas. "
+                "Given the following section of a meeting agenda, extract a JSON array of the main topics, motions, or action items discussed in this section. "
+                "Skip any lines that are bolded or numbered (e.g., '1.', '2.', 'A.', 'B.', or all uppercase). "
+                "Only output the actual discussion topics, not headers, not bolded lines, and not numbered list items. "
+                "Only output the JSON array, no explanation."
+            )},
             {"role": "user", "content": section_text}
         ]
         try:
@@ -167,6 +173,20 @@ async def enrich_agenda(
             topics = json.loads(topics_json)
             if not isinstance(topics, list):
                 raise ValueError("LLM did not return a list")
+            # Fallback filter: remove topics that look like bolded/numbered/list items or all uppercase
+            import re
+            filtered_topics = []
+            for t in topics:
+                t_stripped = str(t).strip()
+                if re.match(r"^(\d+\.|[A-Z]\.|[IVX]+\.|[a-z]\.|[•\-*])", t_stripped):
+                    continue
+                if t_stripped.isupper() and len(t_stripped) > 3:
+                    continue
+                filtered_topics.append(t_stripped)
+            if not filtered_topics:
+                filtered_topics = topics  # fallback to original if all filtered out
+            print(f"[enrich_agenda] Extracted topics for section '{section}': {filtered_topics}")
+            topics = filtered_topics
         except Exception as e:
             print(f"[enrich_agenda] Failed to extract topics for section '{section}': {e}")
             topics = [section]  # fallback: treat section as a single topic
