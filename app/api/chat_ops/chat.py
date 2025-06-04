@@ -9,6 +9,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from app.api.file_ops.search_docs import perform_search
+from app.core.openai_client import chat_completion
 from app.core.supabase_client import supabase
 
 router = APIRouter()
@@ -38,10 +39,22 @@ async def chat_with_context(payload: ChatRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
 
-        # Embed the user prompt
+        # LLM-based query extraction
+        system_prompt = (
+            "You are a helpful assistant. Extract the main topic, keywords, or search query from the user's request. "
+            "Return only the search phrase or keywords, not instructions."
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+        extracted_query = chat_completion(messages)
+        logger.debug(f"[LLM] Extracted search query: {extracted_query}")
+
+        # Embed the extracted query
         embedding_response = client.embeddings.create(
             model="text-embedding-3-large",
-            input=prompt
+            input=extracted_query
         )
         embedding = embedding_response.data[0].embedding
 
@@ -53,7 +66,7 @@ async def chat_with_context(payload: ChatRequest):
         chunks = doc_results.get("results") or doc_results.get("retrieved_chunks") or []
         logger.debug(f"✅ Retrieved {len(chunks)} document chunks.")
 
-        return {"retrieved_chunks": chunks}
+        return {"retrieved_chunks": chunks, "extracted_query": extracted_query}
 
     except Exception as e:
         logger.exception("🚨 Uncaught error in /chat route")

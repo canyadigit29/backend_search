@@ -219,7 +219,7 @@ async def api_search_docs(request: Request):
             }
         })
 
-    return JSONResponse({"retrieved_chunks": retrieved_chunks, "user_prompt": user_prompt})
+    return JSONResponse({"retrieved_chunks": retrieved_chunks})
 
 
 # Legacy endpoint maintained for backward compatibility
