@@ -155,16 +155,26 @@ async def enrich_agenda(
     enriched_sections = {}
     from app.api.file_ops.embed import embed_text  # <-- Import embed_text for embedding generation
     for section, lines in sections.items():
-        topic = " ".join(lines)
-        # Generate embedding for the section
+        section_text = "\n".join(lines)
+        # 1. Use LLM to generate a smart search query for this section
+        query_prompt = [
+            {"role": "system", "content": "You are an expert assistant. Given the following section of a meeting agenda, generate a concise search query that would retrieve the most relevant prior discussions or documents for this section. Only output the search query, no explanation."},
+            {"role": "user", "content": f"Section: {section}\n\nContent:\n{section_text}"}
+        ]
         try:
-            embedding = embed_text(section)
+            search_query = chat_completion(query_prompt).strip()
+        except Exception as e:
+            print(f"[enrich_agenda] Failed to generate search query for section '{section}': {e}")
+            search_query = section  # fallback
+
+        # 2. Generate embedding for the LLM-generated query
+        try:
+            embedding = embed_text(search_query)
         except Exception as e:
             print(f"[enrich_agenda] Failed to generate embedding for section '{section}': {e}")
             embedding = None
-        # Use perform_search to get history (reuse your backend search)
-        # Pass instructions to the LLM for summarization
-        # Only pass embedding if it is not None, otherwise do not include it
+
+        # 3. Perform search with the smart query embedding
         search_args = {"embedding": embedding, "user_id_filter": user_id} if embedding is not None else {"user_id_filter": user_id}
         history = perform_search(search_args)
         print(f"[enrich_agenda] Search history for section '{section}': {history}")
