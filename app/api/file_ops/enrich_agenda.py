@@ -9,6 +9,7 @@ from app.core.openai_client import chat_completion
 import mammoth
 import pdfplumber
 import unicodedata
+from uuid import UUID
 
 router = APIRouter()
 
@@ -75,8 +76,18 @@ def extract_sections(text):
 @router.post("/file_ops/enrich_agenda")
 async def enrich_agenda(
     file: UploadFile = File(...),
-    instructions: str = Form("")
+    instructions: str = Form(""),
+    user_id: str = Form(...)
 ):
+    # Validate user_id
+    import uuid
+    if not user_id or not isinstance(user_id, str):
+        raise HTTPException(status_code=400, detail="user_id is required for enrichment.")
+    try:
+        uuid.UUID(user_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="user_id must be a valid UUID.")
+
     # Save uploaded file to temp
     suffix = os.path.splitext(file.filename)[1].lower()
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -154,7 +165,7 @@ async def enrich_agenda(
         # Use perform_search to get history (reuse your backend search)
         # Pass instructions to the LLM for summarization
         # Only pass embedding if it is not None, otherwise do not include it
-        search_args = {"embedding": embedding, "user_id_filter": "*"} if embedding is not None else {"user_id_filter": "*"}
+        search_args = {"embedding": embedding, "user_id_filter": user_id} if embedding is not None else {"user_id_filter": user_id}
         history = perform_search(search_args)
         print(f"[enrich_agenda] Search history for section '{section}': {history}")
         # Enrich section with AI-generated summary and history
