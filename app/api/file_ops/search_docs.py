@@ -6,6 +6,7 @@ import sys
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
+from app.core.openai_client import chat_completion
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -68,7 +69,7 @@ def perform_search(tool_args):
             "description_filter": description_filter,
             "start_date": start_date,
             "end_date": end_date,
-            "match_threshold": 0.3,  # Set to 0.3 for production-like filtering
+            "match_threshold": 0.2,  # Lowered to 0.2 for more inclusive search
             "match_count": 50        # Reasonable default for UI
         }
         print(f"[DEBUG] Calling match_documents with args: {json.dumps(rpc_args, default=str)[:500]}", file=sys.stderr)
@@ -104,6 +105,22 @@ def perform_search(tool_args):
         return {"error": f"Error during search: {str(e)}"}
 
 
+def extract_search_query(user_prompt: str) -> str:
+    """
+    Use OpenAI to extract the main topic or keywords for semantic search from the user prompt.
+    """
+    system_prompt = (
+        "You are a helpful assistant. Extract the main topic, keywords, or search query from the user's request. "
+        "Return only the search phrase or keywords, not instructions."
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+    result = chat_completion(messages)
+    return result.strip()
+
+
 async def semantic_search(request, payload):
     return perform_search(payload)
 
@@ -116,18 +133,21 @@ async def api_search_docs(request: Request):
     print("[DEBUG] api_search_docs called", file=sys.stderr)
     data = await request.json()
     print(f"[DEBUG] Incoming request data: {json.dumps(data, default=str)[:500]}", file=sys.stderr)
-    query = data.get("query") or data.get("user_prompt")
+    user_prompt = data.get("query") or data.get("user_prompt")
     user_id = data.get("user_id")
-    print(f"[DEBUG] query: {query}", file=sys.stderr)
+    print(f"[DEBUG] user_prompt: {user_prompt}", file=sys.stderr)
     print(f"[DEBUG] user_id: {user_id}", file=sys.stderr)
-    if not query:
+    if not user_prompt:
         print("[DEBUG] Missing query", file=sys.stderr)
         return JSONResponse({"error": "Missing query"}, status_code=400)
     if not user_id:
         print("[DEBUG] Missing user_id", file=sys.stderr)
         return JSONResponse({"error": "Missing user_id"}, status_code=400)
+    # LLM-based query extraction
+    search_query = extract_search_query(user_prompt)
+    print(f"[DEBUG] Extracted search query: {search_query}", file=sys.stderr)
     try:
-        embedding = embed_text(query)
+        embedding = embed_text(search_query)
         print(f"[DEBUG] embedding generated: {str(embedding)[:100]}", file=sys.stderr)
     except Exception as e:
         print(f"[DEBUG] Failed to generate embedding: {e}", file=sys.stderr)
@@ -141,6 +161,7 @@ async def api_search_docs(request: Request):
         "description_filter": data.get("description_filter"),
         "start_date": data.get("start_date"),
         "end_date": data.get("end_date"),
+        "user_prompt": user_prompt  # Pass original prompt for downstream use
     }
     print(f"[DEBUG] tool_args for perform_search: {json.dumps(tool_args, default=str)[:500]}", file=sys.stderr)
     result = perform_search(tool_args)
@@ -198,7 +219,7 @@ async def api_search_docs(request: Request):
             }
         })
 
-    return JSONResponse({"retrieved_chunks": retrieved_chunks})
+    return JSONResponse({"retrieved_chunks": retrieved_chunks, "user_prompt": user_prompt})
 
 
 # Legacy endpoint maintained for backward compatibility
