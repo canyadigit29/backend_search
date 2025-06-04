@@ -153,47 +153,65 @@ async def enrich_agenda(
 
     sections = extract_sections_with_instructions(text, instructions)
     enriched_sections = {}
-    from app.api.file_ops.embed import embed_text  # <-- Import embed_text for embedding generation
+    from app.api.file_ops.embed import embed_text
+    import json
     for section, lines in sections.items():
         section_text = "\n".join(lines)
-        # 1. Use LLM to generate a smart search query for this section
-        query_prompt = [
-            {"role": "system", "content": "You are an expert assistant. Given the following section of a meeting agenda, generate a concise search query that would retrieve the most relevant prior discussions or documents for this section. Only output the search query, no explanation."},
-            {"role": "user", "content": f"Section: {section}\n\nContent:\n{section_text}"}
+        # 1. Extract topics from the section using LLM
+        topic_extraction_prompt = [
+            {"role": "system", "content": "You are an expert at analyzing meeting agendas. Given the following section of a meeting agenda, extract a JSON array of the main topics, motions, or action items discussed in this section. Only output the JSON array, no explanation."},
+            {"role": "user", "content": section_text}
         ]
         try:
-            search_query = chat_completion(query_prompt).strip()
+            topics_json = chat_completion(topic_extraction_prompt)
+            topics = json.loads(topics_json)
+            if not isinstance(topics, list):
+                raise ValueError("LLM did not return a list")
         except Exception as e:
-            print(f"[enrich_agenda] Failed to generate search query for section '{section}': {e}")
-            search_query = section  # fallback
+            print(f"[enrich_agenda] Failed to extract topics for section '{section}': {e}")
+            topics = [section]  # fallback: treat section as a single topic
 
-        # 2. Generate embedding for the LLM-generated query
-        try:
-            embedding = embed_text(search_query)
-        except Exception as e:
-            print(f"[enrich_agenda] Failed to generate embedding for section '{section}': {e}")
-            embedding = None
+        for topic in topics:
+            # 2. Generate a smart search query for this topic (with section context)
+            query_prompt = [
+                {"role": "system", "content": "You are an expert assistant. Given the following section and topic from a meeting agenda, generate a concise search query that would retrieve the most relevant prior discussions or documents for this topic. Only output the search query, no explanation."},
+                {"role": "user", "content": f"Section: {section}\nTopic: {topic}\nContent:\n{section_text}"}
+            ]
+            try:
+                search_query = chat_completion(query_prompt).strip()
+            except Exception as e:
+                print(f"[enrich_agenda] Failed to generate search query for topic '{topic}': {e}")
+                search_query = topic  # fallback
 
-        # 3. Perform search with the smart query embedding
-        search_args = {"embedding": embedding, "user_id_filter": user_id} if embedding is not None else {"user_id_filter": user_id}
-        history = perform_search(search_args)
-        retrieved_chunks = history.get('retrieved_chunks', [])
-        # Only keep the top 10 most relevant chunks
-        top_chunks = sorted(retrieved_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
-        history_text = "\n\n".join(chunk.get('content', '') for chunk in top_chunks)
-        print(f"[enrich_agenda] Search history for section '{section}': {history_text[:500]}...")  # Print only a preview
-        # Enrich section with AI-generated summary and history
-        prompt = [
-            {"role": "system", "content": "You are an expert at summarizing documents. Given the user's instructions and the history of previous discussions, summarize the following section."},
-            {"role": "user", "content": f"Instructions: {instructions}\n\nSection: {section}\n\nHistory: {history_text}\n\n"}
-        ]
-        try:
-            llm_response = chat_completion(prompt)
-            print(f"[enrich_agenda] LLM enrichment response for section '{section}': {llm_response}")
-            enriched_sections[section] = llm_response
-        except Exception as e:
-            print(f"[enrich_agenda] Failed to enrich section '{section}' with LLM: {e}")
-            enriched_sections[section] = lines  # Fallback to original lines
+            # 3. Generate embedding and perform search
+            try:
+                embedding = embed_text(search_query)
+            except Exception as e:
+                print(f"[enrich_agenda] Failed to generate embedding for topic '{topic}': {e}")
+                embedding = None
+
+            search_args = {"embedding": embedding, "user_id_filter": user_id} if embedding is not None else {"user_id_filter": user_id}
+            history = perform_search(search_args)
+            retrieved_chunks = history.get('retrieved_chunks', [])
+            top_chunks = sorted(retrieved_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
+            history_text = "\n\n".join(chunk.get('content', '') for chunk in top_chunks)
+
+            # 4. Summarize/enrich
+            prompt = [
+                {"role": "system", "content": "You are an expert at summarizing documents. Given the user's instructions and the history of previous discussions, summarize the following agenda topic."},
+                {"role": "user", "content": f"Instructions: {instructions}\n\nSection: {section}\n\nTopic: {topic}\n\nHistory: {history_text}\n\n"}
+            ]
+            try:
+                llm_response = chat_completion(prompt)
+                print(f"[enrich_agenda] LLM enrichment response for topic '{topic}': {llm_response}")
+                if section not in enriched_sections:
+                    enriched_sections[section] = {}
+                enriched_sections[section][topic] = llm_response
+            except Exception as e:
+                print(f"[enrich_agenda] Failed to enrich topic '{topic}' with LLM: {e}")
+                if section not in enriched_sections:
+                    enriched_sections[section] = {}
+                enriched_sections[section][topic] = topic  # fallback
 
     # --- PDF GENERATION AND RETURN (using fpdf) ---
     from fpdf import FPDF
@@ -212,17 +230,31 @@ async def enrich_agenda(
     def to_latin1(text):
         return unicodedata.normalize("NFKD", str(text)).encode("latin-1", "replace").decode("latin-1")
 
-    for section, content in enriched_sections.items():
+    for section, topics in enriched_sections.items():
         pdf.set_font('Arial', 'B', 12)
         pdf.cell(0, 10, to_latin1(section), ln=True)
         pdf.set_font('Arial', '', 12)
-        if isinstance(content, list):
-            text = "\n".join(content)
+        if isinstance(topics, dict):
+            for topic, content in topics.items():
+                pdf.set_font('Arial', 'B', 11)
+                pdf.cell(0, 8, to_latin1(f"  - {topic}"), ln=True)
+                pdf.set_font('Arial', '', 11)
+                if isinstance(content, list):
+                    text = "\n".join(content)
+                else:
+                    text = str(content)
+                for line in text.split('\n'):
+                    pdf.multi_cell(0, 8, to_latin1(line))
+                pdf.ln(2)
         else:
-            text = str(content)
-        for line in text.split('\n'):
-            pdf.multi_cell(0, 8, to_latin1(line))
-        pdf.ln(4)
+            # fallback for old structure
+            if isinstance(topics, list):
+                text = "\n".join(topics)
+            else:
+                text = str(topics)
+            for line in text.split('\n'):
+                pdf.multi_cell(0, 8, to_latin1(line))
+            pdf.ln(4)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as out_pdf:
         pdf.output(out_pdf.name)
