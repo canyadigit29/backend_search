@@ -292,30 +292,26 @@ async def enrich_agenda(
         pdf.cell(0, 10, to_latin1(section), ln=True)
         pdf.set_font('Arial', '', 12)
         if isinstance(topics, dict):
-            for topic, summaries in topics.items():
+            for topic, content in topics.items():
                 pdf.set_font('Arial', 'B', 11)
                 pdf.cell(0, 8, to_latin1(f"  - {topic}"), ln=True)
                 pdf.set_font('Arial', '', 11)
-                # summaries is a list of dicts: {source, date, summary}
-                # Sort by date (oldest to newest)
-                from datetime import datetime
-                def parse_date(d):
-                    try:
-                        return datetime.fromisoformat(d)
-                    except Exception:
-                        return datetime.min
-                summaries_sorted = sorted(summaries, key=lambda x: parse_date(x['date']) if x['date'] else datetime.min)
-                for summary_info in summaries_sorted:
-                    src = summary_info['source']
-                    date = summary_info['date']
-                    summary = summary_info['summary']
+                # Find the file sources for this topic (from top_chunks used in history_text)
+                # We'll need to collect these during enrichment above, so add a dict: topic_sources[section][topic] = set([file_names])
+                sources = topic_sources.get(section, {}).get(topic, set()) if 'topic_sources' in locals() else set()
+                if sources:
                     pdf.set_font('Arial', 'B', 10)
-                    date_str = f" ({date})" if date else ""
-                    pdf.cell(0, 7, to_latin1(f"    Source: {src}{date_str}"), ln=True)
+                    for src in sorted(sources):
+                        pdf.cell(0, 7, to_latin1(f"    Source: {src}"), ln=True)
                     pdf.set_font('Arial', '', 11)
-                    for line in str(summary).split('\n'):
-                        pdf.multi_cell(0, 8, to_latin1(line))
-                    pdf.ln(2)
+                # Only show the summary (content), not the raw chunk text
+                if isinstance(content, list):
+                    text = "\n".join(content)
+                else:
+                    text = str(content)
+                for line in text.split('\n'):
+                    pdf.multi_cell(0, 8, to_latin1(line))
+                pdf.ln(2)
         else:
             # fallback for old structure
             if isinstance(topics, list):
