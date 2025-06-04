@@ -1,6 +1,8 @@
 # package marker
 
-from . import ingest, upload
+from . import ingest, upload, enrich_agenda
+
+enrich_agenda = enrich_agenda
 
 
 def load_upload():

@@ -19,3 +19,4 @@ nltk
 pdfplumber
 rq
 redis
+mammoth
