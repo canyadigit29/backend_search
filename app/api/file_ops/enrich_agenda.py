@@ -153,6 +153,7 @@ async def enrich_agenda(
 
     sections = extract_sections_with_instructions(text, instructions)
     enriched_sections = {}
+    topic_sources = {}
     from app.api.file_ops.embed import embed_text
     import json
     for section, lines in sections.items():
@@ -211,10 +212,46 @@ async def enrich_agenda(
                 embedding = None
 
             search_args = {"embedding": embedding, "user_id_filter": user_id} if embedding is not None else {"user_id_filter": user_id}
-            history = perform_search(search_args)
+            history = perform_search(search_args, prefer_recent=True)
             retrieved_chunks = history.get('retrieved_chunks', [])
             top_chunks = sorted(retrieved_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
-            history_text = "\n\n".join(chunk.get('content', '') for chunk in top_chunks)
+
+            # Track sources for this topic
+            if section not in topic_sources:
+                topic_sources[section] = {}
+            if topic not in topic_sources[section]:
+                topic_sources[section][topic] = set()
+            for chunk in top_chunks:
+                file_name = None
+                if chunk.get('file_metadata') and chunk['file_metadata'].get('name'):
+                    file_name = chunk['file_metadata']['name']
+                elif chunk.get('name'):
+                    file_name = chunk['name']
+                if file_name:
+                    import os
+                    base = os.path.splitext(file_name)[0]
+                    words = base.replace('_', ' ').split()
+                    formatted = ' '.join(w.capitalize() for w in words)
+                    topic_sources[section][topic].add(formatted)
+
+            # Build history_text with source file names in bold
+            def format_filename(name):
+                import os
+                base = os.path.splitext(name)[0]
+                words = base.replace('_', ' ').split()
+                return ' '.join(w.capitalize() for w in words)
+
+            history_text = ""
+            for chunk in top_chunks:
+                file_name = None
+                if chunk.get('file_metadata') and chunk['file_metadata'].get('name'):
+                    file_name = chunk['file_metadata']['name']
+                elif chunk.get('name'):
+                    file_name = chunk['name']
+                if file_name:
+                    formatted = format_filename(file_name)
+                    history_text += f"**{formatted}**\n"
+                history_text += chunk.get('content', '') + "\n\n"
 
             # 4. Summarize/enrich
             prompt = [
@@ -259,6 +296,15 @@ async def enrich_agenda(
                 pdf.set_font('Arial', 'B', 11)
                 pdf.cell(0, 8, to_latin1(f"  - {topic}"), ln=True)
                 pdf.set_font('Arial', '', 11)
+                # Find the file sources for this topic (from top_chunks used in history_text)
+                # We'll need to collect these during enrichment above, so add a dict: topic_sources[section][topic] = set([file_names])
+                sources = topic_sources.get(section, {}).get(topic, set()) if 'topic_sources' in locals() else set()
+                if sources:
+                    pdf.set_font('Arial', 'B', 10)
+                    for src in sorted(sources):
+                        pdf.cell(0, 7, to_latin1(f"    Source: {src}"), ln=True)
+                    pdf.set_font('Arial', '', 11)
+                # Only show the summary (content), not the raw chunk text
                 if isinstance(content, list):
                     text = "\n".join(content)
                 else:

@@ -3,6 +3,7 @@ import os
 import logging
 from collections import defaultdict
 import sys
+from datetime import datetime
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -18,7 +19,7 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
-def perform_search(tool_args):
+def perform_search(tool_args, prefer_recent=False):
     print("[DEBUG] perform_search called", file=sys.stderr)
     query_embedding = tool_args.get("embedding")
     expected_phrase = tool_args.get("expected_phrase")
@@ -84,7 +85,19 @@ def perform_search(tool_args):
         matches = response.data or []
         print(f"[DEBUG] Matches returned: {len(matches)}", file=sys.stderr)
         logger.debug(f"📊 Matches returned: {len(matches)}")
-        matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+        if prefer_recent:
+            from datetime import datetime
+            def parse_date(d):
+                try:
+                    return datetime.fromisoformat(d)
+                except Exception:
+                    return datetime.min
+            matches.sort(key=lambda x: (
+                parse_date(x.get('relevant_date') or x.get('file_metadata', {}).get('relevant_date', None)),
+                x.get('score', 0)
+            ), reverse=True)
+        else:
+            matches.sort(key=lambda x: x.get("score", 0), reverse=True)
         if matches:
             top = matches[0]
             preview = top["content"][:200].replace("\n", " ")
