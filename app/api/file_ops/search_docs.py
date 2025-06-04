@@ -68,6 +68,8 @@ def perform_search(tool_args):
             "description_filter": description_filter,
             "start_date": start_date,
             "end_date": end_date,
+            "match_threshold": 0.0,  # Patch: return all results regardless of similarity
+            "match_count": 2000      # Patch: increase max results
         }
         print(f"[DEBUG] Calling match_documents with args: {json.dumps(rpc_args, default=str)[:500]}", file=sys.stderr)
         logger.debug(f"📤 Calling match_documents with args: {json.dumps(rpc_args, default=str)[:500]}")
