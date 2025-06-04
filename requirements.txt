@@ -20,3 +20,4 @@ pdfplumber
 rq
 redis
 mammoth
+fpdf

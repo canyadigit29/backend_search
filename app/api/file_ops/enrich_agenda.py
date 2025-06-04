@@ -169,21 +169,35 @@ async def enrich_agenda(
             print(f"[enrich_agenda] Failed to enrich section '{section}' with LLM: {e}")
             enriched_sections[section] = lines  # Fallback to original lines
 
-    # --- PDF GENERATION AND RETURN ---
-    import io
-    from pdfdocument.document import PDFDocument
+    # --- PDF GENERATION AND RETURN (using fpdf) ---
+    from fpdf import FPDF
+    import tempfile
 
-    buffer = io.BytesIO()
-    pdf = PDFDocument(buffer)
-    pdf.init_report()
-    for section, lines in enriched_sections.items():
-        pdf.h2(section)
-        pdf.p("\n".join(lines))
-    pdf.generate()
-    buffer.seek(0)
+    class PDF(FPDF):
+        def header(self):
+            self.set_font('Arial', 'B', 14)
+            self.cell(0, 10, 'Enriched Agenda', ln=True, align='C')
+            self.ln(5)
+
+    pdf = PDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_font('Arial', '', 12)
+
+    for section, content in enriched_sections.items():
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 10, section, ln=True)
+        pdf.set_font('Arial', '', 12)
+        if isinstance(content, list):
+            text = "\n".join(content)
+        else:
+            text = str(content)
+        for line in text.split('\n'):
+            pdf.multi_cell(0, 8, line)
+        pdf.ln(4)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as out_pdf:
-        out_pdf.write(buffer.read())
+        pdf.output(out_pdf.name)
         out_pdf_path = out_pdf.name
 
     return FileResponse(out_pdf_path, media_type="application/pdf", filename="enriched_agenda.pdf")
