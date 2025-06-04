@@ -153,20 +153,13 @@ async def enrich_agenda(
 
     sections = extract_sections_with_instructions(text, instructions)
     enriched_sections = {}
-    topic_sources = {}
     from app.api.file_ops.embed import embed_text
     import json
     for section, lines in sections.items():
         section_text = "\n".join(lines)
         # 1. Extract topics from the section using LLM
         topic_extraction_prompt = [
-            {"role": "system", "content": (
-                "You are an expert at analyzing meeting agendas. "
-                "Given the following section of a meeting agenda, extract a JSON array of the main topics, motions, or action items discussed in this section. "
-                "Skip any lines that are bolded or numbered (e.g., '1.', '2.', 'A.', 'B.', or all uppercase). "
-                "Only output the actual discussion topics, not headers, not bolded lines, and not numbered list items. "
-                "Only output the JSON array, no explanation."
-            )},
+            {"role": "system", "content": "You are an expert at analyzing meeting agendas. Given the following section of a meeting agenda, extract a JSON array of the main topics, motions, or action items discussed in this section. Only output the JSON array, no explanation."},
             {"role": "user", "content": section_text}
         ]
         try:
@@ -174,20 +167,6 @@ async def enrich_agenda(
             topics = json.loads(topics_json)
             if not isinstance(topics, list):
                 raise ValueError("LLM did not return a list")
-            # Fallback filter: remove topics that look like bolded/numbered/list items or all uppercase
-            import re
-            filtered_topics = []
-            for t in topics:
-                t_stripped = str(t).strip()
-                if re.match(r"^(\d+\.|[A-Z]\.|[IVX]+\.|[a-z]\.|[•\-*])", t_stripped):
-                    continue
-                if t_stripped.isupper() and len(t_stripped) > 3:
-                    continue
-                filtered_topics.append(t_stripped)
-            if not filtered_topics:
-                filtered_topics = topics  # fallback to original if all filtered out
-            print(f"[enrich_agenda] Extracted topics for section '{section}': {filtered_topics}")
-            topics = filtered_topics
         except Exception as e:
             print(f"[enrich_agenda] Failed to extract topics for section '{section}': {e}")
             topics = [section]  # fallback: treat section as a single topic
@@ -212,46 +191,10 @@ async def enrich_agenda(
                 embedding = None
 
             search_args = {"embedding": embedding, "user_id_filter": user_id} if embedding is not None else {"user_id_filter": user_id}
-            history = perform_search(search_args, prefer_recent=True)
+            history = perform_search(search_args)
             retrieved_chunks = history.get('retrieved_chunks', [])
             top_chunks = sorted(retrieved_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
-
-            # Track sources for this topic
-            if section not in topic_sources:
-                topic_sources[section] = {}
-            if topic not in topic_sources[section]:
-                topic_sources[section][topic] = set()
-            for chunk in top_chunks:
-                file_name = None
-                if chunk.get('file_metadata') and chunk['file_metadata'].get('name'):
-                    file_name = chunk['file_metadata']['name']
-                elif chunk.get('name'):
-                    file_name = chunk['name']
-                if file_name:
-                    import os
-                    base = os.path.splitext(file_name)[0]
-                    words = base.replace('_', ' ').split()
-                    formatted = ' '.join(w.capitalize() for w in words)
-                    topic_sources[section][topic].add(formatted)
-
-            # Build history_text with source file names in bold
-            def format_filename(name):
-                import os
-                base = os.path.splitext(name)[0]
-                words = base.replace('_', ' ').split()
-                return ' '.join(w.capitalize() for w in words)
-
-            history_text = ""
-            for chunk in top_chunks:
-                file_name = None
-                if chunk.get('file_metadata') and chunk['file_metadata'].get('name'):
-                    file_name = chunk['file_metadata']['name']
-                elif chunk.get('name'):
-                    file_name = chunk['name']
-                if file_name:
-                    formatted = format_filename(file_name)
-                    history_text += f"**{formatted}**\n"
-                history_text += chunk.get('content', '') + "\n\n"
+            history_text = "\n\n".join(chunk.get('content', '') for chunk in top_chunks)
 
             # 4. Summarize/enrich
             prompt = [
@@ -292,29 +235,17 @@ async def enrich_agenda(
         pdf.cell(0, 10, to_latin1(section), ln=True)
         pdf.set_font('Arial', '', 12)
         if isinstance(topics, dict):
-            for topic, summaries in topics.items():
+            for topic, content in topics.items():
                 pdf.set_font('Arial', 'B', 11)
                 pdf.cell(0, 8, to_latin1(f"  - {topic}"), ln=True)
                 pdf.set_font('Arial', '', 11)
-                # summaries is a list of dicts: {source, date, summary}
-                from datetime import datetime
-                def parse_date(d):
-                    try:
-                        return datetime.fromisoformat(d)
-                    except Exception:
-                        return datetime.min
-                summaries_sorted = sorted(summaries, key=lambda x: parse_date(x['date']) if x['date'] else datetime.min)
-                for summary_info in summaries_sorted:
-                    src = summary_info['source']
-                    date = summary_info['date']
-                    summary = summary_info['summary']
-                    pdf.set_font('Arial', 'B', 10)
-                    date_str = f" ({date})" if date else ""
-                    pdf.cell(0, 7, to_latin1(f"    Source: {src}{date_str}"), ln=True)
-                    pdf.set_font('Arial', '', 11)
-                    for line in str(summary).split('\n'):
-                        pdf.multi_cell(0, 8, to_latin1(line))
-                    pdf.ln(2)
+                if isinstance(content, list):
+                    text = "\n".join(content)
+                else:
+                    text = str(content)
+                for line in text.split('\n'):
+                    pdf.multi_cell(0, 8, to_latin1(line))
+                pdf.ln(2)
         else:
             # fallback for old structure
             if isinstance(topics, list):
