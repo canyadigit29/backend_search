@@ -177,11 +177,15 @@ async def enrich_agenda(
         # 3. Perform search with the smart query embedding
         search_args = {"embedding": embedding, "user_id_filter": user_id} if embedding is not None else {"user_id_filter": user_id}
         history = perform_search(search_args)
-        print(f"[enrich_agenda] Search history for section '{section}': {history}")
+        retrieved_chunks = history.get('retrieved_chunks', [])
+        # Only keep the top 10 most relevant chunks
+        top_chunks = sorted(retrieved_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
+        history_text = "\n\n".join(chunk.get('content', '') for chunk in top_chunks)
+        print(f"[enrich_agenda] Search history for section '{section}': {history_text[:500]}...")  # Print only a preview
         # Enrich section with AI-generated summary and history
         prompt = [
             {"role": "system", "content": "You are an expert at summarizing documents. Given the user's instructions and the history of previous discussions, summarize the following section."},
-            {"role": "user", "content": f"Instructions: {instructions}\n\nSection: {section}\n\nHistory: {history}\n\n"}
+            {"role": "user", "content": f"Instructions: {instructions}\n\nSection: {section}\n\nHistory: {history_text}\n\n"}
         ]
         try:
             llm_response = chat_completion(prompt)
