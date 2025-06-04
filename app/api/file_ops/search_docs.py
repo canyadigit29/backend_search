@@ -85,8 +85,23 @@ def perform_search(tool_args):
             top = matches[0]
             preview = top["content"][:200].replace("\n", " ")
             logger.debug(f"🔝 Top match (score {top.get('score')}): {preview}")
+<<<<<<< HEAD
         else:
             logger.debug("⚠️ No matches found.")
+=======
+
+        # Remove grouping by file, just return all matches
+        # grouped = defaultdict(list)
+        # for match in matches:
+        #     file_id = match.get("file_id")
+        #     if file_id:
+        #         grouped[file_id].append(match)
+        #
+        # top_file_id = matches[0].get("file_id") if matches else None
+        # if top_file_id and top_file_id in grouped:
+        #     matches = grouped[top_file_id]
+        # Now just return all matches as-is
+>>>>>>> b3106c53eda407143e598d43a91b59e0b85496e7
 
         if expected_phrase:
             expected_lower = expected_phrase.lower()
