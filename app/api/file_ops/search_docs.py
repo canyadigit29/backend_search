@@ -3,7 +3,6 @@ import os
 import logging
 from collections import defaultdict
 import sys
-from datetime import datetime
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
