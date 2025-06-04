@@ -141,24 +141,15 @@ async def enrich_agenda(
 
     sections = extract_sections_with_instructions(text, instructions)
     enriched_sections = {}
+    from app.api.file_ops.embed import embed_text  # <-- Import embed_text for embedding generation
     for section, lines in sections.items():
         topic = " ".join(lines)
+        # Generate embedding for the section
+        try:
+            embedding = embed_text(section)
+        except Exception as e:
+            print(f"[enrich_agenda] Failed to generate embedding for section '{section}': {e}")
+            embedding = None
         # Use perform_search to get history (reuse your backend search)
         # Pass instructions to the LLM for summarization
-        search_result = perform_search({"query": section, "user_id_filter": "*"})
-        summary_prompt = f"The user has provided these instructions for enrichment: '{instructions}'. Summarize or process the following section according to the instructions, using the following related information: {search_result}\nSection Content: {topic}"
-        summary = chat_completion(summary_prompt)
-        enriched_sections[section] = (lines, summary)
-
-    # Insert summaries into text
-    enriched_text = ""
-    for section, (lines, summary) in enriched_sections.items():
-        enriched_text += "\n".join(lines)
-        enriched_text += f"\n\n[Enrichment]\n{summary}\n\n"
-
-    # Write enriched text to new file
-    enriched_path = tmp_path + "_enriched.txt"
-    with open(enriched_path, "w", encoding="utf-8") as f:
-        f.write(enriched_text)
-
-    return FileResponse(enriched_path, filename="enriched_" + file.filename)
+        search_args = {"embedding": embedding, "query": section, "user_id_filter": "*"} if embedding is not None else {"query": section, "user_id_filter": "*"}
