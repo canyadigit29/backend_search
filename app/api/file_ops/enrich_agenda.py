@@ -8,6 +8,7 @@ from app.api.file_ops.search_docs import perform_search
 from app.core.openai_client import chat_completion
 import mammoth
 import pdfplumber
+import unicodedata
 
 router = APIRouter()
 
@@ -183,16 +184,19 @@ async def enrich_agenda(
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.set_font('Arial', '', 12)
 
+    def to_latin1(text):
+        return unicodedata.normalize("NFKD", str(text)).encode("latin-1", "replace").decode("latin-1")
+
     for section, content in enriched_sections.items():
         pdf.set_font('Arial', 'B', 12)
-        pdf.cell(0, 10, section, ln=True)
+        pdf.cell(0, 10, to_latin1(section), ln=True)
         pdf.set_font('Arial', '', 12)
         if isinstance(content, list):
             text = "\n".join(content)
         else:
             text = str(content)
         for line in text.split('\n'):
-            pdf.multi_cell(0, 8, line)
+            pdf.multi_cell(0, 8, to_latin1(line))
         pdf.ln(4)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as out_pdf:
