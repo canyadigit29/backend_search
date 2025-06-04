@@ -219,7 +219,35 @@ async def api_search_docs(request: Request):
             }
         })
 
-    return JSONResponse({"retrieved_chunks": retrieved_chunks})
+    # --- LLM-based summary of top search results ---
+    summary = None
+    try:
+        # GPT-4o supports a large context window; include as many top chunks as fit in ~60,000 chars
+        MAX_SUMMARY_CHARS = 60000
+        sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
+        top_texts = []
+        total_chars = 0
+        for chunk in sorted_chunks:
+            content = chunk.get("content", "")
+            if not content:
+                continue
+            if total_chars + len(content) > MAX_SUMMARY_CHARS:
+                break
+            top_texts.append(content)
+            total_chars += len(content)
+        top_text = "\n\n".join(top_texts)
+        if top_text.strip():
+            from app.core.openai_client import chat_completion
+            summary_prompt = [
+                {"role": "system", "content": "You are an expert assistant. Summarize the following retrieved search results for the user in a concise, clear, and helpful way. Only include information relevant to the user's query."},
+                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
+            ]
+            summary = chat_completion(summary_prompt, model="gpt-4o")
+    except Exception as e:
+        print(f"[DEBUG] Failed to generate summary: {e}", file=sys.stderr)
+        summary = None
+
+    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": summary})
 
 
 # Legacy endpoint maintained for backward compatibility
