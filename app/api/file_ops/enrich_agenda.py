@@ -171,7 +171,6 @@ async def enrich_agenda(
 
     # --- PDF GENERATION AND RETURN (using fpdf) ---
     from fpdf import FPDF
-    import tempfile
 
     class PDF(FPDF):
         def header(self):
