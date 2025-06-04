@@ -4,6 +4,7 @@ import logging
 from collections import defaultdict
 
 from app.core.supabase_client import create_client
+from app.api.file_ops.embed import embed_text
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -65,15 +66,17 @@ def perform_search(tool_args):
             preview = top["content"][:200].replace("\n", " ")
             logger.debug(f"🔝 Top match (score {top.get('score')}): {preview}")
 
-        grouped = defaultdict(list)
-        for match in matches:
-            file_id = match.get("file_id")
-            if file_id:
-                grouped[file_id].append(match)
-
-        top_file_id = matches[0].get("file_id") if matches else None
-        if top_file_id and top_file_id in grouped:
-            matches = grouped[top_file_id]
+        # Remove grouping by file, just return all matches
+        # grouped = defaultdict(list)
+        # for match in matches:
+        #     file_id = match.get("file_id")
+        #     if file_id:
+        #         grouped[file_id].append(match)
+        #
+        # top_file_id = matches[0].get("file_id") if matches else None
+        # if top_file_id and top_file_id in grouped:
+        #     matches = grouped[top_file_id]
+        # Now just return all matches as-is
 
         if expected_phrase:
             expected_lower = expected_phrase.lower()
@@ -102,13 +105,19 @@ async def api_search_docs(request: Request):
     """
     data = await request.json()
 
-    embedding = data.get("embedding")
+    query = data.get("query") or data.get("user_prompt")
     user_id = data.get("user_id")
 
-    if not embedding:
-        return JSONResponse({"error": "Missing embedding"}, status_code=400)
+    if not query:
+        return JSONResponse({"error": "Missing query"}, status_code=400)
     if not user_id:
         return JSONResponse({"error": "Missing user_id"}, status_code=400)
+
+    try:
+        embedding = embed_text(query)
+    except Exception as e:
+        logger.error(f"❌ Failed to generate embedding: {e}")
+        return JSONResponse({"error": f"Failed to generate embedding: {e}"}, status_code=500)
 
     tool_args = {
         "embedding": embedding,
@@ -140,7 +149,6 @@ async def api_search_docs(request: Request):
             "sharing": m.get("sharing"),
             "content": m.get("content"),
             "tokens": m.get("tokens"),
-            "local_embedding": m.get("local_embedding"),
             "openai_embedding": m.get("openai_embedding"),
             # search score
             "score": m.get("score"),
@@ -163,7 +171,6 @@ async def api_search_docs(request: Request):
                 "topic_id": m.get("topic_id"),
                 "chunk_index": m.get("chunk_index"),
                 "embedding_json": m.get("embedding_json"),
-                "embedding": m.get("embedding"),
                 "session_id": m.get("session_id"),
                 "status": m.get("status"),
                 "content": m.get("file_content"),
