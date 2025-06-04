@@ -297,6 +297,7 @@ async def enrich_agenda(
                 pdf.cell(0, 8, to_latin1(f"  - {topic}"), ln=True)
                 pdf.set_font('Arial', '', 11)
                 # summaries is a list of dicts: {source, date, summary}
+                # Sort by date (oldest to newest)
                 from datetime import datetime
                 def parse_date(d):
                     try:
