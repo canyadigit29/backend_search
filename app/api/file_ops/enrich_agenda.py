@@ -152,8 +152,9 @@ async def enrich_agenda(
             embedding = None
         # Use perform_search to get history (reuse your backend search)
         # Pass instructions to the LLM for summarization
-        search_args = {"embedding": embedding, "query": section, "user_id_filter": "*"} if embedding is not None else {"query": section, "user_id_filter": "*"}
-        history = perform_search(**search_args)
+        # Only pass embedding if it is not None, otherwise do not include it
+        search_args = {"embedding": embedding, "user_id_filter": "*"} if embedding is not None else {"user_id_filter": "*"}
+        history = perform_search(search_args)
         print(f"[enrich_agenda] Search history for section '{section}': {history}")
         # Enrich section with AI-generated summary and history
         prompt = [
