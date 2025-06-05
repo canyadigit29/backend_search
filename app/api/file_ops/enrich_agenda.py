@@ -1,6 +1,6 @@
 # FastAPI endpoint for agenda enrichment
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form
-from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
 import os
 import tempfile
 from app.core.extract_text import extract_text
@@ -114,162 +114,80 @@ async def enrich_agenda(
         raise HTTPException(status_code=400, detail="Unsupported file type.")
 
     # Use instructions to guide section extraction and summarization
-    def extract_sections_with_instructions(text, instructions):
-        from app.core.openai_client import chat_completion
-        import json
-        prompt = [
-            {"role": "system", "content": f"You are an expert at analyzing documents. The user has provided these instructions for enrichment: '{instructions}'. Given the full text of a document, return ONLY a JSON array of the exact lines that should be treated as section headers, based on the user's instructions. Do not include any explanation, markdown, or extra text. Only output a JSON array."},
-            {"role": "user", "content": text[:6000]}
-        ]
-        try:
-            llm_response = chat_completion(prompt)
-            print(f"[extract_sections_with_instructions] LLM raw response: {llm_response}")
-            header_lines = json.loads(llm_response)
-            if not isinstance(header_lines, list):
-                raise ValueError("LLM did not return a list")
-            # Filter out lettered/numbered headers
-            header_lines = [h for h in header_lines if not is_lettered_or_numbered_header(h)]
-            sections = {}
-            current = None
-            for line in text.splitlines():
-                if line.strip() in header_lines:
-                    current = line.strip()
-                    sections[current] = []
-                if current:
-                    sections[current].append(line)
-            if not sections:
-                raise ValueError("No sections found by LLM")
-            return sections
-        except Exception as e:
-            print(f"[extract_sections_with_instructions] LLM section header detection failed: {e}. Falling back to heuristic.")
-            # Fallback to previous heuristic
-            sections = {}
-            current = None
-            lines = text.splitlines()
-            for i, line in enumerate(lines):
-                stripped = line.strip()
-                is_header = (
-                    ((stripped.isupper() and len(stripped) > 3) or
-                    stripped.endswith(":") or
-                    (i > 0 and lines[i-1].strip() == "" and (i+1 < len(lines) and lines[i+1].strip() == "")))
-                    and not is_lettered_or_numbered_header(stripped)
-                )
-                if is_header:
-                    current = stripped
-                    sections[current] = []
-                if current:
-                    sections[current].append(line)
-            if not sections:
-                sections["Full Document"] = lines
-            return sections
+    def extract_groups_and_subtopics(text):
+        import re
+        lines = text.splitlines()
+        groups = []
+        current_group = None
+        for line in lines:
+            if re.match(r"^\d+\. ", line.strip()):
+                if current_group:
+                    groups.append(current_group)
+                current_group = {"group_title": line.strip(), "lines": [], "subtopics": []}
+            elif current_group is not None:
+                current_group["lines"].append(line)
+        if current_group:
+            groups.append(current_group)
+        # Now, for each group, extract subtopics (lettered or bulleted lines)
+        for group in groups:
+            subtopics = []
+            current_sub = None
+            for line in group["lines"]:
+                if re.match(r"^[A-Z]\. ", line.strip()) or re.match(r"^[-*] ", line.strip()):
+                    if current_sub:
+                        subtopics.append(current_sub)
+                    current_sub = {"title": line.strip(), "lines": []}
+                elif current_sub is not None:
+                    current_sub["lines"].append(line)
+            if current_sub:
+                subtopics.append(current_sub)
+            group["subtopics"] = subtopics
+        return groups
 
-    sections = extract_sections_with_instructions(text, instructions)
-    enriched_sections = {}
+    text_groups = extract_groups_and_subtopics(text)
     from app.api.file_ops.embed import embed_text
     import json
-    for section, lines in sections.items():
-        section_text = "\n".join(lines)
-        # 1. Extract topics from the section using LLM
-        topic_extraction_prompt = [
-            {"role": "system", "content": "You are an expert at analyzing meeting agendas. Given the following section of a meeting agenda, extract a JSON array of the main topics, motions, or action items discussed in this section. Only output the JSON array, no explanation."},
-            {"role": "user", "content": section_text}
+    results = []
+    for group in text_groups:
+        group_text = "\n".join(group["lines"])
+        # Summarize group
+        group_summary_prompt = [
+            {"role": "system", "content": "You are an expert at summarizing meeting agenda sections. Summarize the following agenda group for the user."},
+            {"role": "user", "content": group_text}
         ]
         try:
-            topics_json = chat_completion(topic_extraction_prompt)
-            topics = json.loads(topics_json)
-            if not isinstance(topics, list):
-                raise ValueError("LLM did not return a list")
-        except Exception as e:
-            print(f"[enrich_agenda] Failed to extract topics for section '{section}': {e}")
-            topics = [section]  # fallback: treat section as a single topic
-
-        for topic in topics:
-            # 2. Generate a smart search query for this topic (with section context)
-            query_prompt = [
-                {"role": "system", "content": "You are an expert assistant. Given the following section and topic from a meeting agenda, generate a concise search query that would retrieve the most relevant prior discussions or documents for this topic. Only output the search query, no explanation."},
-                {"role": "user", "content": f"Section: {section}\nTopic: {topic}\nContent:\n{section_text}"}
+            group_summary = chat_completion(group_summary_prompt)
+        except Exception:
+            group_summary = ""
+        group_result = {
+            "group_title": group["group_title"],
+            "summary": group_summary,
+            "subtopics": []
+        }
+        for sub in group["subtopics"]:
+            sub_text = "\n".join(sub["lines"])
+            # Summarize subtopic
+            sub_summary_prompt = [
+                {"role": "system", "content": "You are an expert at summarizing meeting agenda topics. Summarize the following agenda subtopic for the user."},
+                {"role": "user", "content": sub_text}
             ]
             try:
-                search_query = chat_completion(query_prompt).strip()
-            except Exception as e:
-                print(f"[enrich_agenda] Failed to generate search query for topic '{topic}': {e}")
-                search_query = topic  # fallback
-
-            # 3. Generate embedding and perform search
+                sub_summary = chat_completion(sub_summary_prompt)
+            except Exception:
+                sub_summary = ""
+            # Retrieve source chunks for subtopic
             try:
-                embedding = embed_text(search_query)
-            except Exception as e:
-                print(f"[enrich_agenda] Failed to generate embedding for topic '{topic}': {e}")
-                embedding = None
-
-            search_args = {"embedding": embedding, "user_id_filter": user_id} if embedding is not None else {"user_id_filter": user_id}
-            history = perform_search(search_args)
-            retrieved_chunks = history.get('retrieved_chunks', [])
-            top_chunks = sorted(retrieved_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
-            history_text = "\n\n".join(chunk.get('content', '') for chunk in top_chunks)
-
-            # 4. Summarize/enrich
-            prompt = [
-                {"role": "system", "content": "You are an expert at summarizing documents. Given the user's instructions and the history of previous discussions, summarize the following agenda topic."},
-                {"role": "user", "content": f"Instructions: {instructions}\n\nSection: {section}\n\nTopic: {topic}\n\nHistory: {history_text}\n\n"}
-            ]
-            try:
-                llm_response = chat_completion(prompt)
-                print(f"[enrich_agenda] LLM enrichment response for topic '{topic}': {llm_response}")
-                if section not in enriched_sections:
-                    enriched_sections[section] = {}
-                enriched_sections[section][topic] = llm_response
-            except Exception as e:
-                print(f"[enrich_agenda] Failed to enrich topic '{topic}' with LLM: {e}")
-                if section not in enriched_sections:
-                    enriched_sections[section] = {}
-                enriched_sections[section][topic] = topic  # fallback
-
-    # --- PDF GENERATION AND RETURN (using fpdf) ---
-    from fpdf import FPDF
-
-    class PDF(FPDF):
-        def header(self):
-            self.set_font('Arial', 'B', 14)
-            self.cell(0, 10, 'Enriched Agenda', ln=True, align='C')
-            self.ln(5)
-
-    pdf = PDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_font('Arial', '', 12)
-
-    def to_latin1(text):
-        return unicodedata.normalize("NFKD", str(text)).encode("latin-1", "replace").decode("latin-1")
-
-    for section, topics in enriched_sections.items():
-        pdf.set_font('Arial', 'B', 12)
-        pdf.cell(0, 10, to_latin1(section), ln=True)
-        pdf.set_font('Arial', '', 12)
-        if isinstance(topics, dict):
-            for topic, content in topics.items():
-                pdf.set_font('Arial', 'B', 11)
-                pdf.cell(0, 8, to_latin1(f"  - {topic}"), ln=True)
-                pdf.set_font('Arial', '', 11)
-                if isinstance(content, list):
-                    text = "\n".join(content)
-                else:
-                    text = str(content)
-                for line in text.split('\n'):
-                    pdf.multi_cell(0, 8, to_latin1(line))
-                pdf.ln(2)
-        else:
-            # fallback for old structure
-            if isinstance(topics, list):
-                text = "\n".join(topics)
-            else:
-                text = str(topics)
-            for line in text.split('\n'):
-                pdf.multi_cell(0, 8, to_latin1(line))
-            pdf.ln(4)
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as out_pdf:
-        pdf.output(out_pdf.name)
-        out_pdf_path = out_pdf.name
-
-    return FileResponse(out_pdf_path, media_type="application/pdf", filename="enriched_agenda.pdf")
+                embedding = embed_text(sub["title"])
+                search_args = {"embedding": embedding, "user_id_filter": user_id}
+                history = perform_search(search_args)
+                retrieved_chunks = history.get('retrieved_chunks', [])
+                top_chunks = sorted(retrieved_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
+            except Exception:
+                top_chunks = []
+            group_result["subtopics"].append({
+                "title": sub["title"],
+                "summary": sub_summary,
+                "sources": top_chunks
+            })
+        results.append(group_result)
+    return JSONResponse(content=results)
