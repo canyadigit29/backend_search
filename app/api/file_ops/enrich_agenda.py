@@ -190,18 +190,4 @@ async def enrich_agenda(
                 "sources": top_chunks
             })
         results.append(group_result)
-
-    # Generate overall summary for the agenda
-    try:
-        overall_summary_prompt = [
-            {"role": "system", "content": "You are an expert assistant. Summarize the following agenda enrichment results for the user in a concise, clear, and helpful way."},
-            {"role": "user", "content": json.dumps(results)}
-        ]
-        overall_summary = chat_completion(overall_summary_prompt)
-    except Exception:
-        overall_summary = ""
-
-    # Flatten all chunks from subtopics into a single list
-    retrieved_chunks = [chunk for group in results for sub in group["subtopics"] for chunk in sub["sources"]]
-
-    return JSONResponse({"summary": overall_summary, "retrieved_chunks": retrieved_chunks})
+    return JSONResponse(content=results)
