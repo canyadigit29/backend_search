@@ -66,7 +66,47 @@ async def chat_with_context(payload: ChatRequest):
         chunks = doc_results.get("results") or doc_results.get("retrieved_chunks") or []
         logger.debug(f"✅ Retrieved {len(chunks)} document chunks.")
 
-        return {"retrieved_chunks": chunks, "extracted_query": extracted_query}
+        # --- LLM-based summary of top search results (mirroring /file_ops/search_docs.py) ---
+        import sys
+        print(f"[DEBUG] Number of matches for summary: {len(chunks)}", file=sys.stderr)
+        sys.stderr.flush()
+        summary = None
+        try:
+            MAX_SUMMARY_CHARS = 60000
+            sorted_chunks = sorted(chunks, key=lambda x: x.get("score", 0), reverse=True)
+            top_texts = []
+            total_chars = 0
+            for chunk in sorted_chunks:
+                content = chunk.get("content", "")
+                if not content:
+                    continue
+                if total_chars + len(content) > MAX_SUMMARY_CHARS:
+                    break
+                top_texts.append(content)
+                total_chars += len(content)
+            top_text = "\n\n".join(top_texts)
+            print(f"[DEBUG] top_text length: {len(top_text)}", file=sys.stderr)
+            print(f"[DEBUG] top_text preview: {top_text[:300]}...", file=sys.stderr)
+            sys.stderr.flush()
+            if top_text.strip():
+                summary_prompt = [
+                    {"role": "system", "content": "You are an expert assistant. Summarize the following retrieved search results for the user in a concise, clear, and helpful way. Only include information relevant to the user's query."},
+                    {"role": "user", "content": f"User query: {prompt}\n\nSearch results:\n{top_text}"}
+                ]
+                print(f"[DEBUG] summary_prompt: {summary_prompt}", file=sys.stderr)
+                sys.stderr.flush()
+                summary = chat_completion(summary_prompt, model="gpt-4o")
+                print(f"[DEBUG] Summary result: {summary[:300]}...", file=sys.stderr)
+                sys.stderr.flush()
+            else:
+                print("[DEBUG] No top_text to summarize.", file=sys.stderr)
+                sys.stderr.flush()
+        except Exception as e:
+            print(f"[DEBUG] Failed to generate summary: {e}", file=sys.stderr)
+            sys.stderr.flush()
+            summary = None
+
+        return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query}
 
     except Exception as e:
         logger.exception("🚨 Uncaught error in /chat route")
