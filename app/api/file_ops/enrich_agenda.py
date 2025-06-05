@@ -147,47 +147,36 @@ async def enrich_agenda(
     text_groups = extract_groups_and_subtopics(text)
     from app.api.file_ops.embed import embed_text
     import json
-    results = []
+    topics = []
     for group in text_groups:
-        group_text = "\n".join(group["lines"])
-        # Summarize group
-        group_summary_prompt = [
-            {"role": "system", "content": "You are an expert at summarizing meeting agenda sections. Summarize the following agenda group for the user."},
-            {"role": "user", "content": group_text}
-        ]
-        try:
-            group_summary = chat_completion(group_summary_prompt)
-        except Exception:
-            group_summary = ""
-        group_result = {
-            "group_title": group["group_title"],
-            "summary": group_summary,
-            "subtopics": []
-        }
         for sub in group["subtopics"]:
-            sub_text = "\n".join(sub["lines"])
-            # Summarize subtopic
-            sub_summary_prompt = [
-                {"role": "system", "content": "You are an expert at summarizing meeting agenda topics. Summarize the following agenda subtopic for the user."},
-                {"role": "user", "content": sub_text}
-            ]
+            topic_title = sub["title"]
+            # Use the topic title as the semantic search query
             try:
-                sub_summary = chat_completion(sub_summary_prompt)
-            except Exception:
-                sub_summary = ""
-            # Retrieve source chunks for subtopic
-            try:
-                embedding = embed_text(sub["title"])
+                embedding = embed_text(topic_title)
                 search_args = {"embedding": embedding, "user_id_filter": user_id}
                 history = perform_search(search_args)
                 retrieved_chunks = history.get('retrieved_chunks', [])
                 top_chunks = sorted(retrieved_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
             except Exception:
                 top_chunks = []
-            group_result["subtopics"].append({
-                "title": sub["title"],
-                "summary": sub_summary,
-                "sources": top_chunks
+            if top_chunks:
+                # Summarize the search results
+                try:
+                    top_texts = [chunk.get("content", "") for chunk in top_chunks if chunk.get("content")]
+                    top_text = "\n\n".join(top_texts)
+                    summary_prompt = [
+                        {"role": "system", "content": "You are an expert assistant. Summarize the following retrieved search results for the user in a concise, clear, and helpful way. Only include information relevant to the topic."},
+                        {"role": "user", "content": f"Topic: {topic_title}\n\nSearch results:\n{top_text}"}
+                    ]
+                    summary = chat_completion(summary_prompt)
+                except Exception:
+                    summary = "Error generating summary."
+            else:
+                summary = "this appears to be a new item"
+            topics.append({
+                "title": topic_title,
+                "summary": summary,
+                "retrieved_chunks": top_chunks
             })
-        results.append(group_result)
-    return JSONResponse(content=results)
+    return JSONResponse(content={"topics": topics})
