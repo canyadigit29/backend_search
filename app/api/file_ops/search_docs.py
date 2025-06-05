@@ -220,6 +220,8 @@ async def api_search_docs(request: Request):
         })
 
     # --- LLM-based summary of top search results ---
+    import sys
+    print(f"[DEBUG] Number of matches for summary: {len(matches)}", file=sys.stderr)
     summary = None
     try:
         # GPT-4o supports a large context window; include as many top chunks as fit in ~60,000 chars
@@ -236,6 +238,7 @@ async def api_search_docs(request: Request):
             top_texts.append(content)
             total_chars += len(content)
         top_text = "\n\n".join(top_texts)
+        print(f"[DEBUG] top_text length: {len(top_text)}", file=sys.stderr)
         if top_text.strip():
             from app.core.openai_client import chat_completion
             summary_prompt = [
@@ -243,6 +246,9 @@ async def api_search_docs(request: Request):
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
             summary = chat_completion(summary_prompt, model="gpt-4o")
+            print(f"[DEBUG] Summary result: {summary[:300]}...", file=sys.stderr)
+        else:
+            print("[DEBUG] No top_text to summarize.", file=sys.stderr)
     except Exception as e:
         print(f"[DEBUG] Failed to generate summary: {e}", file=sys.stderr)
         summary = None
