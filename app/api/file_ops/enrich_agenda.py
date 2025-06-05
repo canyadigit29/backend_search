@@ -156,8 +156,50 @@ async def enrich_agenda(
                 embedding = embed_text(topic_title)
                 search_args = {"embedding": embedding, "user_id_filter": user_id}
                 history = perform_search(search_args)
-                retrieved_chunks = history.get('retrieved_chunks', [])
-                top_chunks = sorted(retrieved_chunks, key=lambda x: x.get('score', 0), reverse=True)[:10]
+                # Compose retrieved_chunks with full metadata as in search_docs.py
+                matches = history.get('retrieved_chunks', [])
+                top_chunks = []
+                for m in sorted(matches, key=lambda x: x.get("score", 0), reverse=True)[:10]:
+                    top_chunks.append({
+                        "id": m.get("id"),
+                        "file_id": m.get("file_id"),
+                        "user_id": m.get("user_id"),
+                        "created_at": m.get("created_at"),
+                        "updated_at": m.get("updated_at"),
+                        "sharing": m.get("sharing"),
+                        "content": m.get("content"),
+                        "tokens": m.get("tokens"),
+                        "openai_embedding": m.get("openai_embedding"),
+                        "score": m.get("score"),
+                        "file_metadata": {
+                            "file_id": m.get("file_id"),
+                            "folder_id": m.get("folder_id"),
+                            "created_at": m.get("file_created_at") or m.get("created_at"),
+                            "updated_at": m.get("file_updated_at") or m.get("updated_at"),
+                            "sharing": m.get("file_sharing"),
+                            "description": m.get("description"),
+                            "file_path": m.get("file_path"),
+                            "name": m.get("name") or m.get("file_name"),
+                            "size": m.get("size"),
+                            "tokens": m.get("file_tokens"),
+                            "type": m.get("type"),
+                            "project_id": m.get("project_id"),
+                            "message_index": m.get("message_index"),
+                            "timestamp": m.get("timestamp"),
+                            "topic_id": m.get("topic_id"),
+                            "chunk_index": m.get("chunk_index"),
+                            "embedding_json": m.get("embedding_json"),
+                            "session_id": m.get("session_id"),
+                            "status": m.get("status"),
+                            "content": m.get("file_content"),
+                            "topic_name": m.get("topic_name"),
+                            "speaker_role": m.get("speaker_role"),
+                            "ingested": m.get("ingested"),
+                            "ingested_at": m.get("ingested_at"),
+                            "uploaded_at": m.get("uploaded_at"),
+                            "relevant_date": m.get("relevant_date"),
+                        }
+                    })
             except Exception:
                 top_chunks = []
             if top_chunks:
