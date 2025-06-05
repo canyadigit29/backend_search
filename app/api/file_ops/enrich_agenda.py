@@ -24,6 +24,12 @@ IMPORTANT_SECTIONS = [
     "New business."
 ]
 
+def is_lettered_or_numbered_header(line):
+    import re
+    stripped = line.strip()
+    # Match patterns like 'A. ...', 'B. ...', '1. ...', '2. ...', etc.
+    return bool(re.match(r'^[A-Z]\.[ \t].+', stripped)) or bool(re.match(r'^\d+\.[ \t].+', stripped))
+
 def extract_sections(text):
     # Use LLM to determine section headers from the agenda text
     from app.core.openai_client import chat_completion
@@ -39,6 +45,8 @@ def extract_sections(text):
         header_lines = json.loads(llm_response)
         if not isinstance(header_lines, list):
             raise ValueError("LLM did not return a list")
+        # Filter out lettered/numbered headers
+        header_lines = [h for h in header_lines if not is_lettered_or_numbered_header(h)]
         # Split text into sections using the detected headers
         sections = {}
         current = None
@@ -60,9 +68,10 @@ def extract_sections(text):
         for i, line in enumerate(lines):
             stripped = line.strip()
             is_header = (
-                (stripped.isupper() and len(stripped) > 3) or
+                ((stripped.isupper() and len(stripped) > 3) or
                 stripped.endswith(":") or
-                (i > 0 and lines[i-1].strip() == "" and (i+1 < len(lines) and lines[i+1].strip() == ""))
+                (i > 0 and lines[i-1].strip() == "" and (i+1 < len(lines) and lines[i+1].strip() == "")))
+                and not is_lettered_or_numbered_header(stripped)
             )
             if is_header:
                 current = stripped
@@ -118,6 +127,8 @@ async def enrich_agenda(
             header_lines = json.loads(llm_response)
             if not isinstance(header_lines, list):
                 raise ValueError("LLM did not return a list")
+            # Filter out lettered/numbered headers
+            header_lines = [h for h in header_lines if not is_lettered_or_numbered_header(h)]
             sections = {}
             current = None
             for line in text.splitlines():
@@ -138,9 +149,10 @@ async def enrich_agenda(
             for i, line in enumerate(lines):
                 stripped = line.strip()
                 is_header = (
-                    (stripped.isupper() and len(stripped) > 3) or
+                    ((stripped.isupper() and len(stripped) > 3) or
                     stripped.endswith(":") or
-                    (i > 0 and lines[i-1].strip() == "" and (i+1 < len(lines) and lines[i+1].strip() == ""))
+                    (i > 0 and lines[i-1].strip() == "" and (i+1 < len(lines) and lines[i+1].strip() == "")))
+                    and not is_lettered_or_numbered_header(stripped)
                 )
                 if is_header:
                     current = stripped
