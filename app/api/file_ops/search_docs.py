@@ -3,6 +3,7 @@ import os
 import logging
 from collections import defaultdict
 import sys
+import uuid
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -261,7 +262,17 @@ async def api_search_docs(request: Request):
         sys.stderr.flush()
         summary = None
 
-    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": summary})
+    # Insert retrieved_chunks into the table for follow-up Q&A
+    search_id = str(uuid.uuid4())
+    for m in matches:
+        if m.get("id") and user_id:
+            supabase.table("retrieved_chunks").insert({
+                "user_id": user_id,
+                "search_id": search_id,
+                "chunk_id": m.get("id")
+            }).execute()
+
+    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": summary, "search_id": search_id})
 
 
 # Legacy endpoint maintained for backward compatibility
