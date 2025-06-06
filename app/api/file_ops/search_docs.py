@@ -280,9 +280,14 @@ async def api_search_docs(request: Request):
 
     # Insert retrieved_chunks into the table for follow-up Q&A
     search_id = str(uuid.uuid4())
+    print(f"[DEBUG] About to insert {len(matches)} retrieved_chunks for search_id={search_id}", file=sys.stderr)
+    sys.stderr.flush()
     for m in matches:
+        print(f"[DEBUG] Looping match: {m.get('id')}, user_id={user_id}", file=sys.stderr)
+        sys.stderr.flush()
         if m.get("id") and user_id:
             insert_retrieved_chunk(user_id, search_id, m.get("id"))
+            sys.stderr.flush()
 
     return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": summary, "search_id": search_id})
 
