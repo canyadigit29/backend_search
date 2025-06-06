@@ -111,6 +111,7 @@ async def chat_with_context(payload: ChatRequest):
         for chunk in chunks:
             if chunk.get("id") and payload.user_id:
                 try:
+                    print(f"[DEBUG] Attempting insert: user_id={payload.user_id}, search_id={search_id}, chunk_id={chunk.get('id')}")
                     result = supabase.table("retrieved_chunks").insert({
                         "user_id": payload.user_id,
                         "search_id": search_id,
