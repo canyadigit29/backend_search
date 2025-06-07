@@ -28,12 +28,10 @@ app = FastAPI(
 
 app.include_router(embed_api.router, prefix="/api")
 
-# Ensure CORS middleware is added before routers
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://maxgptfrontend.vercel.app,http://localhost:3000").split(",")
-print(f"[CORS DEBUG] Allowed origins: {allowed_origins}")
+# ✅ CORS middleware for local testing
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "https://maxgptfrontend.vercel.app,http://localhost:3000").split(","),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
