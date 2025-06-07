@@ -39,6 +39,9 @@ async def chat_with_context(payload: ChatRequest):
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
 
+        # Generate a unique search_id for this search
+        search_id = str(uuid.uuid4())
+
         # LLM-based query extraction
         system_prompt = (
             "You are a helpful assistant. Extract the main topic, keywords, or search query from the user's request. "
@@ -65,6 +68,10 @@ async def chat_with_context(payload: ChatRequest):
         })
         chunks = doc_results.get("results") or doc_results.get("retrieved_chunks") or []
         logger.debug(f"✅ Retrieved {len(chunks)} document chunks.")
+
+        # Attach search_id to each chunk for traceability (optional, for frontend convenience)
+        for chunk in chunks:
+            chunk["search_id"] = search_id
 
         # --- LLM-based summary of top search results (mirroring /file_ops/search_docs.py) ---
         import sys
@@ -106,7 +113,8 @@ async def chat_with_context(payload: ChatRequest):
             sys.stderr.flush()
             summary = None
 
-        return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query}
+        # Return search_id in the response for robust follow-up Q&A
+        return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query, "search_id": search_id}
 
     except Exception as e:
         logger.exception("🚨 Uncaught error in /chat route")
