@@ -1,102 +1,114 @@
-
-import re
-import nltk
+import os
+import time
+import uuid
+from datetime import datetime
 from pathlib import Path
-from uuid import uuid4
+import logging
 
-from app.core.extract_text import extract_text  # Assumed
+from fastapi import APIRouter
 from app.core.supabase_client import supabase
+from app.core.extract_text import extract_text
+from openai import OpenAI
 
-nltk.download('punkt', quiet=True)
-from nltk.tokenize import sent_tokenize
+router = APIRouter()
+logging.basicConfig(level=logging.INFO)
+client = OpenAI()
 
-def chunk_file(file_id: str, user_id: str = None):
-    print(f"🔍 Starting chunking for file_id: {file_id}")
+@router.post("/process")
+def api_process_file(file_path: str, file_id: str, user_id: str = None):
+    process_file(file_path, file_id, user_id)
+    return {"status": "processing started"}
+
+def process_file(file_path: str, file_id: str, user_id: str = None):
+    logging.info(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
+    max_retries = 24
+    retry_interval = 5.0
+    file_record = None
+
+    for attempt in range(max_retries):
+        result = supabase.table("files").select("*").eq("id", file_id).execute()
+        if result and result.data:
+            file_record = result.data[0]
+            break
+        logging.info(f"⏳ Waiting for file to appear in DB... attempt {attempt + 1}")
+        time.sleep(retry_interval)
+
+    if not file_record:
+        raise Exception(f"File record not found after {max_retries} retries: {file_path}")
+
+    file_name = file_record["file_name"]
+    project_id = file_record["project_id"]
+    bucket = os.getenv("SUPABASE_STORAGE_BUCKET")
+
+    response = supabase.storage.from_(bucket).download(file_path)
+    if not response:
+        logging.error(f"❌ Could not download file from Supabase: {file_path}")
+        return
+
+    local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
+    with open(local_temp_path, "wb") as f:
+        f.write(response)
+
     try:
-        file_entry = None
-        is_uuid = re.fullmatch(r"[0-9a-fA-F\-]{36}", file_id)
-
-        if is_uuid:
-            result = supabase.table("files").select("*").eq("id", file_id).execute()
-            file_entry = result.data[0] if result.data else None
-
-        if not file_entry:
-            print(f"❌ No file found for identifier: {file_id}")
-            return
-
-        file_path = file_entry["file_path"]
-        actual_user_id = user_id or file_entry.get("user_id", None)
-        project_id = file_entry.get("project_id")
-        bucket = "maxgptstorage"
-        print(f"📄 Filepath: {file_path}")
-
-        response = supabase.storage.from_(bucket).download(file_path)
-        if not response:
-            print(f"❌ Could not download file from Supabase: {file_path}")
-            return
-
-        local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
-        with open(local_temp_path, "wb") as f:
-            f.write(response)
-
-        try:
-            text = extract_text(local_temp_path)
-            print(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
-        except Exception as e:
-            print(f"❌ Failed to extract text from {file_path}: {str(e)}")
-            return
-
-        max_chunk_size = 1600
-        overlap = 200
-        sentences = sent_tokenize(text)
-        chunks = []
-        current_chunk = []
-
-        def chunk_text_block(sentences):
-            return " ".join(sentences)
-
-        token_length = 0
-        for sentence in sentences:
-            sentence_length = len(sentence)
-            if token_length + sentence_length > max_chunk_size:
-                if current_chunk:
-                    chunks.append(chunk_text_block(current_chunk))
-                    token_length = 0
-                    current_chunk = []
-            current_chunk.append(sentence)
-            token_length += sentence_length
-
-        if current_chunk:
-            chunks.append(chunk_text_block(current_chunk))
-
-        # Add overlap
-        final_chunks = []
-        for i, chunk in enumerate(chunks):
-            start_idx = max(0, i - 1)
-            combined = " ".join(chunks[start_idx:i + 1])
-            final_chunks.append(combined)
-
-        db_chunks = []
-        for i, chunk_text in enumerate(final_chunks):
-            chunk_id = str(uuid4())
-            chunk = {
-                "id": chunk_id,
-                "file_id": file_entry["id"],
-                "content": chunk_text,
-                "chunk_index": i,
-            }
-            if actual_user_id:
-                chunk["user_id"] = actual_user_id
-            if project_id:
-                chunk["project_id"] = project_id
-            db_chunks.append(chunk)
-
-        print(f"🧹 Got {len(db_chunks)} semantic-aware chunks from {file_path}")
-
-        if db_chunks:
-            supabase.table("document_chunks").insert(db_chunks).execute()
-            print(f"✅ Inserted {len(db_chunks)} chunks.")
-            return [chunk["content"] for chunk in db_chunks]
-
+        text = extract_text(local_temp_path)
+        logging.info(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
     except Exception as e:
-        print(f"❌ Error during chunking: {str(e)}")
+        logging.error(f"❌ Failed to extract text from {file_path}: {str(e)}")
+        return
+
+    max_chunk_size = 1000
+    overlap = 150
+    chunks = []
+
+    if len(text.strip()) == 0:
+        logging.warning(f"⚠️ Skipping empty file: {file_path}")
+        return
+
+    for i in range(0, len(text), max_chunk_size - overlap):
+        chunk_text = text[i : i + max_chunk_size].strip()
+        if not chunk_text:
+            continue
+
+        # ✅ Log type and preview of input
+        logging.debug(f"🧠 Embedding input type: {type(chunk_text)}, preview: {str(chunk_text)[:50]}")
+
+        # ✅ Validate input and output of embedding
+        if not isinstance(chunk_text, str):
+            logging.error(f"❌ Invalid chunk_text type: expected str, got {type(chunk_text)}")
+            continue
+
+        embedding_response = client.embeddings.create(
+            model="text-embedding-3-large",
+            input=chunk_text
+        )
+        embedding = embedding_response.data[0].embedding
+
+        if len(embedding) != 3072:
+            logging.error(f"❌ Embedding shape mismatch: expected 3072-dim, got {len(embedding)}")
+            continue
+
+        chunk_data = {
+            "id": str(uuid.uuid4()),
+            "file_id": file_id,
+            "content": chunk_text,
+            "embedding": embedding,
+            "openai_embedding": embedding,  # <-- Write to openai_embedding column
+            "chunk_index": len(chunks),
+            "project_id": project_id,
+            "file_name": file_name,
+            "user_id": user_id,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        chunks.append(chunk_data)
+
+    if chunks:
+        for chunk in chunks:
+            chunk.pop("project_id", None)
+        supabase.table("document_chunks").insert(chunks).execute()
+        logging.info(f"✅ Inserted and embedded {len(chunks)} chunks from {file_path}")
+        supabase.table("files").update(
+            {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
+        ).eq("id", file_id).execute()
+        logging.info(f"✅ Marked file as ingested: {file_id}")
+    else:
+        logging.warning(f"⚠️ No valid chunks generated for {file_path}; ingestion skipped.")
