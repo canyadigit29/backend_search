@@ -27,6 +27,7 @@ async def sync_storage_to_files_table():
         if not resp:
             return files
         for entry in resp:
+            logger.info(f"Entry: name={entry.get('name')}, type={entry.get('type')}, folder_path={folder_path}")
             if entry.get("type") == "file":
                 # Compose full path: folder_path/filename
                 full_path = f"{folder_path}/{entry['name']}" if folder_path else entry["name"]
@@ -37,6 +38,8 @@ async def sync_storage_to_files_table():
                 subfolder = f"{folder_path}/{entry['name']}" if folder_path else entry["name"]
                 logger.info(f"Descending into subfolder: {subfolder}")
                 files.extend(list_all_files_recursive(subfolder))
+            else:
+                logger.warning(f"Unknown entry type: {entry}")
         return files
 
     all_files = list_all_files_recursive()
