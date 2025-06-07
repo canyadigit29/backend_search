@@ -3,7 +3,6 @@ import os
 import logging
 from collections import defaultdict
 import sys
-import uuid
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -262,34 +261,7 @@ async def api_search_docs(request: Request):
         sys.stderr.flush()
         summary = None
 
-    def insert_retrieved_chunk(user_id, search_id, chunk_id):
-        try:
-            result = supabase.table("retrieved_chunks").insert({
-                "user_id": user_id,
-                "search_id": search_id,
-                "chunk_id": chunk_id
-            }).execute()
-            if getattr(result, "error", None):
-                print(f"[ERROR] Failed to insert into retrieved_chunks: {result.error}", file=sys.stderr)
-                return False
-            print(f"[DEBUG] Inserted retrieved_chunk: user_id={user_id}, search_id={search_id}, chunk_id={chunk_id}", file=sys.stderr)
-            return True
-        except Exception as e:
-            print(f"[ERROR] Exception during insert_retrieved_chunk: {e}", file=sys.stderr)
-            return False
-
-    # Insert retrieved_chunks into the table for follow-up Q&A
-    search_id = str(uuid.uuid4())
-    print(f"[DEBUG] About to insert {len(matches)} retrieved_chunks for search_id={search_id}", file=sys.stderr)
-    sys.stderr.flush()
-    for m in matches:
-        print(f"[DEBUG] Looping match: {m.get('id')}, user_id={user_id}", file=sys.stderr)
-        sys.stderr.flush()
-        if m.get("id") and user_id:
-            insert_retrieved_chunk(user_id, search_id, m.get("id"))
-            sys.stderr.flush()
-
-    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": summary, "search_id": search_id})
+    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": summary})
 
 
 # Legacy endpoint maintained for backward compatibility
