@@ -1,14 +1,57 @@
-
 import re
-import nltk
 from pathlib import Path
 from uuid import uuid4
 
 from app.core.extract_text import extract_text  # Assumed
 from app.core.supabase_client import supabase
 
-nltk.download('punkt', quiet=True)
-from nltk.tokenize import sent_tokenize
+def detect_section_headers(paragraphs):
+    # Simple heuristic: all-caps lines, lines with numbers, or lines ending with ':'
+    section_headers = {}
+    current_section = None
+    for idx, para in enumerate(paragraphs):
+        line = para.strip()
+        if (
+            (line.isupper() and len(line) > 5) or
+            re.match(r'^[A-Z][A-Za-z0-9 .\-:]{0,80}:$', line) or
+            re.match(r'^(ARTICLE|SECTION|CHAPTER|PART|SUBPART|TITLE) [A-Z0-9 .-]+', line)
+        ):
+            current_section = line
+        section_headers[idx] = current_section
+    return section_headers
+
+def smart_chunk(text, max_chunk_size=1600, overlap=200):
+    paragraphs = re.split(r'\n\s*\n', text)
+    section_headers = detect_section_headers(paragraphs)
+    page_numbers = []
+    # Detect page numbers from page markers
+    for idx, para in enumerate(paragraphs):
+        match = re.search(r'---PAGE (\d+)---', para)
+        if match:
+            page_numbers.append((idx, int(match.group(1))))
+    chunks = []
+    current = ""
+    chunk_meta = []
+    current_section = None
+    current_page = None
+    for i, para in enumerate(paragraphs):
+        # Track section header
+        if section_headers[i]:
+            current_section = section_headers[i]
+        # Track page number
+        for idx, page in page_numbers:
+            if i >= idx:
+                current_page = page
+        if len(current) + len(para) < max_chunk_size:
+            current += para + "\n\n"
+        else:
+            chunks.append(current.strip())
+            chunk_meta.append({"section": current_section, "page": current_page})
+            current = current[-overlap:] + para + "\n\n"
+    if current.strip():
+        chunks.append(current.strip())
+        chunk_meta.append({"section": current_section, "page": current_page})
+    return list(zip(chunks, chunk_meta))
 
 def chunk_file(file_id: str, user_id: str = None):
     print(f"🔍 Starting chunking for file_id: {file_id}")
@@ -46,44 +89,18 @@ def chunk_file(file_id: str, user_id: str = None):
             print(f"❌ Failed to extract text from {file_path}: {str(e)}")
             return
 
-        max_chunk_size = 1600
-        overlap = 200
-        sentences = sent_tokenize(text)
-        chunks = []
-        current_chunk = []
-
-        def chunk_text_block(sentences):
-            return " ".join(sentences)
-
-        token_length = 0
-        for sentence in sentences:
-            sentence_length = len(sentence)
-            if token_length + sentence_length > max_chunk_size:
-                if current_chunk:
-                    chunks.append(chunk_text_block(current_chunk))
-                    token_length = 0
-                    current_chunk = []
-            current_chunk.append(sentence)
-            token_length += sentence_length
-
-        if current_chunk:
-            chunks.append(chunk_text_block(current_chunk))
-
-        # Add overlap
-        final_chunks = []
-        for i, chunk in enumerate(chunks):
-            start_idx = max(0, i - 1)
-            combined = " ".join(chunks[start_idx:i + 1])
-            final_chunks.append(combined)
-
+        # Use improved smart_chunk logic with section/page metadata
+        chunk_tuples = smart_chunk(text, max_chunk_size=1600, overlap=200)
         db_chunks = []
-        for i, chunk_text in enumerate(final_chunks):
+        for i, (chunk_text, meta) in enumerate(chunk_tuples):
             chunk_id = str(uuid4())
             chunk = {
                 "id": chunk_id,
                 "file_id": file_entry["id"],
                 "content": chunk_text,
                 "chunk_index": i,
+                "section_header": meta["section"],
+                "page_number": meta["page"],
             }
             if actual_user_id:
                 chunk["user_id"] = actual_user_id

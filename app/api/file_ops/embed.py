@@ -50,7 +50,7 @@ def retry_embed_text(text, retries=3, delay=1.5):
                 logging.error(f"Embedding failed after {retries} attempts: {e}")
                 raise
 
-def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
+def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index, section_header=None, page_number=None):
     if not is_valid_uuid(project_id):
         logging.error(f"Invalid project_id: {project_id}")
         return {"error": "Invalid project_id"}
@@ -72,6 +72,8 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
             "file_name": file_name,
             "chunk_index": chunk_index,
             "timestamp": timestamp,
+            "section_header": section_header,
+            "page_number": page_number,
         }
 
         result = supabase.table("document_chunks").insert(data).execute()
@@ -81,7 +83,7 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
             return {"error": result.error.message}
 
         logging.info(
-            f"✅ Stored chunk {chunk_index} of {file_name} in project {project_id}"
+            f"✅ Stored chunk {chunk_index} of {file_name} in project {project_id} (section: {section_header}, page: {page_number})"
         )
         return {"success": True}
 
@@ -89,14 +91,22 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index):
         logging.exception(f"Unexpected error during embed/store: {e}")
         return {"error": str(e)}
 
-def embed_chunks(chunks: list[str], project_id: str, file_name: str):
+def embed_chunks(chunks, project_id: str, file_name: str):
     if not chunks:
         logging.warning("⚠️ No chunks to embed.")
         return []
 
     results = []
-    for index, chunk in enumerate(chunks):
-        result = embed_and_store_chunk(chunk, project_id, file_name, index)
+    for index, chunk_tuple in enumerate(chunks):
+        if isinstance(chunk_tuple, tuple):
+            chunk_text, meta = chunk_tuple
+            section_header = meta.get("section")
+            page_number = meta.get("page")
+        else:
+            chunk_text = chunk_tuple
+            section_header = None
+            page_number = None
+        result = embed_and_store_chunk(chunk_text, project_id, file_name, index, section_header, page_number)
         results.append(result)
     return results
 

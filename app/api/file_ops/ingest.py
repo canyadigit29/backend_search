@@ -9,6 +9,8 @@ from fastapi import APIRouter
 from app.core.supabase_client import supabase
 from app.core.extract_text import extract_text
 from openai import OpenAI
+from app.api.file_ops.chunk import chunk_file
+from app.api.file_ops.embed import embed_chunks
 
 router = APIRouter()
 logging.basicConfig(level=logging.INFO)
@@ -52,63 +54,28 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
     try:
         text = extract_text(local_temp_path)
         logging.info(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
+        if len(text.strip()) < 100:
+            logging.warning(f"⚠️ Extracted text is very short, possible extraction issue for {file_path}")
     except Exception as e:
         logging.error(f"❌ Failed to extract text from {file_path}: {str(e)}")
         return
-
-    max_chunk_size = 1000
-    overlap = 150
-    chunks = []
 
     if len(text.strip()) == 0:
         logging.warning(f"⚠️ Skipping empty file: {file_path}")
         return
 
-    for i in range(0, len(text), max_chunk_size - overlap):
-        chunk_text = text[i : i + max_chunk_size].strip()
-        if not chunk_text:
-            continue
-
-        # ✅ Log type and preview of input
-        logging.debug(f"🧠 Embedding input type: {type(chunk_text)}, preview: {str(chunk_text)[:50]}")
-
-        # ✅ Validate input and output of embedding
-        if not isinstance(chunk_text, str):
-            logging.error(f"❌ Invalid chunk_text type: expected str, got {type(chunk_text)}")
-            continue
-
-        embedding_response = client.embeddings.create(
-            model="text-embedding-3-large",
-            input=chunk_text
-        )
-        embedding = embedding_response.data[0].embedding
-
-        if len(embedding) != 3072:
-            logging.error(f"❌ Embedding shape mismatch: expected 3072-dim, got {len(embedding)}")
-            continue
-
-        chunk_data = {
-            "id": str(uuid.uuid4()),
-            "file_id": file_id,
-            "content": chunk_text,
-            "embedding": embedding,
-            "openai_embedding": embedding,  # <-- Write to openai_embedding column
-            "chunk_index": len(chunks),
-            "project_id": project_id,
-            "file_name": file_name,
-            "user_id": user_id,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        chunks.append(chunk_data)
-
-    if chunks:
-        for chunk in chunks:
-            chunk.pop("project_id", None)
-        supabase.table("document_chunks").insert(chunks).execute()
-        logging.info(f"✅ Inserted and embedded {len(chunks)} chunks from {file_path}")
-        supabase.table("files").update(
-            {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
-        ).eq("id", file_id).execute()
-        logging.info(f"✅ Marked file as ingested: {file_id}")
-    else:
+    # --- Improved chunking: sentence-aware, overlap, structure-aware ---
+    # Use chunk_file to get semantic chunks with metadata
+    chunks = chunk_file(file_id, user_id)
+    if not chunks or len(chunks) == 0:
         logging.warning(f"⚠️ No valid chunks generated for {file_path}; ingestion skipped.")
+        return
+
+    # --- Embedding and storing chunks (with section/page metadata) ---
+    embed_results = embed_chunks(chunks, project_id, file_name)
+    logging.info(f"✅ Embedded and stored {len(embed_results)} chunks from {file_path}")
+
+    supabase.table("files").update(
+        {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
+    ).eq("id", file_id).execute()
+    logging.info(f"✅ Marked file as ingested: {file_id}")
