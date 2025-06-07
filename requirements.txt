@@ -21,3 +21,4 @@ rq
 redis
 mammoth
 fpdf
+pymupdf
