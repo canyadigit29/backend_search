@@ -28,13 +28,14 @@ async def sync_storage_to_files_table():
             return files
         for entry in resp:
             logger.info(f"Entry: name={entry.get('name')}, type={entry.get('type')}, folder_path={folder_path}")
+            # Treat as folder if type is 'folder' OR type is None and no '.' in name (likely a folder)
             if entry.get("type") == "file":
                 # Compose full path: folder_path/filename
                 full_path = f"{folder_path}/{entry['name']}" if folder_path else entry["name"]
                 entry["name"] = full_path
                 logger.info(f"Found file in storage: {full_path}")
                 files.append(entry)
-            elif entry.get("type") == "folder":
+            elif entry.get("type") == "folder" or (entry.get("type") is None and '.' not in entry.get('name', '')):
                 subfolder = f"{folder_path}/{entry['name']}" if folder_path else entry["name"]
                 logger.info(f"Descending into subfolder: {subfolder}")
                 files.extend(list_all_files_recursive(subfolder))
