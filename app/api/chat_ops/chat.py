@@ -106,23 +106,7 @@ async def chat_with_context(payload: ChatRequest):
             sys.stderr.flush()
             summary = None
 
-        # --- Insert retrieved_chunks for follow-up Q&A ---
-        search_id = str(uuid.uuid4())
-        for chunk in chunks:
-            if chunk.get("id") and payload.user_id:
-                try:
-                    print(f"[DEBUG] Attempting insert: user_id={payload.user_id}, search_id={search_id}, chunk_id={chunk.get('id')}")
-                    result = supabase.table("retrieved_chunks").insert({
-                        "user_id": payload.user_id,
-                        "search_id": search_id,
-                        "chunk_id": chunk.get("id")
-                    }).execute()
-                    if getattr(result, "error", None):
-                        print(f"[ERROR] Failed to insert into retrieved_chunks: {result.error}")
-                except Exception as e:
-                    print(f"[ERROR] Exception during insert_retrieved_chunk: {e}")
-
-        return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query, "search_id": search_id}
+        return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query}
 
     except Exception as e:
         logger.exception("🚨 Uncaught error in /chat route")
