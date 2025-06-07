@@ -1,4 +1,5 @@
 import re
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -70,7 +71,7 @@ def chunk_file(file_id: str, user_id: str = None):
         file_path = file_entry["file_path"]
         actual_user_id = user_id or file_entry.get("user_id", None)
         project_id = file_entry.get("project_id")
-        bucket = "maxgptstorage"
+        bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
         print(f"📄 Filepath: {file_path}")
 
         response = supabase.storage.from_(bucket).download(file_path)
