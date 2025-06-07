@@ -12,11 +12,11 @@ from app.api.file_ops.ingest import process_file
 logger = logging.getLogger("ingestion_worker")
 logger.setLevel(logging.INFO)
 
-BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
+BUCKET = "files"  # Always use the correct bucket name
 
 async def sync_storage_to_files_table():
     """
-    Ensure every file in the storage bucket is present in the files table.
+    Ensure every file in the 'files' storage bucket is present in the files table, with correct user folder path.
     """
     logger.info("🔄 Syncing storage bucket with files table...")
 
@@ -27,7 +27,7 @@ async def sync_storage_to_files_table():
             return files
         for entry in resp:
             if entry.get("type") == "file":
-                # For root, entry["name"] is the file name; for subfolders, prefix with folder_path
+                # Compose full path: folder_path/filename
                 full_path = f"{folder_path}/{entry['name']}" if folder_path else entry["name"]
                 entry["name"] = full_path
                 files.append(entry)
@@ -42,10 +42,14 @@ async def sync_storage_to_files_table():
     db_files = supabase.table("files").select("file_path").execute()
     db_file_paths = set(f["file_path"] for f in (db_files.data or []))
 
-    # For each file in storage, if not in files table, insert
     for f in all_files:
         file_path = f.get("name")
         if not file_path or file_path in db_file_paths:
+            continue
+        # Only register files that are in a user folder (UUID folder)
+        parts = file_path.split("/", 1)
+        if len(parts) != 2:
+            logger.warning(f"Skipping file not in user folder: {file_path}")
             continue
         # Compose metadata
         name = os.path.basename(file_path)
@@ -68,7 +72,8 @@ async def sync_storage_to_files_table():
             "type": file_type,
             "created_at": created_at,
             "updated_at": updated_at,
-            "user_id": "4a867500-7423-4eaa-bc79-94e368555e05"
+            "user_id": parts[0],
+            "ingested": False
         }).execute()
         logger.info(f"🆕 Registered missing file in DB: {file_path}")
 
