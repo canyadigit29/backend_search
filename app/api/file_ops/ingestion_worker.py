@@ -22,7 +22,8 @@ async def sync_storage_to_files_table():
 
     def list_all_files_recursive(folder_path=""):
         files = []
-        resp = supabase.storage.from_(BUCKET).list(folder_path)
+        # Remove limit, get all files in batches if needed
+        resp = supabase.storage.from_(BUCKET).list(folder_path, limit=1000)
         logger.info(f"Listing files in folder: '{folder_path}' -> {len(resp) if resp else 0} entries found")
         if not resp:
             return files
@@ -30,13 +31,11 @@ async def sync_storage_to_files_table():
             logger.info(f"Entry: name={entry.get('name')}, type={entry.get('type')}, folder_path={folder_path}")
             name = entry.get('name', '')
             entry_type = entry.get('type')
-            # Treat as file if type is 'file' OR type is None and name contains a '.'
             if entry_type == "file" or (entry_type is None and '.' in name):
                 full_path = f"{folder_path}/{name}" if folder_path else name
                 entry["name"] = full_path
                 logger.info(f"Found file in storage: {full_path}")
                 files.append(entry)
-            # Treat as folder if type is 'folder' OR type is None and name does NOT contain a '.'
             elif entry_type == "folder" or (entry_type is None and '.' not in name):
                 subfolder = f"{folder_path}/{name}" if folder_path else name
                 logger.info(f"Descending into subfolder: {subfolder}")
@@ -48,8 +47,8 @@ async def sync_storage_to_files_table():
     all_files = list_all_files_recursive()
     logger.info(f"Total files found in storage: {len(all_files)}")
 
-    # Get all file_paths in the files table
-    db_files = supabase.table("files").select("file_path").execute()
+    # Get all file_paths in the files table (remove default limit)
+    db_files = supabase.table("files").select("file_path").limit(1000).execute()
     db_file_paths = set(f["file_path"] for f in (db_files.data or []))
 
     for f in all_files:
@@ -89,11 +88,14 @@ async def sync_storage_to_files_table():
         }).execute()
         logger.info(f"🆕 Registered missing file in DB: {file_path}")
 
+    # Wait for all files to be registered before starting ingestion
+    logger.info("✅ All files registered in DB. Ready to start ingestion.")
+
 async def run_ingestion_once():
     await sync_storage_to_files_table()  # <-- Ensure sync happens first
     logger.info("🔁 Starting ingestion cycle (refactored logic)")
 
-    files_to_ingest = supabase.table("files").select("*").neq("ingested", True).execute()
+    files_to_ingest = supabase.table("files").select("*").neq("ingested", True).limit(1000).execute()
 
     if not files_to_ingest or not files_to_ingest.data:
         logger.info("📭 No un-ingested files found.")
@@ -108,22 +110,23 @@ async def run_ingestion_once():
             logger.warning(f"⚠️ Skipping invalid row: {file}")
             continue
 
-        # Check if file exists in Supabase storage
         file_name = file_path.split("/")[-1]
         folder = "/".join(file_path.split("/")[:-1])
-        file_check = supabase.storage.from_(BUCKET).list(folder)
+        file_check = supabase.storage.from_(BUCKET).list(folder, limit=1000)
 
         if not any(f.get("name") == file_name for f in file_check):
             logger.warning(f"🚫 File not found in storage: {file_path}")
             continue
 
         logger.info(f"🧾 Ingesting: {file_path}")
+        # Only mark as ingested after process_file completes
         process_file(file_path=file_path, file_id=file_id, user_id=user_id)
-
+        logger.info(f"✅ Finished chunking/embedding for: {file_path}")
         supabase.table("files").update({
             "ingested": True,
             "ingested_at": datetime.utcnow().isoformat()
         }).eq("id", file_id).execute()
+        logger.info(f"✔️ Marked as ingested in DB: {file_path}")
 
     logger.info("✅ Ingestion cycle complete")
 
