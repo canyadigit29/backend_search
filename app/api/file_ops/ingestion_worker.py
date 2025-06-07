@@ -19,20 +19,24 @@ async def sync_storage_to_files_table():
     Ensure every file in the storage bucket is present in the files table.
     """
     logger.info("🔄 Syncing storage bucket with files table...")
-    # List all files in the storage bucket (recursive)
-    all_files = []
-    page = None
-    while True:
-        resp = supabase.storage.from_(BUCKET).list(path="", limit=1000, offset=(page or 0))
+
+    def list_all_files_recursive(folder_path=""):
+        files = []
+        resp = supabase.storage.from_(BUCKET).list(folder_path)
         if not resp:
-            break
-        files = resp
-        if not files:
-            break
-        all_files.extend(files)
-        if len(files) < 1000:
-            break
-        page = (page or 0) + 1000
+            return files
+        for entry in resp:
+            if entry.get("type") == "file":
+                # For root, entry["name"] is the file name; for subfolders, prefix with folder_path
+                full_path = f"{folder_path}/{entry['name']}" if folder_path else entry["name"]
+                entry["name"] = full_path
+                files.append(entry)
+            elif entry.get("type") == "folder":
+                subfolder = f"{folder_path}/{entry['name']}" if folder_path else entry["name"]
+                files.extend(list_all_files_recursive(subfolder))
+        return files
+
+    all_files = list_all_files_recursive()
 
     # Get all file_paths in the files table
     db_files = supabase.table("files").select("file_path").execute()
