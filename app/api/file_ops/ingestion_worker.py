@@ -69,6 +69,7 @@ async def sync_storage_to_files_table():
         logger.info(f"🆕 Registered missing file in DB: {file_path}")
 
 async def run_ingestion_once():
+    await sync_storage_to_files_table()  # <-- Ensure sync happens first
     logger.info("🔁 Starting ingestion cycle (refactored logic)")
 
     files_to_ingest = supabase.table("files").select("*").neq("ingested", True).execute()
