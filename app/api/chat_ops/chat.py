@@ -26,7 +26,6 @@ class ChatRequest(BaseModel):
     user_prompt: str
     user_id: str
     session_id: str
-    context_chunk_ids: list[str] = None
 
 @router.post("/chat")
 async def chat_with_context(payload: ChatRequest):
@@ -39,41 +38,6 @@ async def chat_with_context(payload: ChatRequest):
             uuid.UUID(str(payload.user_id))
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
-
-        # If context_chunk_ids are provided, fetch those chunks for context
-        if payload.context_chunk_ids:
-            logger.debug(f"[Follow-up] Using provided context_chunk_ids: {payload.context_chunk_ids}")
-            # Fetch document_chunks by IDs
-            chunks = supabase.table("document_chunks").select("*").in_("id", payload.context_chunk_ids).execute().data
-            logger.debug(f"[Follow-up] Retrieved {len(chunks) if chunks else 0} context chunks.")
-            # Compose context for LLM
-            summary = None
-            try:
-                MAX_SUMMARY_CHARS = 60000
-                sorted_chunks = chunks  # No score, just use as-is
-                top_texts = []
-                total_chars = 0
-                for chunk in sorted_chunks:
-                    content = chunk.get("content", "")
-                    if not content:
-                        continue
-                    if total_chars + len(content) > MAX_SUMMARY_CHARS:
-                        break
-                    top_texts.append(content)
-                    total_chars += len(content)
-                top_text = "\n\n".join(top_texts)
-                if top_text.strip():
-                    summary_prompt = [
-                        {"role": "system", "content": "You are an expert assistant. Use the following context to answer the user's follow-up question in a concise, clear, and helpful way."},
-                        {"role": "user", "content": f"User follow-up: {prompt}\n\nContext:\n{top_text}"}
-                    ]
-                    summary = chat_completion(summary_prompt, model="gpt-4o")
-                else:
-                    summary = None
-            except Exception as e:
-                logger.error(f"[Follow-up] Failed to generate summary: {e}")
-                summary = None
-            return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": None}
 
         # LLM-based query extraction
         system_prompt = (
