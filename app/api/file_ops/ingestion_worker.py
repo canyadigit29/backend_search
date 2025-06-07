@@ -23,6 +23,7 @@ async def sync_storage_to_files_table():
     def list_all_files_recursive(folder_path=""):
         files = []
         resp = supabase.storage.from_(BUCKET).list(folder_path)
+        logger.info(f"Listing files in folder: '{folder_path}' -> {len(resp) if resp else 0} entries found")
         if not resp:
             return files
         for entry in resp:
@@ -30,13 +31,16 @@ async def sync_storage_to_files_table():
                 # Compose full path: folder_path/filename
                 full_path = f"{folder_path}/{entry['name']}" if folder_path else entry["name"]
                 entry["name"] = full_path
+                logger.info(f"Found file in storage: {full_path}")
                 files.append(entry)
             elif entry.get("type") == "folder":
                 subfolder = f"{folder_path}/{entry['name']}" if folder_path else entry["name"]
+                logger.info(f"Descending into subfolder: {subfolder}")
                 files.extend(list_all_files_recursive(subfolder))
         return files
 
     all_files = list_all_files_recursive()
+    logger.info(f"Total files found in storage: {len(all_files)}")
 
     # Get all file_paths in the files table
     db_files = supabase.table("files").select("file_path").execute()
@@ -44,7 +48,9 @@ async def sync_storage_to_files_table():
 
     for f in all_files:
         file_path = f.get("name")
+        logger.info(f"Checking file for DB registration: {file_path}")
         if not file_path or file_path in db_file_paths:
+            logger.info(f"Skipping file (already in DB or invalid): {file_path}")
             continue
         # Only register files that are in a user folder (UUID folder)
         parts = file_path.split("/", 1)
