@@ -51,7 +51,7 @@ def chunk_file(file_id: str, user_id: str = None):
 
         if not file_entry:
             print(f"❌ No file found for identifier: {file_id}")
-            return
+            return []
 
         file_path = file_entry["file_path"]
         file_name = file_entry.get("file_name") or file_entry.get("name") or file_path
@@ -62,7 +62,7 @@ def chunk_file(file_id: str, user_id: str = None):
         response = supabase.storage.from_(bucket).download(file_path)
         if not response:
             print(f"❌ Could not download file from Supabase: {file_path}")
-            return
+            return []
 
         local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
         with open(local_temp_path, "wb") as f:
@@ -73,7 +73,7 @@ def chunk_file(file_id: str, user_id: str = None):
             print(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
         except Exception as e:
             print(f"❌ Failed to extract text from {file_path}: {str(e)}")
-            return
+            return []
 
         # Use improved smart_chunk logic with section/page metadata
         chunk_tuples = smart_chunk(text, max_tokens=2000, overlap_tokens=200)
@@ -95,10 +95,8 @@ def chunk_file(file_id: str, user_id: str = None):
 
         print(f"🧹 Got {len(db_chunks)} semantic-aware chunks from {file_path}")
 
-        if db_chunks:
-            supabase.table("document_chunks").insert(db_chunks).execute()
-            print(f"✅ Inserted {len(db_chunks)} chunks.")
-            return db_chunks  # Return full chunk dicts
+        return db_chunks  # Return full chunk dicts, do not insert here
 
     except Exception as e:
         print(f"❌ Error during chunking: {str(e)}")
+        return []

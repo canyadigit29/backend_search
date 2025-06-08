@@ -50,27 +50,24 @@ def retry_embed_text(text, retries=3, delay=1.5):
                 logging.error(f"Embedding failed after {retries} attempts: {e}")
                 raise
 
-def embed_and_store_chunk(chunk_text, file_name, chunk_index, section_header=None, page_number=None):
+def embed_and_store_chunk(chunk):
+    chunk_text = chunk["content"]
     if not chunk_text.strip():
-        logging.warning(f"⚠️ Skipping empty chunk {chunk_index} for file {file_name}")
+        logging.warning(f"⚠️ Skipping empty chunk {chunk.get('chunk_index')} for file {chunk.get('file_name')}")
         return {"skipped": True}
 
     try:
         embedding = retry_embed_text(chunk_text)
         timestamp = datetime.utcnow().isoformat()
 
-        data = {
-            "id": str(uuid.uuid4()),
-            "content": chunk_text,
-            "embedding": embedding,
-            "openai_embedding": embedding,  # <-- Write to openai_embedding column
-            "file_name": file_name,
-            "chunk_index": chunk_index,
-            "timestamp": timestamp,
-            "section_header": section_header,
-            "page_number": page_number,
-            # 'collection' field removed
-        }
+        # Prepare data for insert, including all original chunk fields
+        data = dict(chunk)  # Copy all fields from chunk
+        data["openai_embedding"] = embedding
+        data["embedding"] = embedding
+        data["timestamp"] = timestamp
+        # Ensure id is present
+        if "id" not in data:
+            data["id"] = str(uuid.uuid4())
 
         result = supabase.table("document_chunks").insert(data).execute()
         if getattr(result, "error", None):
@@ -78,7 +75,7 @@ def embed_and_store_chunk(chunk_text, file_name, chunk_index, section_header=Non
             return {"error": result.error.message}
 
         logging.info(
-            f"✅ Stored chunk {chunk_index} of {file_name} (section: {section_header}, page: {page_number})"
+            f"✅ Stored chunk {data.get('chunk_index')} of {data.get('file_name')} (section: {data.get('section_header')}, page: {data.get('page_number')})"
         )
         return {"success": True}
 
@@ -86,19 +83,17 @@ def embed_and_store_chunk(chunk_text, file_name, chunk_index, section_header=Non
         logging.exception(f"Unexpected error during embed/store: {e}")
         return {"error": str(e)}
 
-def embed_chunks(chunks, file_name: str):
+def embed_chunks(chunks, file_name: str = None):
     if not chunks:
         logging.warning("⚠️ No chunks to embed.")
         return []
 
     results = []
-    for index, chunk in enumerate(chunks):
-        # Use file_name from chunk if available, else fallback
-        chunk_file_name = chunk.get("file_name", file_name)
-        section_header = chunk.get("section_header")
-        page_number = chunk.get("page_number")
-        chunk_text = chunk["content"]
-        result = embed_and_store_chunk(chunk_text, chunk_file_name, index, section_header, page_number)
+    for chunk in chunks:
+        # Optionally set file_name if not present
+        if file_name and not chunk.get("file_name"):
+            chunk["file_name"] = file_name
+        result = embed_and_store_chunk(chunk)
         results.append(result)
     return results
 
