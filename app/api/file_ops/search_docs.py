@@ -311,24 +311,7 @@ async def api_search_docs(request: Request):
         sys.stderr.flush()
         summary = None
 
-    # --- LLM-based answer extraction from top chunks ---
-    llm_extracted_answer = None
-    try:
-        from app.core.llm_answer_extraction import extract_answer_from_chunks_batched
-        # Use all chunks, batched, for answer extraction
-        all_chunk_texts = [c.get("content", "") for c in matches if c.get("content")]
-        all_file_names = [c.get("file_metadata", {}).get("name") or c.get("file_name") for c in matches]
-        if all_chunk_texts:
-            llm_extracted_answer = extract_answer_from_chunks_batched(user_prompt, all_chunk_texts, file_names=all_file_names, batch_size=20)
-        else:
-            llm_extracted_answer = None
-    except Exception as e:
-        print(f"[DEBUG] Failed to run LLM answer extraction: {e}", file=sys.stderr)
-        llm_extracted_answer = None
-
-    print(f"[DEBUG] Returning LLM answer extraction as summary: {llm_extracted_answer[:300]}...", file=sys.stderr)
-    # Replace summary with llm_extracted_answer for the response
-    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": llm_extracted_answer, "llm_extracted_answer": llm_extracted_answer})
+    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": summary})
 
 
 # Legacy endpoint maintained for backward compatibility
