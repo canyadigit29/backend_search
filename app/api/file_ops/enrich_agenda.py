@@ -183,7 +183,6 @@ async def enrich_agenda(
                             "size": m.get("size"),
                             "tokens": m.get("file_tokens"),
                             "type": m.get("type"),
-                            "project_id": m.get("project_id"),
                             "message_index": m.get("message_index"),
                             "timestamp": m.get("timestamp"),
                             "topic_id": m.get("topic_id"),
