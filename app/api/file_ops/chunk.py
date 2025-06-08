@@ -2,6 +2,7 @@ import re
 import os
 from pathlib import Path
 from uuid import uuid4
+import tiktoken
 
 from app.core.extract_text import extract_text  # Assumed
 from app.core.supabase_client import supabase
@@ -21,7 +22,9 @@ def detect_section_headers(paragraphs):
         section_headers[idx] = current_section
     return section_headers
 
-def smart_chunk(text, max_chunk_size=1600, overlap=200):
+def smart_chunk(text, max_chunk_size=1600, overlap=200, max_tokens=2000):
+    # Use tiktoken to count tokens and split accordingly
+    encoding = tiktoken.get_encoding("cl100k_base")
     paragraphs = re.split(r'\n\s*\n', text)
     section_headers = detect_section_headers(paragraphs)
     page_numbers = []
@@ -31,10 +34,11 @@ def smart_chunk(text, max_chunk_size=1600, overlap=200):
         if match:
             page_numbers.append((idx, int(match.group(1))))
     chunks = []
-    current = ""
     chunk_meta = []
     current_section = None
     current_page = None
+    current = ""
+    current_tokens = 0
     for i, para in enumerate(paragraphs):
         # Track section header
         if section_headers[i]:
@@ -43,12 +47,18 @@ def smart_chunk(text, max_chunk_size=1600, overlap=200):
         for idx, page in page_numbers:
             if i >= idx:
                 current_page = page
-        if len(current) + len(para) < max_chunk_size:
+        para_tokens = len(encoding.encode(para))
+        if current_tokens + para_tokens < max_tokens:
             current += para + "\n\n"
+            current_tokens += para_tokens
         else:
-            chunks.append(current.strip())
-            chunk_meta.append({"section": current_section, "page": current_page})
-            current = current[-overlap:] + para + "\n\n"
+            if current.strip():
+                chunks.append(current.strip())
+                chunk_meta.append({"section": current_section, "page": current_page})
+            # Start new chunk with overlap
+            overlap_text = encoding.decode(encoding.encode(current)[-overlap:]) if overlap > 0 and current else ""
+            current = overlap_text + para + "\n\n"
+            current_tokens = len(encoding.encode(current))
     if current.strip():
         chunks.append(current.strip())
         chunk_meta.append({"section": current_section, "page": current_page})
