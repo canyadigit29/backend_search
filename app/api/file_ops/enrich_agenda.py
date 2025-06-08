@@ -159,7 +159,7 @@ async def enrich_agenda(
                 # Compose retrieved_chunks with full metadata as in search_docs.py
                 matches = history.get('retrieved_chunks', [])
                 top_chunks = []
-                for m in sorted(matches, key=lambda x: x.get("score", 0), reverse=True)[:10]:
+                for m in sorted(matches, key=lambda x: x.get("score", 0), reverse=True)[:500]:
                     top_chunks.append({
                         "id": m.get("id"),
                         "file_id": m.get("file_id"),
