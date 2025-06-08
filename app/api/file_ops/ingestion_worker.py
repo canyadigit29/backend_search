@@ -32,18 +32,17 @@ async def run_ingestion_once():
                 logger.warning(f"⚠️ Skipping invalid row: {file}")
                 print(f"[DEBUG] Skipping invalid row: {file}")
                 continue
-            file_name = file_path.split("/")[-1]
-            folder = "/".join(file_path.split("/")[:-1])
+            # Directly attempt to download the file to check existence
             try:
-                file_check = supabase.storage.from_(BUCKET).list(folder)
+                response = supabase.storage.from_(BUCKET).download(file_path)
+                if not response:
+                    logger.warning(f"🚫 File not found in storage (download failed): {file_path}")
+                    print(f"[DEBUG] File not found in storage (download failed): {file_path}")
+                    continue
             except Exception as e:
-                logger.warning(f"[ERROR] Exception during file_check: {e}")
-                print(f"[ERROR] Exception during file_check: {e}")
+                logger.warning(f"🚫 Exception during file download: {file_path} - {e}")
+                print(f"[DEBUG] Exception during file download: {file_path} - {e}")
                 traceback.print_exc()
-                continue
-            if not any(f.get("name") == file_name for f in file_check):
-                logger.warning(f"🚫 File not found in storage: {file_path}")
-                print(f"[DEBUG] File not found in storage: {file_path}")
                 continue
             logger.info(f"🧾 Ingesting: {file_path}")
             print(f"[DEBUG] Ingesting: {file_path}")
