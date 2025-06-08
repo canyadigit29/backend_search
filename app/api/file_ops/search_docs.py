@@ -327,7 +327,8 @@ async def api_search_docs(request: Request):
         print(f"[DEBUG] Failed to run LLM answer extraction: {e}", file=sys.stderr)
         llm_extracted_answer = None
 
-    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": summary, "llm_extracted_answer": llm_extracted_answer})
+    # Replace summary with llm_extracted_answer for the response
+    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": llm_extracted_answer, "llm_extracted_answer": llm_extracted_answer})
 
 
 # Legacy endpoint maintained for backward compatibility
