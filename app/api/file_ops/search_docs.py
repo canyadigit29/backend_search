@@ -127,7 +127,7 @@ async def semantic_search(request, payload):
 router = APIRouter()
 
 
-def keyword_search(keywords, user_id_filter=None, file_name_filter=None, description_filter=None, start_date=None, end_date=None, match_count=100):
+def keyword_search(keywords, user_id_filter=None, file_name_filter=None, description_filter=None, start_date=None, end_date=None, match_count=300):
     """
     Simple keyword search over document_chunks table. Returns chunks containing any of the keywords.
     """
