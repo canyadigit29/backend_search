@@ -22,46 +22,21 @@ def detect_section_headers(paragraphs):
         section_headers[idx] = current_section
     return section_headers
 
-def smart_chunk(text, max_chunk_size=1600, overlap=200, max_tokens=2000):
-    # Use tiktoken to count tokens and split accordingly
+def smart_chunk(text, max_tokens=2000, overlap_tokens=200):
     encoding = tiktoken.get_encoding("cl100k_base")
-    paragraphs = re.split(r'\n\s*\n', text)
-    section_headers = detect_section_headers(paragraphs)
-    page_numbers = []
-    # Detect page numbers from page markers
-    for idx, para in enumerate(paragraphs):
-        match = re.search(r'---PAGE (\d+)---', para)
-        if match:
-            page_numbers.append((idx, int(match.group(1))))
+    tokens = encoding.encode(text)
+    total_tokens = len(tokens)
     chunks = []
     chunk_meta = []
-    current_section = None
-    current_page = None
-    current = ""
-    current_tokens = 0
-    for i, para in enumerate(paragraphs):
-        # Track section header
-        if section_headers[i]:
-            current_section = section_headers[i]
-        # Track page number
-        for idx, page in page_numbers:
-            if i >= idx:
-                current_page = page
-        para_tokens = len(encoding.encode(para))
-        if current_tokens + para_tokens < max_tokens:
-            current += para + "\n\n"
-            current_tokens += para_tokens
-        else:
-            if current.strip():
-                chunks.append(current.strip())
-                chunk_meta.append({"section": current_section, "page": current_page})
-            # Start new chunk with overlap
-            overlap_text = encoding.decode(encoding.encode(current)[-overlap:]) if overlap > 0 and current else ""
-            current = overlap_text + para + "\n\n"
-            current_tokens = len(encoding.encode(current))
-    if current.strip():
-        chunks.append(current.strip())
-        chunk_meta.append({"section": current_section, "page": current_page})
+    start = 0
+    while start < total_tokens:
+        end = min(start + max_tokens, total_tokens)
+        chunk_tokens = tokens[start:end]
+        chunk_text = encoding.decode(chunk_tokens)
+        # Optionally, you can add section/page metadata here if needed
+        chunks.append(chunk_text)
+        chunk_meta.append({"section": None, "page": None})
+        start += max_tokens - overlap_tokens  # overlap for context
     return list(zip(chunks, chunk_meta))
 
 def chunk_file(file_id: str, user_id: str = None):
@@ -100,7 +75,7 @@ def chunk_file(file_id: str, user_id: str = None):
             return
 
         # Use improved smart_chunk logic with section/page metadata
-        chunk_tuples = smart_chunk(text, max_chunk_size=1600, overlap=200)
+        chunk_tuples = smart_chunk(text, max_tokens=2000, overlap_tokens=200)
         db_chunks = []
         for i, (chunk_text, meta) in enumerate(chunk_tuples):
             chunk_id = str(uuid4())
