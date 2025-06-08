@@ -241,7 +241,15 @@ async def api_search_docs(request: Request):
         if top_text.strip():
             from app.core.openai_client import chat_completion
             summary_prompt = [
-                {"role": "system", "content": "You are an expert assistant. Summarize the following retrieved search results for the user in a concise, clear, and helpful way. Only include information relevant to the user's query."},
+                {"role": "system", "content": (
+                    "You are an expert assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
+                    "- Focus on information directly relevant to the user's question.\n"
+                    "- Group similar findings and highlight key points.\n"
+                    "- Use bullet points or sections if it helps clarity.\n"
+                    "- Reference file names, dates, or section headers where possible.\n"
+                    "- Do not add information that is not present in the results.\n"
+                    "- If the results are lengthy, provide a high-level summary first, then details."
+                )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
             print(f"[DEBUG] summary_prompt: {summary_prompt}", file=sys.stderr)
