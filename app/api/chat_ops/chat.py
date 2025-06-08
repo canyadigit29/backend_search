@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from app.api.file_ops.search_docs import perform_search
 from app.core.openai_client import chat_completion
 from app.core.supabase_client import supabase
-from llm_answer_extraction import extract_answer_from_chunks_batched
+
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../core'))
 
