@@ -219,6 +219,11 @@ async def api_search_docs(request: Request):
             all_matches[k["id"]] = k
     matches = list(all_matches.values())
     matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+    # New debug: print top 5 results with score and content preview
+    print("[DEBUG] Top 5 search results:", file=sys.stderr)
+    for i, m in enumerate(matches[:5]):
+        preview = m.get("content", "")[:200].replace("\n", " ")
+        print(f"[DEBUG] #{i+1} | score: {m.get('score')} | id: {m.get('id')} | preview: {preview}", file=sys.stderr)
     print(f"[DEBUG] matches for response: {len(matches)}", file=sys.stderr)
 
     # Compose output to include all required fields for frontend compatibility
