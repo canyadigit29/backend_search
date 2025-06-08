@@ -314,13 +314,12 @@ async def api_search_docs(request: Request):
     # --- LLM-based answer extraction from top chunks ---
     llm_extracted_answer = None
     try:
-        from app.core.llm_answer_extraction import extract_answer_from_chunks
-        # Use top 20 chunks by score for answer extraction (to avoid excessive context)
-        top_chunks = matches[:20]
-        top_chunk_texts = [c.get("content", "") for c in top_chunks if c.get("content")]
-        top_file_names = [c.get("file_metadata", {}).get("name") or c.get("file_name") for c in top_chunks]
-        if top_chunk_texts:
-            llm_extracted_answer = extract_answer_from_chunks(user_prompt, top_chunk_texts, file_names=top_file_names)
+        from app.core.llm_answer_extraction import extract_answer_from_chunks_batched
+        # Use all chunks, batched, for answer extraction
+        all_chunk_texts = [c.get("content", "") for c in matches if c.get("content")]
+        all_file_names = [c.get("file_metadata", {}).get("name") or c.get("file_name") for c in matches]
+        if all_chunk_texts:
+            llm_extracted_answer = extract_answer_from_chunks_batched(user_prompt, all_chunk_texts, file_names=all_file_names, batch_size=20)
         else:
             llm_extracted_answer = None
     except Exception as e:
