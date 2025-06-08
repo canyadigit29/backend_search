@@ -1,5 +1,6 @@
 from app.core.openai_client import chat_completion
 import json
+import sys
 
 def extract_entities_and_intent(user_prompt: str) -> dict:
     system_prompt = (
@@ -15,7 +16,7 @@ def extract_entities_and_intent(user_prompt: str) -> dict:
         {"role": "user", "content": user_prompt}
     ]
     result = chat_completion(messages)
-    print(f"[DEBUG] LLM query understanding for '{user_prompt}': {result}")
+    print(f"[DEBUG] LLM query understanding for '{user_prompt}': {result}", file=sys.stderr)
     try:
         return json.loads(result)
     except Exception:
