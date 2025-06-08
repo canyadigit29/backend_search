@@ -54,6 +54,7 @@ def chunk_file(file_id: str, user_id: str = None):
             return
 
         file_path = file_entry["file_path"]
+        file_name = file_entry.get("file_name") or file_entry.get("name") or file_path
         actual_user_id = user_id or file_entry.get("user_id", None)
         bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
         print(f"📄 Filepath: {file_path}")
@@ -82,6 +83,7 @@ def chunk_file(file_id: str, user_id: str = None):
             chunk = {
                 "id": chunk_id,
                 "file_id": file_entry["id"],
+                "file_name": file_name,
                 "content": chunk_text,
                 "chunk_index": i,
                 "section_header": meta["section"],
