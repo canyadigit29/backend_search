@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sys
 import uuid
 from datetime import datetime
 
@@ -11,6 +12,9 @@ from pydantic import BaseModel
 from app.api.file_ops.search_docs import perform_search
 from app.core.openai_client import chat_completion
 from app.core.supabase_client import supabase
+from llm_answer_extraction import extract_answer_from_chunks_batched
+
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../core'))
 
 router = APIRouter()
 logger = logging.getLogger("maxgpt")
@@ -26,6 +30,7 @@ class ChatRequest(BaseModel):
     user_prompt: str
     user_id: str
     session_id: str
+    previous_chunks: list = None  # Optional: for follow-up, use these chunks
 
 @router.post("/chat")
 async def chat_with_context(payload: ChatRequest):
@@ -38,6 +43,12 @@ async def chat_with_context(payload: ChatRequest):
             uuid.UUID(str(payload.user_id))
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
+
+        # If previous_chunks are provided, use them for answer extraction (follow-up)
+        if payload.previous_chunks and isinstance(payload.previous_chunks, list) and len(payload.previous_chunks) > 0:
+            chunk_contents = [c["content"] if isinstance(c, dict) and "content" in c else str(c) for c in payload.previous_chunks]
+            answer = extract_answer_from_chunks_batched(prompt, chunk_contents)
+            return {"retrieved_chunks": payload.previous_chunks, "summary": answer, "extracted_query": None}
 
         # LLM-based query extraction
         system_prompt = (
