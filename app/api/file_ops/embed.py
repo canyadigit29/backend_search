@@ -50,11 +50,7 @@ def retry_embed_text(text, retries=3, delay=1.5):
                 logging.error(f"Embedding failed after {retries} attempts: {e}")
                 raise
 
-def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index, section_header=None, page_number=None):
-    if not is_valid_uuid(project_id):
-        logging.error(f"Invalid project_id: {project_id}")
-        return {"error": "Invalid project_id"}
-
+def embed_and_store_chunk(chunk_text, file_name, chunk_index, section_header=None, page_number=None):
     if not chunk_text.strip():
         logging.warning(f"⚠️ Skipping empty chunk {chunk_index} for file {file_name}")
         return {"skipped": True}
@@ -73,16 +69,16 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index, sectio
             "timestamp": timestamp,
             "section_header": section_header,
             "page_number": page_number,
+            # 'collection' field removed
         }
 
         result = supabase.table("document_chunks").insert(data).execute()
-
         if getattr(result, "error", None):
             logging.error(f"Supabase insert failed: {result.error.message}")
             return {"error": result.error.message}
 
         logging.info(
-            f"✅ Stored chunk {chunk_index} of {file_name} in project {project_id} (section: {section_header}, page: {page_number})"
+            f"✅ Stored chunk {chunk_index} of {file_name} (section: {section_header}, page: {page_number})"
         )
         return {"success": True}
 
@@ -90,7 +86,7 @@ def embed_and_store_chunk(chunk_text, project_id, file_name, chunk_index, sectio
         logging.exception(f"Unexpected error during embed/store: {e}")
         return {"error": str(e)}
 
-def embed_chunks(chunks, project_id: str, file_name: str):
+def embed_chunks(chunks, file_name: str):
     if not chunks:
         logging.warning("⚠️ No chunks to embed.")
         return []
@@ -105,7 +101,7 @@ def embed_chunks(chunks, project_id: str, file_name: str):
             chunk_text = chunk_tuple
             section_header = None
             page_number = None
-        result = embed_and_store_chunk(chunk_text, project_id, file_name, index, section_header, page_number)
+        result = embed_and_store_chunk(chunk_text, file_name, index, section_header, page_number)
         results.append(result)
     return results
 

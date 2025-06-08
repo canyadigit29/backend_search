@@ -27,7 +27,6 @@ def chunk_file(file_id: str, user_id: str = None):
 
         file_path = file_entry["file_path"]
         actual_user_id = user_id or file_entry.get("user_id", None)
-        project_id = file_entry.get("project_id")
         bucket = os.getenv("SUPABASE_STORAGE_BUCKET")
         print(f"📄 Filepath: {file_path}")
 
@@ -88,8 +87,6 @@ def chunk_file(file_id: str, user_id: str = None):
             }
             if actual_user_id:
                 chunk["user_id"] = actual_user_id
-            if project_id:
-                chunk["project_id"] = project_id
             db_chunks.append(chunk)
 
         print(f"🧹 Got {len(db_chunks)} semantic-aware chunks from {file_path}")

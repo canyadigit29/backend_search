@@ -39,7 +39,6 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         raise Exception(f"File record not found after {max_retries} retries: {file_path}")
 
     file_name = file_record["file_name"]
-    project_id = file_record["project_id"]
     bucket = os.getenv("SUPABASE_STORAGE_BUCKET")
 
     response = supabase.storage.from_(bucket).download(file_path)
@@ -72,7 +71,7 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
         return
 
     # --- Embedding and storing chunks (with section/page metadata) ---
-    embed_results = embed_chunks(chunks, project_id, file_name)
+    embed_results = embed_chunks(chunks, file_name)  # Removed project_id
     logging.info(f"✅ Embedded and stored {len(embed_results)} chunks from {file_path}")
 
     supabase.table("files").update(
