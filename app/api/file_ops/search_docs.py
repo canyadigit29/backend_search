@@ -7,6 +7,7 @@ import sys
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
 from app.core.openai_client import chat_completion
+from app.core.query_understanding import extract_entities_and_intent
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -174,6 +175,9 @@ async def api_search_docs(request: Request):
     # LLM-based query extraction
     search_query = extract_search_query(user_prompt)
     print(f"[DEBUG] Extracted search query: {search_query}", file=sys.stderr)
+    # --- Entity and intent extraction ---
+    query_info = extract_entities_and_intent(user_prompt)
+    print(f"[DEBUG] LLM extracted query info: {query_info}", file=sys.stderr)
     try:
         embedding = embed_text(search_query)
         print(f"[DEBUG] embedding generated: {str(embedding)[:100]}", file=sys.stderr)
