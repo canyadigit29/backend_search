@@ -126,6 +126,36 @@ async def semantic_search(request, payload):
 router = APIRouter()
 
 
+def keyword_search(keywords, user_id_filter=None, file_name_filter=None, description_filter=None, start_date=None, end_date=None, match_count=100):
+    """
+    Simple keyword search over document_chunks table. Returns chunks containing any of the keywords.
+    """
+    from app.core.supabase_client import create_client
+    SUPABASE_URL = os.environ["SUPABASE_URL"]
+    SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
+    supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
+    query = supabase.table("document_chunks")
+    if user_id_filter:
+        query = query.eq("user_id", user_id_filter)
+    if file_name_filter:
+        query = query.eq("file_name", file_name_filter)
+    if description_filter:
+        query = query.eq("description", description_filter)
+    if start_date:
+        query = query.gte("created_at", start_date)
+    if end_date:
+        query = query.lte("created_at", end_date)
+    # Build OR filter for keywords
+    or_filters = []
+    for kw in keywords:
+        or_filters.append(f"content.ilike.%{kw}%")
+    if or_filters:
+        query = query.or_(" , ".join(or_filters))
+    query = query.limit(match_count)
+    results = query.execute().data or []
+    return results
+
+
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
     print("[DEBUG] api_search_docs called", file=sys.stderr)
@@ -161,12 +191,24 @@ async def api_search_docs(request: Request):
         "user_prompt": user_prompt  # Pass original prompt for downstream use
     }
     print(f"[DEBUG] tool_args for perform_search: {json.dumps(tool_args, default=str)[:500]}", file=sys.stderr)
-    result = perform_search(tool_args)
-    print(f"[DEBUG] perform_search result: {str(result)[:500]}", file=sys.stderr)
-    if "error" in result:
-        print(f"[DEBUG] Error in perform_search: {result['error']}", file=sys.stderr)
-        return JSONResponse({"error": result["error"]}, status_code=500)
-    matches = result.get("retrieved_chunks", [])
+    # --- Hybrid search: semantic + keyword ---
+    semantic_result = perform_search(tool_args)
+    semantic_matches = semantic_result.get("retrieved_chunks", [])
+    # Extract keywords from search_query (split on spaces, remove stopwords for simplicity)
+    import re
+    stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
+    keywords = [w for w in re.split(r"\W+", search_query) if w and w.lower() not in stopwords]
+    keyword_results = keyword_search(keywords, user_id_filter=user_id)
+    # Merge results: boost or deduplicate
+    all_matches = {m["id"]: m for m in semantic_matches}
+    for k in keyword_results:
+        if k["id"] in all_matches:
+            all_matches[k["id"]]["score"] = max(all_matches[k["id"]].get("score", 0), 1.0)  # Boost score
+        else:
+            k["score"] = 0.8  # Lower score for pure keyword
+            all_matches[k["id"]] = k
+    matches = list(all_matches.values())
+    matches.sort(key=lambda x: x.get("score", 0), reverse=True)
     print(f"[DEBUG] matches for response: {len(matches)}", file=sys.stderr)
 
     # Compose output to include all required fields for frontend compatibility
