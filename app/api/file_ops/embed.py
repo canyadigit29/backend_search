@@ -92,16 +92,13 @@ def embed_chunks(chunks, file_name: str):
         return []
 
     results = []
-    for index, chunk_tuple in enumerate(chunks):
-        if isinstance(chunk_tuple, tuple):
-            chunk_text, meta = chunk_tuple
-            section_header = meta.get("section")
-            page_number = meta.get("page")
-        else:
-            chunk_text = chunk_tuple
-            section_header = None
-            page_number = None
-        result = embed_and_store_chunk(chunk_text, file_name, index, section_header, page_number)
+    for index, chunk in enumerate(chunks):
+        # Use file_name from chunk if available, else fallback
+        chunk_file_name = chunk.get("file_name", file_name)
+        section_header = chunk.get("section_header")
+        page_number = chunk.get("page_number")
+        chunk_text = chunk["content"]
+        result = embed_and_store_chunk(chunk_text, chunk_file_name, index, section_header, page_number)
         results.append(result)
     return results
 

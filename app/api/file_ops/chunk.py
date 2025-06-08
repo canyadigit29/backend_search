@@ -98,7 +98,7 @@ def chunk_file(file_id: str, user_id: str = None):
         if db_chunks:
             supabase.table("document_chunks").insert(db_chunks).execute()
             print(f"✅ Inserted {len(db_chunks)} chunks.")
-            return [chunk["content"] for chunk in db_chunks]
+            return db_chunks  # Return full chunk dicts
 
     except Exception as e:
         print(f"❌ Error during chunking: {str(e)}")
