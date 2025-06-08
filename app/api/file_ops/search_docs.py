@@ -23,7 +23,6 @@ def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
     expected_phrase = tool_args.get("expected_phrase")
     file_name_filter = tool_args.get("file_name_filter")
-    collection_filter = tool_args.get("collection_filter")
     description_filter = tool_args.get("description_filter")
     start_date = tool_args.get("start_date")
     end_date = tool_args.get("end_date")
@@ -65,7 +64,6 @@ def perform_search(tool_args):
             "query_embedding": query_embedding,
             "user_id_filter": user_id_filter,
             "file_name_filter": file_name_filter,
-            "collection_filter": collection_filter,
             "description_filter": description_filter,
             "start_date": start_date,
             "end_date": end_date,
@@ -157,7 +155,6 @@ async def api_search_docs(request: Request):
         "embedding": embedding,
         "user_id_filter": user_id,
         "file_name_filter": data.get("file_name_filter"),
-        "collection_filter": data.get("collection_filter"),
         "description_filter": data.get("description_filter"),
         "start_date": data.get("start_date"),
         "end_date": data.get("end_date"),
