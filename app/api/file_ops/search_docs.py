@@ -205,8 +205,14 @@ async def api_search_docs(request: Request):
     keyword_results = keyword_search(keywords, user_id_filter=user_id)
     # Merge results: boost or deduplicate
     all_matches = {m["id"]: m for m in semantic_matches}
+    phrase = search_query.strip('"') if search_query.startswith('"') and search_query.endswith('"') else search_query
+    phrase_lower = phrase.lower()
     for k in keyword_results:
-        if k["id"] in all_matches:
+        content_lower = k.get("content", "").lower()
+        if phrase_lower in content_lower:
+            k["score"] = 1.2  # Strong boost for exact phrase match
+            all_matches[k["id"]] = k
+        elif k["id"] in all_matches:
             all_matches[k["id"]]["score"] = max(all_matches[k["id"]].get("score", 0), 1.0)  # Boost score
         else:
             k["score"] = 0.8  # Lower score for pure keyword
