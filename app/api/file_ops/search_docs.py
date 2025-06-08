@@ -70,10 +70,10 @@ def perform_search(tool_args):
             "start_date": start_date,
             "end_date": end_date,
             "match_threshold": 0.2,  # Lowered to 0.2 for more inclusive search
-            "match_count": 50        # Reasonable default for UI
+            "match_count": tool_args.get("match_count", 500)  # Increased default to 500, allow override
         }
         print(f"[DEBUG] Calling match_documents with args: {json.dumps(rpc_args, default=str)[:500]}", file=sys.stderr)
-        logger.debug(f"📤 Calling match_documents with args: {json.dumps(rpc_args, default=str)[:500]}")
+        logger.debug(f"\U0001F4E4 Calling match_documents with args: {json.dumps(rpc_args, default=str)[:500]}")
         response = supabase.rpc("match_documents", rpc_args).execute()
         print(f"[DEBUG] Supabase RPC response: {str(response)[:500]}", file=sys.stderr)
         logger.debug(f"📥 Supabase RPC response: {str(response)[:500]}")
