@@ -168,6 +168,7 @@ async def api_search_docs(request: Request):
     keywords = [w for w in re.split(r"\W+", search_query) if w and w.lower() not in stopwords]
     keyword_results = keyword_search(keywords, user_id_filter=user_id)
     # Merge results: boost or deduplicate
+    print("[DEBUG] Entered hybrid search/boosting section", flush=True)
     all_matches = {m["id"]: m for m in semantic_matches}
     phrase = search_query.strip('"') if search_query.startswith('"') and search_query.endswith('"') else search_query
     phrase_lower = phrase.lower()
