@@ -27,10 +27,17 @@ def perform_search(tool_args):
     end_date = tool_args.get("end_date")
     user_id_filter = tool_args.get("user_id_filter")
     user_prompt = tool_args.get("user_prompt")
+    search_query = tool_args.get("search_query")
 
+    # Patch: If embedding is missing, generate it from search_query or user_prompt
     if not query_embedding:
-        print("[DEBUG] perform_search early return: missing embedding", flush=True)
-        return {"error": "Embedding must be provided to perform similarity search."}
+        text_to_embed = search_query or user_prompt
+        if not text_to_embed:
+            print("[DEBUG] perform_search early return: missing embedding and no text to embed", flush=True)
+            return {"error": "Embedding must be provided to perform similarity search."}
+        from app.api.file_ops.embed import embed_text
+        query_embedding = embed_text(text_to_embed)
+
     if not user_id_filter:
         print("[DEBUG] perform_search early return: missing user_id", flush=True)
         return {"error": "user_id must be provided to perform search."}
@@ -69,7 +76,6 @@ def perform_search(tool_args):
         import re
         stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
         # Use search_query from user_prompt if available
-        search_query = tool_args.get("search_query")
         if not search_query and user_prompt:
             search_query = user_prompt
         keywords = [w for w in re.split(r"\W+", search_query or "") if w and w.lower() not in stopwords]

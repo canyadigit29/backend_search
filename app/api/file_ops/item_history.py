@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Body
 from app.core.openai_client import chat_completion
 from app.core.supabase_client import supabase
 from app.api.file_ops.search_docs import perform_search
+from app.api.file_ops.embed import embed_text
 import re
 import json
 from datetime import datetime
@@ -31,35 +32,56 @@ async def item_history(
     so the frontend can display sources/files in the same way as normal semantic search.
     """
     try:
-        tool_args = {
-            "embedding": None,  # perform_search will embed if needed
-            "user_id_filter": user_id,
+        embedding = embed_text(topic)
+        # Semantic search
+        rpc_args = {
+            "query_embedding": embedding,
             "file_name_filter": None,
             "description_filter": None,
-            "start_date": None,
-            "end_date": None,
-            "match_count": 1000,
-            "search_query": topic,
-            "user_prompt": topic
+            "user_id_filter": user_id,
+            "match_threshold": 0.3,
+            "match_count": 1000
         }
-        result = perform_search(tool_args)
-        matches = result.get("retrieved_chunks", [])
+        response = supabase.rpc("match_documents", rpc_args).execute()
+        if getattr(response, "error", None):
+            raise HTTPException(status_code=500, detail=f"Supabase RPC failed: {response.error.message}")
+        semantic_matches = response.data or []
         # Only keep minutes files
-        matches = [m for m in matches if re.search(r'minutes', m.get("file_name", ""), re.I)]
-        # Group by file/date
-        file_groups = {}
-        for m in matches:
-            file_name = m.get("file_name") or m.get("name") or ""
-            file_name = file_name.replace("_", "-")
-            date = parse_date_from_filename(file_name)
-            if not date:
-                continue
-            key = (date, file_name)
-            if key not in file_groups:
-                file_groups[key] = []
-            file_groups[key].append(m)
-        # Order by date
-        ordered = sorted(file_groups.items(), key=lambda x: x[0][0])
+        semantic_matches = [m for m in semantic_matches if re.search(r'minutes', m.get("file_name", ""), re.I)]
+        # Keyword search (customizable)
+        stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
+        keywords = [w for w in re.split(r"\W+", topic or "") if w and w.lower() not in stopwords]
+        from app.api.file_ops.search_docs import keyword_search
+        keyword_results = keyword_search(keywords, user_id_filter=user_id)
+        keyword_results = [k for k in keyword_results if re.search(r'minutes', k.get("file_name", ""), re.I)]
+        # Hybrid merge/boost
+        all_matches = {m["id"]: m for m in semantic_matches}
+        phrase = topic.strip('"') if topic.startswith('"') and topic.endswith('"') else topic
+        phrase_lower = phrase.lower()
+        for k in keyword_results:
+            content_lower = k.get("content", "").lower()
+            orig_score = k.get("score", 0)
+            num_words = len((phrase_lower or '').split())
+            high_boost = (num_words <= 4) or (len(keyword_results) <= 3)
+            if phrase_lower in content_lower:
+                if high_boost:
+                    k["score"] = orig_score + 4.0
+                else:
+                    k["score"] = orig_score + 0.08
+                k["boosted_reason"] = "exact_phrase"
+                k["original_score"] = orig_score
+                all_matches[k["id"]] = k
+            elif k["id"] in all_matches:
+                prev_score = all_matches[k["id"]].get("score", 0)
+                if prev_score < 1.0:
+                    all_matches[k["id"]]["original_score"] = prev_score
+                    all_matches[k["id"]]["score"] = prev_score + 1.0
+                    all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
+            else:
+                k["score"] = orig_score + 0.5
+                all_matches[k["id"]] = k
+        matches = list(all_matches.values())
+        matches.sort(key=lambda x: x.get("score", 0), reverse=True)
         # --- Two-pass approach: First, ask LLM to label each chunk as Relevant/Not Relevant ---
         if not matches:
             return {"history": [], "retrieved_chunks": []}
