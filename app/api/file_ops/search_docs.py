@@ -36,6 +36,7 @@ def perform_search(tool_args):
         print("[DEBUG] perform_search early return: missing user_id", flush=True)
         return {"error": "user_id must be provided to perform search."}
     try:
+        print("[DEBUG] perform_search main try block entered", flush=True)
         try:
             total_chunks = supabase.table("document_chunks").select("id").execute().data
         except Exception as e:
@@ -60,6 +61,7 @@ def perform_search(tool_args):
         }
         response = supabase.rpc("match_documents", rpc_args).execute()
         if getattr(response, "error", None):
+            print(f"[DEBUG] perform_search Supabase RPC error: {response.error.message}", flush=True)
             return {"error": f"Supabase RPC failed: {response.error.message}"}
         matches = response.data or []
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -80,6 +82,7 @@ def perform_search(tool_args):
             matches = [x for x in matches if expected_lower not in x["content"].lower()]
         return {"retrieved_chunks": matches}
     except Exception as e:
+        print(f"[DEBUG] perform_search exception: {str(e)}", flush=True)
         return {"error": f"Error during search: {str(e)}"}
 
 
