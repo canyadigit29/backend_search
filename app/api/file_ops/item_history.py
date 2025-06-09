@@ -60,38 +60,25 @@ async def item_history(
             file_groups[key].append(m)
         # Order by date
         ordered = sorted(file_groups.items(), key=lambda x: x[0][0])
-        # Summarize per meeting (file/date) and filter out unrelated chunks
-        history = []
-        filtered_matches = []
-        for (date, file_name), chunks in ordered:
-            text = "\n".join(c.get("content", "") for c in chunks)
-            prompt = [
-                {"role": "system", "content": (
-                    "You are an expert at reading meeting minutes. Summarize what was discussed about the following topic in this meeting. "
-                    "Only summarize what is present in the provided text. If the provided text does not actually discuss the topic, or is unrelated, respond with: 'No relevant discussion of this topic in this meeting.' "
-                    "Make it clear this summary is for this specific file/date."
-                )},
-                {"role": "user", "content": f"Topic: {topic}\nMeeting text:\n{text[:8000]}"}
-            ]
-            summary = chat_completion(prompt)
-            if summary.strip().lower().startswith("no relevant discussion"):
-                continue  # Skip this file/date and its chunks
-            history.append({
-                "date": date.strftime("%Y-%m-%d"),
-                "file_name": file_name,
-                "summary": summary
-            })
-            filtered_matches.extend(chunks)
-        # Add file_metadata to each chunk for frontend grouping
-        for chunk in filtered_matches:
-            # Only add if not already present
-            if 'file_metadata' not in chunk:
-                chunk['file_metadata'] = {
-                    'id': chunk.get('file_id'),
-                    'name': chunk.get('file_name'),
-                    'type': 'pdf',  # or infer from file_name if possible
-                }
-        return {"history": history, "retrieved_chunks": filtered_matches}
+        # Instead of summarizing per file/date, summarize all relevant chunks at once
+        if not matches:
+            return {"history": [], "retrieved_chunks": []}
+        # Compose a single prompt for all matches
+        all_text = "\n\n---\n\n".join(f"File: {m.get('file_name', '')}\nChunk: {m.get('content', '')}" for m in matches)
+        prompt = [
+            {"role": "system", "content": (
+                "You are an expert at reading meeting minutes. The following are chunks of text from different meeting minutes files. "
+                "Each chunk may be much larger than the information relevant to the topic. "
+                "For each chunk, extract and summarize ONLY the information that is directly relevant to the topic. "
+                "If a chunk contains no relevant information, do not include it in the summary. "
+                "For each file/chunk, output a summary in the format: \nFile: <file_name>\nSummary: <summary of relevant info or 'No relevant info'>. "
+                "At the end, provide a brief overall summary of what was discussed about the topic across all files. "
+            )},
+            {"role": "user", "content": f"Topic: {topic}\nMeeting chunks:\n{all_text[:12000]}"}
+        ]
+        summary = chat_completion(prompt)
+        # Return the summary and all retrieved chunks for frontend display
+        return {"history": [{"summary": summary}], "retrieved_chunks": matches}
     except Exception as e:
         print(f"[ERROR] item_history failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get item history: {str(e)}")
