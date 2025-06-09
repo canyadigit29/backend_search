@@ -253,6 +253,10 @@ async def api_search_docs(request: Request):
         filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
         print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary.", flush=True)
 
+        # Limit to top 20 sources for frontend
+        filtered_chunks = filtered_chunks[:20]
+        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 20) actually used in summary.", flush=True)
+
         if top_text.strip():
             from app.core.openai_client import chat_completion
             summary_prompt = [
