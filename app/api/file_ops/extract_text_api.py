@@ -46,7 +46,7 @@ async def extract_checklist(text: str = Body(..., embed=True)):
     Each item will have a 'label' and 'text'.
     """
     prompt = [
-        {"role": "system", "content": "You are an expert at reading documents. Read the following document and return a JSON array. Each array item should represent a distinct actionable or contextual item, with a 'label' (short description) and 'text' (the full text of the item). Only output the JSON array, no explanation or markdown."},
+        {"role": "system", "content": "You are an expert at reading documents. Read the following document and return a JSON array. Each array item should represent a distinct actionable or contextual item, with a 'label' (short description) and 'text' (the full text of the item). When segmenting, treat headings, bullet points, numbered lists, and clear line breaks as boundaries for new items. If you see a heading or section title, start a new item. If the document contains lists, treat each list item as a separate checklist item. Only output the JSON array, no explanation or markdown."},
         {"role": "user", "content": text[:12000]}
     ]
     try:
