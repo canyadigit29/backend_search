@@ -84,7 +84,7 @@ def perform_search(tool_args):
             orig_score = k.get("score", 0)
             if phrase_lower in content_lower:
                 print(f"[DEBUG] BOOSTED: phrase '{phrase_lower}' found in content for id={k.get('id')}", flush=True)
-                k["score"] = 1.2  # Strong boost for exact phrase match
+                k["score"] = orig_score + 1.2  # Additive boost for exact phrase match
                 k["boosted_reason"] = "exact_phrase"
                 k["original_score"] = orig_score
                 all_matches[k["id"]] = k
@@ -94,12 +94,12 @@ def perform_search(tool_args):
                 if prev_score < 1.0:
                     print(f"[DEBUG] BOOSTED: keyword overlap for id={k.get('id')}", flush=True)
                     all_matches[k["id"]]["original_score"] = prev_score
-                    all_matches[k["id"]]["score"] = 1.0  # Boost score
+                    all_matches[k["id"]]["score"] = prev_score + 1.0  # Additive boost for keyword overlap
                     all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
                     boosted_ids.add(k["id"])
             else:
                 print(f"[DEBUG] No boost for id={k.get('id')}", flush=True)
-                k["score"] = 0.8  # Lower score for pure keyword
+                k["score"] = orig_score + 0.8  # Additive, but still lower for pure keyword
                 all_matches[k["id"]] = k
         matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
