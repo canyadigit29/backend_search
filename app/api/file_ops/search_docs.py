@@ -194,7 +194,8 @@ async def api_search_docs(request: Request):
         "description_filter": data.get("description_filter"),
         "start_date": data.get("start_date"),
         "end_date": data.get("end_date"),
-        "user_prompt": user_prompt  # Pass original prompt for downstream use
+        "user_prompt": user_prompt,  # Pass original prompt for downstream use
+        "search_query": search_query  # Pass extracted search phrase for boosting
     }
     # --- Semantic search only (no hybrid) ---
     semantic_result = perform_search(tool_args)

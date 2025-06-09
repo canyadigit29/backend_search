@@ -75,7 +75,8 @@ async def chat_with_context(payload: ChatRequest):
             "description_filter": None,
             "start_date": None,
             "end_date": None,
-            "user_prompt": prompt
+            "user_prompt": prompt,
+            "search_query": search_query  # Pass extracted search phrase for boosting
         }
         # --- Hybrid search: semantic + keyword ---
         # Only call perform_search, which now handles all boosting, merging, and debug output
