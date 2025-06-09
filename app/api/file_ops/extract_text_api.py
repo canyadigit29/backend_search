@@ -6,8 +6,22 @@ import os
 import tempfile
 import traceback
 import json
+import re
 
 router = APIRouter()
+
+def extract_relevant_sections(text):
+    # Extract only the 'Old Business' and 'Action Items' sections (case-insensitive)
+    pattern = re.compile(r'(Old Business[\s\S]*?)(?=\n[A-Z][^\n]*:|\n?\Z)', re.IGNORECASE)
+    pattern2 = re.compile(r'(Action Items[\s\S]*?)(?=\n[A-Z][^\n]*:|\n?\Z)', re.IGNORECASE)
+    old_business = pattern.search(text)
+    action_items = pattern2.search(text)
+    relevant = []
+    if old_business:
+        relevant.append(old_business.group(1))
+    if action_items:
+        relevant.append(action_items.group(1))
+    return '\n'.join(relevant)
 
 @router.get("/extract_text")
 async def api_extract_text(file_path: str = Query(...)):
@@ -47,6 +61,10 @@ async def extract_checklist(text: str = Body(..., embed=True)):
     Now iteratively refines the checklist by asking the LLM to compare its output to the document and add missed items.
     Explicitly instructs the LLM to split out all sub-items (bullets, lettered/numbered lists, etc.) as separate checklist items.
     """
+    # Pre-process to extract only Old Business and Action Items
+    relevant_text = extract_relevant_sections(text)
+    if not relevant_text.strip():
+        return {"checklist": []}
     base_prompt = [
         {"role": "system", "content": (
             "You are an expert at reading documents. The following document text contains special layout clues: "
@@ -70,7 +88,7 @@ async def extract_checklist(text: str = Body(..., embed=True)):
             "  {\"label\": \"c. Schedule next meeting\", \"text\": \"c. Schedule next meeting\"}\n"
             "]\n"
         )},
-        {"role": "user", "content": text[:12000]}
+        {"role": "user", "content": relevant_text[:12000]}
     ]
     try:
         llm_response = chat_completion(base_prompt)
