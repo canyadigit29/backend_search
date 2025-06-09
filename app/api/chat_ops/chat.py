@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 import uuid
 from datetime import datetime
@@ -14,8 +13,6 @@ from app.core.supabase_client import supabase
 from app.core.llm_answer_extraction import extract_answer_from_chunks_batched
 
 router = APIRouter()
-logger = logging.getLogger("maxgpt")
-logger.setLevel(logging.DEBUG)
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
@@ -33,8 +30,6 @@ class ChatRequest(BaseModel):
 async def chat_with_context(payload: ChatRequest):
     try:
         prompt = payload.user_prompt.strip()
-        logger.debug(f"🔍 User prompt: {prompt}")
-        logger.debug(f"👤 User ID: {payload.user_id}")
 
         try:
             uuid.UUID(str(payload.user_id))
@@ -43,9 +38,6 @@ async def chat_with_context(payload: ChatRequest):
 
         # If previous_chunks are provided, this is a follow-up query. Use all previous chunks for LLM answer extraction.
         if payload.previous_chunks:
-            import sys
-            print(f"[DEBUG] Using previous_chunks for follow-up answer extraction: {len(payload.previous_chunks)} chunks", file=sys.stderr)
-            sys.stderr.flush()
             # Use batching for large numbers of chunks
             answer = extract_answer_from_chunks_batched(prompt, [c.get("content", "") for c in payload.previous_chunks])
             return {"answer": answer, "used_chunks": len(payload.previous_chunks)}
@@ -60,7 +52,6 @@ async def chat_with_context(payload: ChatRequest):
             {"role": "user", "content": prompt}
         ]
         extracted_query = chat_completion(messages)
-        logger.debug(f"[LLM] Extracted search query: {extracted_query}")
 
         # Embed the extracted query
         embedding_response = client.embeddings.create(
@@ -77,7 +68,6 @@ async def chat_with_context(payload: ChatRequest):
         try:
             embedding = embed_text(search_query)
         except Exception as e:
-            logger.error(f"❌ Failed to generate embedding: {e}")
             return {"error": f"Failed to generate embedding: {e}"}
         tool_args = {
             "embedding": embedding,
@@ -121,12 +111,8 @@ async def chat_with_context(payload: ChatRequest):
         matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
         chunks = matches
-        logger.debug(f"✅ Retrieved {len(chunks)} document chunks (hybrid/boosted logic).")
 
         # --- LLM-based summary of top search results (mirroring /file_ops/search_docs.py) ---
-        import sys
-        print(f"[DEBUG] Number of matches for summary: {len(chunks)}", file=sys.stderr)
-        sys.stderr.flush()
         summary = None
         try:
             MAX_SUMMARY_CHARS = 60000
@@ -142,29 +128,18 @@ async def chat_with_context(payload: ChatRequest):
                 top_texts.append(content)
                 total_chars += len(content)
             top_text = "\n\n".join(top_texts)
-            print(f"[DEBUG] top_text length: {len(top_text)}", file=sys.stderr)
-            print(f"[DEBUG] top_text preview: {top_text[:300]}...", file=sys.stderr)
-            sys.stderr.flush()
             if top_text.strip():
                 summary_prompt = [
                     {"role": "system", "content": "You are an expert assistant. Summarize the following retrieved search results for the user in a concise, clear, and helpful way. Only include information relevant to the user's query."},
                     {"role": "user", "content": f"User query: {prompt}\n\nSearch results:\n{top_text}"}
                 ]
-                print(f"[DEBUG] summary_prompt: {summary_prompt}", file=sys.stderr)
-                sys.stderr.flush()
                 summary = chat_completion(summary_prompt, model="gpt-4o")
-                print(f"[DEBUG] Summary result: {summary[:300]}...", file=sys.stderr)
-                sys.stderr.flush()
             else:
-                print("[DEBUG] No top_text to summarize.", file=sys.stderr)
-                sys.stderr.flush()
+                pass
         except Exception as e:
-            print(f"[DEBUG] Failed to generate summary: {e}", file=sys.stderr)
-            sys.stderr.flush()
             summary = None
 
         return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query}
 
     except Exception as e:
-        logger.exception("🚨 Uncaught error in /chat route")
         return {"error": str(e)}
