@@ -69,24 +69,59 @@ async def chat_with_context(payload: ChatRequest):
         )
         embedding = embedding_response.data[0].embedding
 
-        # Instead of calling perform_search directly, call the /file_ops/search_docs endpoint for hybrid/boosted search
-        import requests
-        backend_url = os.getenv("BACKEND_SEARCH_URL") or "http://localhost:8000"
-        search_endpoint = f"{backend_url}/file_ops/search_docs"
-        payload_data = {
-            "user_prompt": prompt,
-            "user_id": payload.user_id,
-            "session_id": payload.session_id
-        }
+        # Use the same hybrid/boosted search logic as /file_ops/search_docs
+        from app.api.file_ops.search_docs import extract_search_query, extract_entities_and_intent, embed_text, keyword_search
+        # LLM-based query extraction (already done above as extracted_query)
+        search_query = extracted_query
+        query_info = extract_entities_and_intent(prompt)
         try:
-            resp = requests.post(search_endpoint, json=payload_data, timeout=60)
-            resp.raise_for_status()
-            doc_results = resp.json()
-            chunks = doc_results.get("retrieved_chunks") or []
-            logger.debug(f"✅ Retrieved {len(chunks)} document chunks (via /file_ops/search_docs endpoint).")
+            embedding = embed_text(search_query)
         except Exception as e:
-            logger.error(f"❌ Error calling /file_ops/search_docs: {e}")
-            return {"error": f"Failed to retrieve search results: {e}"}
+            logger.error(f"❌ Failed to generate embedding: {e}")
+            return {"error": f"Failed to generate embedding: {e}"}
+        tool_args = {
+            "embedding": embedding,
+            "user_id_filter": payload.user_id,
+            "file_name_filter": None,
+            "description_filter": None,
+            "start_date": None,
+            "end_date": None,
+            "user_prompt": prompt
+        }
+        # --- Hybrid search: semantic + keyword ---
+        semantic_result = perform_search(tool_args)
+        semantic_matches = semantic_result.get("retrieved_chunks", [])
+        import re
+        stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
+        keywords = [w for w in re.split(r"\W+", search_query) if w and w.lower() not in stopwords]
+        keyword_results = keyword_search(keywords, user_id_filter=payload.user_id)
+        all_matches = {m["id"]: m for m in semantic_matches}
+        phrase = search_query.strip('"') if search_query.startswith('"') and search_query.endswith('"') else search_query
+        phrase_lower = phrase.lower()
+        boosted_ids = set()
+        for k in keyword_results:
+            content_lower = k.get("content", "").lower()
+            orig_score = k.get("score", 0)
+            if phrase_lower in content_lower:
+                k["score"] = 1.2  # Strong boost for exact phrase match
+                k["boosted_reason"] = "exact_phrase"
+                k["original_score"] = orig_score
+                all_matches[k["id"]] = k
+                boosted_ids.add(k["id"])
+            elif k["id"] in all_matches:
+                prev_score = all_matches[k["id"]].get("score", 0)
+                if prev_score < 1.0:
+                    all_matches[k["id"]]["original_score"] = prev_score
+                    all_matches[k["id"]]["score"] = 1.0  # Boost score
+                    all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
+                    boosted_ids.add(k["id"])
+            else:
+                k["score"] = 0.8  # Lower score for pure keyword
+                all_matches[k["id"]] = k
+        matches = list(all_matches.values())
+        matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+        chunks = matches
+        logger.debug(f"✅ Retrieved {len(chunks)} document chunks (hybrid/boosted logic).")
 
         # --- LLM-based summary of top search results (mirroring /file_ops/search_docs.py) ---
         import sys
