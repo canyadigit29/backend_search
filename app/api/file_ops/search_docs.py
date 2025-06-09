@@ -51,7 +51,7 @@ def perform_search(tool_args):
             "description_filter": description_filter,
             "start_date": start_date,
             "end_date": end_date,
-            "match_threshold": 0.3,  # Raised from 0.2 to 0.3
+            "match_threshold": 3.5,  # Raised from 0.3 to 3.5
             "match_count": tool_args.get("match_count", 300)
         }
         response = supabase.rpc("match_documents", rpc_args).execute()
@@ -98,7 +98,7 @@ def perform_search(tool_args):
             if phrase_lower in content_lower:
                 print(f"[DEBUG] BOOSTED: phrase '{phrase_lower}' found in content for id={k.get('id')}", flush=True)
                 if high_boost:
-                    k["score"] = orig_score + 4.0  # Increased boost for exact phrase match
+                    k["score"] = orig_score + 1.0  # Reduced boost for exact phrase match
                 else:
                     k["score"] = orig_score + 0.08  # Default (legacy) boost
                 k["boosted_reason"] = "exact_phrase"
