@@ -197,7 +197,7 @@ async def api_search_docs(request: Request):
         "file_name_filter": data.get("file_name_filter"),
         "description_filter": data.get("description_filter"),
         "start_date": data.get("start_date"),
-        "end_date": data.get("end_date),
+        "end_date": data.get("end_date"),
         "user_prompt": user_prompt  # Pass original prompt for downstream use
     }
     print(f"[DEBUG] tool_args for perform_search: {json.dumps(tool_args, default=str)[:500]}", file=sys.stderr)
