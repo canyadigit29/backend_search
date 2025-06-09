@@ -47,14 +47,14 @@ async def item_history(
         if getattr(response, "error", None):
             raise HTTPException(status_code=500, detail=f"Supabase RPC failed: {response.error.message}")
         semantic_matches = response.data or []
-        # Only keep minutes files
-        semantic_matches = [m for m in semantic_matches if re.search(r'minutes', m.get("file_name", ""), re.I)]
+        # Only keep minutes or agenda files
+        semantic_matches = [m for m in semantic_matches if re.search(r'(minutes|agenda)', m.get("file_name", ""), re.I)]
         # Keyword search (customizable)
         stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
         keywords = [w for w in re.split(r"\W+", topic or "") if w and w.lower() not in stopwords]
         from app.api.file_ops.search_docs import keyword_search
         keyword_results = keyword_search(keywords, user_id_filter=user_id)
-        keyword_results = [k for k in keyword_results if re.search(r'minutes', k.get("file_name", ""), re.I)]
+        keyword_results = [k for k in keyword_results if re.search(r'(minutes|agenda)', k.get("file_name", ""), re.I)]
         # Hybrid merge/boost
         all_matches = {m["id"]: m for m in semantic_matches}
         phrase = topic.strip('"') if topic.startswith('"') and topic.endswith('"') else topic
