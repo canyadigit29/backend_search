@@ -60,21 +60,29 @@ async def item_history(
             file_groups[key].append(m)
         # Order by date
         ordered = sorted(file_groups.items(), key=lambda x: x[0][0])
-        # Summarize per meeting (file/date)
+        # Summarize per meeting (file/date) and filter out unrelated chunks
         history = []
+        filtered_matches = []
         for (date, file_name), chunks in ordered:
             text = "\n".join(c.get("content", "") for c in chunks)
             prompt = [
-                {"role": "system", "content": "You are an expert at reading meeting minutes. Summarize what was discussed about the following topic in this meeting. Only summarize what is present in the provided text. Make it clear this summary is for this specific file/date."},
+                {"role": "system", "content": (
+                    "You are an expert at reading meeting minutes. Summarize what was discussed about the following topic in this meeting. "
+                    "Only summarize what is present in the provided text. If the provided text does not actually discuss the topic, or is unrelated, respond with: 'No relevant discussion of this topic in this meeting.' "
+                    "Make it clear this summary is for this specific file/date."
+                )},
                 {"role": "user", "content": f"Topic: {topic}\nMeeting text:\n{text[:8000]}"}
             ]
             summary = chat_completion(prompt)
+            if summary.strip().lower().startswith("no relevant discussion"):
+                continue  # Skip this file/date and its chunks
             history.append({
                 "date": date.strftime("%Y-%m-%d"),
                 "file_name": file_name,
                 "summary": summary
             })
-        return {"history": history, "retrieved_chunks": matches}
+            filtered_matches.extend(chunks)
+        return {"history": history, "retrieved_chunks": filtered_matches}
     except Exception as e:
         print(f"[ERROR] item_history failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get item history: {str(e)}")
