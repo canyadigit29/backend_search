@@ -18,7 +18,7 @@ SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
 def perform_search(tool_args):
-
+    print("[DEBUG] perform_search called", flush=True)
     query_embedding = tool_args.get("embedding")
     expected_phrase = tool_args.get("expected_phrase")
     file_name_filter = tool_args.get("file_name_filter")
@@ -30,10 +30,10 @@ def perform_search(tool_args):
 
 
     if not query_embedding:
-
+        print("[DEBUG] perform_search early return: missing embedding", flush=True)
         return {"error": "Embedding must be provided to perform similarity search."}
     if not user_id_filter:
-
+        print("[DEBUG] perform_search early return: missing user_id", flush=True)
         return {"error": "user_id must be provided to perform search."}
     try:
         try:
@@ -135,6 +135,7 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
 
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
+    print("[DEBUG] /file_ops/search_docs endpoint called", flush=True)
     data = await request.json()
     user_prompt = data.get("query") or data.get("user_prompt")
     user_id = data.get("user_id")
