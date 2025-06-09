@@ -59,6 +59,12 @@ def perform_search(tool_args):
             print("[DEBUG] perform_search: matches is empty, returning early", flush=True)
         semantic_matches.sort(key=lambda x: x.get("score", 0), reverse=True)
 
+        # Debug: print top 5 semantic matches before any boosting
+        print("[DEBUG] Top 5 semantic matches before boosting:", flush=True)
+        for i, m in enumerate(semantic_matches[:5]):
+            preview = (m.get("content", "") or "")[:200].replace("\n", " ")
+            print(f"[DEBUG] SEMANTIC #{i+1} | score: {m.get('score', 0)} | id: {m.get('id')} | preview: {preview}", flush=True)
+
         # Hybrid/boosted merging and debug output
         import re
         stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
