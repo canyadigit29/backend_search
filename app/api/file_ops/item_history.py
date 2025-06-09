@@ -72,15 +72,10 @@ async def item_history(
                 k["boosted_reason"] = "exact_phrase"
                 k["original_score"] = orig_score
                 all_matches[k["id"]] = k
-            elif k["id"] in all_matches:
-                prev_score = all_matches[k["id"]].get("score", 0)
-                if prev_score < 1.0:
-                    all_matches[k["id"]]["original_score"] = prev_score
-                    all_matches[k["id"]]["score"] = prev_score + 1.0
-                    all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
             else:
-                k["score"] = orig_score + 0.5
-                all_matches[k["id"]] = k
+                # No boost for partial/keyword overlap, just add if not present
+                if k["id"] not in all_matches:
+                    all_matches[k["id"]] = k
         matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
         # --- Two-pass approach: First, ask LLM to label each chunk as Relevant/Not Relevant ---
