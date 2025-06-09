@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Body
 from app.core.openai_client import chat_completion
 from app.core.supabase_client import supabase
+from app.api.file_ops.search_docs import perform_search
 import re
 import json
 from datetime import datetime
@@ -30,20 +31,19 @@ async def item_history(
     so the frontend can display sources/files in the same way as normal semantic search.
     """
     try:
-        from app.api.file_ops.embed import embed_text
-        embedding = embed_text(topic)
-        rpc_args = {
-            "query_embedding": embedding,
+        tool_args = {
+            "embedding": None,  # perform_search will embed if needed
+            "user_id_filter": user_id,
             "file_name_filter": None,
             "description_filter": None,
-            "user_id_filter": user_id,
-            "match_threshold": 0.3,
-            "match_count": 1000
+            "start_date": None,
+            "end_date": None,
+            "match_count": 1000,
+            "search_query": topic,
+            "user_prompt": topic
         }
-        response = supabase.rpc("match_documents", rpc_args).execute()
-        if getattr(response, "error", None):
-            raise HTTPException(status_code=500, detail=f"Supabase RPC failed: {response.error.message}")
-        matches = response.data or []
+        result = perform_search(tool_args)
+        matches = result.get("retrieved_chunks", [])
         # Only keep minutes files
         matches = [m for m in matches if re.search(r'minutes', m.get("file_name", ""), re.I)]
         # Group by file/date

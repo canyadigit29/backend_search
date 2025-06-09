@@ -86,9 +86,15 @@ def perform_search(tool_args):
             content_lower = k.get("content", "").lower()
             print(f"[DEBUG] Checking keyword result id={k.get('id')} content_lower[:100]='{content_lower[:100]}'", flush=True)
             orig_score = k.get("score", 0)
+            # Determine if we should apply a higher boost
+            num_words = len((phrase_lower or '').split())
+            high_boost = (num_words <= 4) or (len(keyword_results) <= 3)
             if phrase_lower in content_lower:
                 print(f"[DEBUG] BOOSTED: phrase '{phrase_lower}' found in content for id={k.get('id')}", flush=True)
-                k["score"] = orig_score + 0.08  # Additive boost for exact phrase match (was 1.2)
+                if high_boost:
+                    k["score"] = orig_score + 4.0  # Increased boost for exact phrase match
+                else:
+                    k["score"] = orig_score + 0.08  # Default (legacy) boost
                 k["boosted_reason"] = "exact_phrase"
                 k["original_score"] = orig_score
                 all_matches[k["id"]] = k
