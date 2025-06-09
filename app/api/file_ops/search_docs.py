@@ -64,6 +64,11 @@ def perform_search(tool_args):
             print(f"[DEBUG] perform_search Supabase RPC error: {response.error.message}", flush=True)
             return {"error": f"Supabase RPC failed: {response.error.message}"}
         matches = response.data or []
+        print(f"[DEBUG] perform_search matches retrieved: {len(matches)}", flush=True)
+        if matches:
+            print(f"[DEBUG] perform_search first match sample: {str(matches[0])[:300]}", flush=True)
+        else:
+            print("[DEBUG] perform_search: matches is empty, returning early", flush=True)
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
         # Remove old top match debug
         # if matches:
