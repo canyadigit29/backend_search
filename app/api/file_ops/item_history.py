@@ -32,6 +32,7 @@ async def item_history(
     so the frontend can display sources/files in the same way as normal semantic search.
     """
     try:
+        print(f"[DEBUG] Embedding topic for item_history: '{topic}'", flush=True)
         embedding = embed_text(topic)
         # Semantic search
         rpc_args = {
