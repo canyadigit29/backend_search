@@ -69,13 +69,24 @@ async def chat_with_context(payload: ChatRequest):
         )
         embedding = embedding_response.data[0].embedding
 
-        # Perform semantic search
-        doc_results = perform_search({
-            "embedding": embedding,
-            "user_id_filter": payload.user_id
-        })
-        chunks = doc_results.get("results") or doc_results.get("retrieved_chunks") or []
-        logger.debug(f"✅ Retrieved {len(chunks)} document chunks.")
+        # Instead of calling perform_search directly, call the /file_ops/search_docs endpoint for hybrid/boosted search
+        import requests
+        backend_url = os.getenv("BACKEND_SEARCH_URL") or "http://localhost:8000"
+        search_endpoint = f"{backend_url}/file_ops/search_docs"
+        payload_data = {
+            "user_prompt": prompt,
+            "user_id": payload.user_id,
+            "session_id": payload.session_id
+        }
+        try:
+            resp = requests.post(search_endpoint, json=payload_data, timeout=60)
+            resp.raise_for_status()
+            doc_results = resp.json()
+            chunks = doc_results.get("retrieved_chunks") or []
+            logger.debug(f"✅ Retrieved {len(chunks)} document chunks (via /file_ops/search_docs endpoint).")
+        except Exception as e:
+            logger.error(f"❌ Error calling /file_ops/search_docs: {e}")
+            return {"error": f"Failed to retrieve search results: {e}"}
 
         # --- LLM-based summary of top search results (mirroring /file_ops/search_docs.py) ---
         import sys

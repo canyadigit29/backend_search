@@ -216,13 +216,11 @@ async def api_search_docs(request: Request):
     boosted_ids = set()
     print(f"[DEBUG] search_query: '{search_query}'", file=sys.stderr)
     print(f"[DEBUG] phrase_lower: '{phrase_lower}'", file=sys.stderr)
-    # For each keyword result, print if the phrase is in the content
+    print(f"[DEBUG] keyword_results count: {len(keyword_results)}", file=sys.stderr)
     for k in keyword_results:
         content_lower = k.get("content", "").lower()
-        if phrase_lower in content_lower:
-            print(f"[DEBUG] PHRASE MATCH: phrase '{phrase_lower}' found in chunk id {k.get('id')} content: {content_lower[:200]}", file=sys.stderr)
-        else:
-            print(f"[DEBUG] NO PHRASE MATCH: phrase '{phrase_lower}' NOT found in chunk id {k.get('id')} content: {content_lower[:200]}", file=sys.stderr)
+        print(f"[DEBUG] Checking chunk id {k.get('id')}: phrase '{phrase_lower}' in content? {'yes' if phrase_lower in content_lower else 'no'} | content preview: {content_lower[:200]}", file=sys.stderr)
+    # For each keyword result, print if the phrase is in the content
     for k in keyword_results:
         content_lower = k.get("content", "").lower()
         orig_score = k.get("score", 0)
