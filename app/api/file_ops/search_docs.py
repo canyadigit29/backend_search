@@ -195,7 +195,7 @@ async def api_search_docs(request: Request):
     matches = list(all_matches.values())
     matches.sort(key=lambda x: x.get("score", 0), reverse=True)
     # New debug: print top 5 results with score and content preview, and boosting info
-    print("[DEBUG] Top 5 search results:", file=sys.stderr)
+    print("[DEBUG] Top 5 search results:", flush=True)
     for i, m in enumerate(matches[:5]):
         preview = (m.get("content", "") or "")[:200].replace("\n", " ")
         boost_info = ""
@@ -205,8 +205,8 @@ async def api_search_docs(request: Request):
             boost_info = f" [BOOSTED: keyword overlap, orig_score={m.get('original_score', 'n/a')}]"
         sim_score = m.get("score", 0)
         orig_score = m.get("original_score", sim_score)
-        print(f"[DEBUG] #{i+1} | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", file=sys.stderr)
-    print(f"[DEBUG] matches for response: {len(matches)}", file=sys.stderr)
+        print(f"[DEBUG] #{i+1} | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
+    print(f"[DEBUG] matches for response: {len(matches)}", flush=True)
     # Compose output to include all required fields for frontend compatibility
     retrieved_chunks = []
     for m in matches:
