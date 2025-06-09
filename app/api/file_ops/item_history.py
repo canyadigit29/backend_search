@@ -31,22 +31,28 @@ async def item_history(
     For a given topic, return agenda/minutes pairs: each with the agenda match and the exact quote(s) from the minutes where the topic is discussed.
     """
     try:
-        print(f"[DEBUG] Step 1: Starting agenda keyword search for topic: '{topic}' and user_id: {user_id}")
-        stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
-        keywords = [w for w in re.split(r"\W+", topic or "") if w and w.lower() not in stopwords]
-        print(f"[DEBUG] Step 1: Keywords for search: {keywords}")
-        from app.api.file_ops.search_docs import keyword_search, perform_search
-        agenda_chunks = (
-            supabase.table("document_chunks")
-            .select("*")
-            .eq("user_id", user_id)
-            .ilike("file_name", "%agenda%")
-            .or_("{}".format(",".join([f"content.ilike.%{kw}%" for kw in keywords])))
-            .execute().data or []
-        )
-        print(f"[DEBUG] Step 1: Found {len(agenda_chunks)} agenda chunks matching keywords.")
+        print(f"[DEBUG] Step 1: Starting agenda semantic/hybrid search for topic: '{topic}' and user_id: {user_id}")
+        # Acronym detection: all uppercase, <=5 chars, no spaces
+        is_acronym = topic.isupper() and len(topic) <= 5 and ' ' not in topic
+        print(f"[DEBUG] Step 1: Acronym detected: {is_acronym}")
+        # Use perform_search for semantic/hybrid search on agendas
+        agenda_search_args = {
+            "embedding": embed_text(topic),
+            "user_id_filter": user_id,
+            "file_name_filter": "agenda",  # Will match any agenda file
+            "match_count": 50,
+            "user_prompt": topic,
+            "search_query": topic
+        }
+        agenda_result = perform_search(agenda_search_args)
+        agenda_chunks = agenda_result.get("retrieved_chunks", [])
+        print(f"[DEBUG] Step 1: Found {len(agenda_chunks)} agenda chunks from semantic/hybrid search.")
+        # Acronym filtering: only keep agenda chunks with exact word match if acronym
+        if is_acronym:
+            agenda_chunks = [chunk for chunk in agenda_chunks if re.search(rf"\\b{re.escape(topic)}\\b", chunk.get("content", ""), re.IGNORECASE)]
+            print(f"[DEBUG] Step 1: After acronym exact match filtering, {len(agenda_chunks)} agenda chunks remain.")
         if not agenda_chunks:
-            print(f"[DEBUG] Step 1: No agenda chunks found for topic '{topic}' and user_id '{user_id}'")
+            print(f"[DEBUG] Step 1: No agenda chunks found for topic '{topic}' and user_id '{user_id}' after filtering")
             return {"history": [
                 {"summary": "There were no results for this item. This may be a new topic."}
             ], "agenda_minutes_pairs": []}
