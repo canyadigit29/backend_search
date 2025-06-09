@@ -31,9 +31,10 @@ async def item_history(
     For a given topic, return agenda/minutes pairs: each with the agenda match and the exact quote(s) from the minutes where the topic is discussed.
     """
     try:
-        # Step 1: Keyword search for topic in agenda chunks (content, not file name)
+        print(f"[DEBUG] Step 1: Starting agenda keyword search for topic: '{topic}' and user_id: {user_id}")
         stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
         keywords = [w for w in re.split(r"\W+", topic or "") if w and w.lower() not in stopwords]
+        print(f"[DEBUG] Step 1: Keywords for search: {keywords}")
         from app.api.file_ops.search_docs import keyword_search, perform_search
         agenda_chunks = (
             supabase.table("document_chunks")
@@ -43,21 +44,25 @@ async def item_history(
             .or_("{}".format(",".join([f"content.ilike.%{kw}%" for kw in keywords])))
             .execute().data or []
         )
+        print(f"[DEBUG] Step 1: Found {len(agenda_chunks)} agenda chunks matching keywords.")
         if not agenda_chunks:
+            print(f"[DEBUG] Step 1: No agenda chunks found for topic '{topic}' and user_id '{user_id}'")
             return {"history": [
                 {"summary": "There were no results for this item. This may be a new topic."}
             ], "agenda_minutes_pairs": []}
         results = []
         for agenda_chunk in agenda_chunks:
             agenda_file = agenda_chunk.get("file_name", "")
+            print(f"[DEBUG] Step 2: Processing agenda chunk file: {agenda_file}")
             agenda_date = parse_date_from_filename(agenda_file)
+            print(f"[DEBUG] Step 2: Parsed agenda date: {agenda_date}")
             if not agenda_date:
+                print(f"[DEBUG] Step 2: Could not parse date from agenda file: {agenda_file}")
                 continue
             date_str = agenda_date.strftime("%d-%B-%Y")
             alt_date_str = agenda_date.strftime("%d_%B_%Y")
-            # Step 2: For each agenda, do a full semantic search on minutes for that date (no keyword boost)
             embedding = embed_text(topic)
-            # Query minutes chunks for this user and date
+            print(f"[DEBUG] Step 3: Embedding for topic generated. Querying minutes chunks for date: {date_str} or {alt_date_str}")
             minutes_chunks = (
                 supabase.table("document_chunks")
                 .select("*")
@@ -65,30 +70,29 @@ async def item_history(
                 .or_(f"file_name.ilike.%{date_str}%minutes%,file_name.ilike.%{alt_date_str}%minutes%")
                 .execute().data or []
             )
+            print(f"[DEBUG] Step 3: Found {len(minutes_chunks)} minutes chunks for date.")
             if not minutes_chunks:
+                print(f"[DEBUG] Step 3: No minutes chunks found for agenda date {agenda_date}")
                 continue
-            # Full semantic search (no keyword boost)
-            # Use perform_search with only embedding and file_name filter
             tool_args = {
                 "embedding": embedding,
                 "user_id_filter": user_id,
-                "file_name_filter": None,  # We'll filter by file_name below
+                "file_name_filter": None,
                 "match_count": 20
             }
-            # Filter minutes_chunks to just those for this date
             filtered_minutes = [c for c in minutes_chunks if (date_str in c.get("file_name", "") or alt_date_str in c.get("file_name", ""))]
-            # Compute dot product similarity manually (since we have the embedding)
+            print(f"[DEBUG] Step 3: Filtered to {len(filtered_minutes)} minutes chunks for exact date match.")
             def dot(a, b):
                 return sum(x*y for x, y in zip(a, b))
             try:
                 for chunk in filtered_minutes:
                     if "embedding" in chunk:
                         chunk["score"] = dot(chunk["embedding"], embedding)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[DEBUG] Step 3: Error computing dot product similarity: {e}")
             filtered_minutes.sort(key=lambda c: c.get("score", 0), reverse=True)
-            # Extract top quotes (top 2 chunks)
             quotes = [c.get("content", "") for c in filtered_minutes[:2] if c.get("content")]
+            print(f"[DEBUG] Step 4: Top quotes extracted: {len(quotes)}")
             results.append({
                 "agenda": {
                     "file_name": agenda_chunk.get("file_name"),
@@ -105,6 +109,7 @@ async def item_history(
                 ],
                 "quotes": quotes,
             })
+        print(f"[DEBUG] Step 5: Returning {len(results)} agenda/minutes pairs.")
         return {"history": [], "agenda_minutes_pairs": results}
     except Exception as e:
         print(f"[ERROR] item_history failed: {e}")
