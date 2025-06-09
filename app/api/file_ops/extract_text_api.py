@@ -56,6 +56,7 @@ async def extract_checklist(text: str = Body(..., embed=True)):
             "Determine by context and layout what separate items are listed in the document, and return a JSON array where each item has a 'label' (short description) and 'text' (the full text of the item). "
             "If a section contains a list of items (e.g., a., b., c., or 1., 2., 3.), treat each as a separate checklist item, not as a single combined item. "
             "If any checklist item contains multiple actionable items, split them into separate checklist items. "
+            "For any section titled 'Action Items', ensure each sub-item is split out as a separate checklist item, and if the sub-item is designated by a letter (a., b., c., etc.), include that letter as a prefix in the checklist item's label (e.g., 'a. Approve minutes'). "
             "Only output the JSON array, no explanation or markdown."
         )},
         {"role": "user", "content": text[:12000]}
@@ -73,6 +74,7 @@ async def extract_checklist(text: str = Body(..., embed=True)):
                     "If you find any items in the document that are not represented in the checklist, add them. "
                     "If any checklist item contains multiple actionable items, split them into separate checklist items. "
                     "If a section contains a list of items (e.g., a., b., c., or 1., 2., 3.), treat each as a separate checklist item, not as a single combined item. "
+                    "For any section titled 'Action Items', ensure each sub-item is split out as a separate checklist item, and if the sub-item is designated by a letter (a., b., c., etc.), include that letter as a prefix in the checklist item's label (e.g., 'a. Approve minutes'). "
                     "Return the improved checklist as a JSON array with 'label' and 'text' for each item. "
                     "Only output the JSON array, no explanation or markdown."
                 )},
