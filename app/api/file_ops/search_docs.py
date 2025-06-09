@@ -69,6 +69,9 @@ def perform_search(tool_args):
         keywords = [w for w in re.split(r"\W+", search_query or "") if w and w.lower() not in stopwords]
         from app.api.file_ops.search_docs import keyword_search
         keyword_results = keyword_search(keywords, user_id_filter=user_id_filter)
+        print(f"[DEBUG] Keyword search returned {len(keyword_results)} results.", flush=True)
+        for k in keyword_results:
+            print(f"[DEBUG] Keyword result id={k.get('id')} content={k.get('content', '')[:300]}", flush=True)
         print("[DEBUG] Entered hybrid search/boosting section", flush=True)
         all_matches = {m["id"]: m for m in semantic_matches}
         phrase = (search_query or "").strip('"') if (search_query or "").startswith('"') and (search_query or "").endswith('"') else (search_query or "")
