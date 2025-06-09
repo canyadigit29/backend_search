@@ -112,6 +112,18 @@ def perform_search(tool_args):
             sim_score = m.get("score", 0)
             orig_score = m.get("original_score", sim_score)
             print(f"[DEBUG] #{i+1} | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
+        # After boosting, print all boosted results
+        boosted_results = [m for m in matches if m.get("boosted_reason")]
+        if boosted_results:
+            print(f"[DEBUG] Boosted results found: {len(boosted_results)}", flush=True)
+            for m in boosted_results:
+                preview = (m.get("content", "") or "")[:200].replace("\n", " ")
+                boost_info = f" [BOOSTED: {m.get('boosted_reason')}, orig_score={m.get('original_score', 'n/a')}]"
+                sim_score = m.get("score", 0)
+                orig_score = m.get("original_score", sim_score)
+                print(f"[DEBUG] BOOSTED RESULT | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
+        else:
+            print("[DEBUG] No boosted results found.", flush=True)
         print(f"[DEBUG] matches for response: {len(matches)}", flush=True)
         return {"retrieved_chunks": matches}
     except Exception as e:
