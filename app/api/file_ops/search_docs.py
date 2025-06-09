@@ -137,10 +137,7 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
     """
     Simple keyword search over document_chunks table. Returns chunks containing any of the keywords.
     """
-    from app.core.supabase_client import create_client
-    SUPABASE_URL = os.environ["SUPABASE_URL"]
-    SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
-    supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
+    # Use the global supabase client instead of creating a new one
     query = supabase.table("document_chunks")
     if user_id_filter:
         query = query.eq("user_id", user_id_filter)
