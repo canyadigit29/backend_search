@@ -197,7 +197,7 @@ async def api_search_docs(request: Request):
         "file_name_filter": data.get("file_name_filter"),
         "description_filter": data.get("description_filter"),
         "start_date": data.get("start_date"),
-        "end_date": data.get("end_date"),
+        "end_date": data.get("end_date),
         "user_prompt": user_prompt  # Pass original prompt for downstream use
     }
     print(f"[DEBUG] tool_args for perform_search: {json.dumps(tool_args, default=str)[:500]}", file=sys.stderr)
@@ -213,23 +213,38 @@ async def api_search_docs(request: Request):
     all_matches = {m["id"]: m for m in semantic_matches}
     phrase = search_query.strip('"') if search_query.startswith('"') and search_query.endswith('"') else search_query
     phrase_lower = phrase.lower()
+    boosted_ids = set()
     for k in keyword_results:
         content_lower = k.get("content", "").lower()
+        orig_score = k.get("score", 0)
         if phrase_lower in content_lower:
             k["score"] = 1.2  # Strong boost for exact phrase match
+            k["boosted_reason"] = "exact_phrase"
+            k["original_score"] = orig_score
             all_matches[k["id"]] = k
+            boosted_ids.add(k["id"])
         elif k["id"] in all_matches:
-            all_matches[k["id"]]["score"] = max(all_matches[k["id"]].get("score", 0), 1.0)  # Boost score
+            prev_score = all_matches[k["id"]].get("score", 0)
+            if prev_score < 1.0:
+                all_matches[k["id"]]["original_score"] = prev_score
+                all_matches[k["id"]]["score"] = 1.0  # Boost score
+                all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
+                boosted_ids.add(k["id"])
         else:
             k["score"] = 0.8  # Lower score for pure keyword
             all_matches[k["id"]] = k
     matches = list(all_matches.values())
     matches.sort(key=lambda x: x.get("score", 0), reverse=True)
-    # New debug: print top 5 results with score and content preview
+    # New debug: print top 5 results with score and content preview, and boosting info
     print("[DEBUG] Top 5 search results:", file=sys.stderr)
     for i, m in enumerate(matches[:5]):
         preview = m.get("content", "")[:200].replace("\n", " ")
-        print(f"[DEBUG] #{i+1} | score: {m.get('score')} | id: {m.get('id')} | preview: {preview}", file=sys.stderr)
+        boost_info = ""
+        if m.get("boosted_reason") == "exact_phrase":
+            boost_info = f" [BOOSTED: exact phrase, orig_score={m.get('original_score', 'n/a')}]"
+        elif m.get("boosted_reason") == "keyword_overlap":
+            boost_info = f" [BOOSTED: keyword overlap, orig_score={m.get('original_score', 'n/a')}]"
+        print(f"[DEBUG] #{i+1} | score: {m.get('score')} | id: {m.get('id')} | preview: {preview}{boost_info}", file=sys.stderr)
     print(f"[DEBUG] matches for response: {len(matches)}", file=sys.stderr)
 
     # Compose output to include all required fields for frontend compatibility
