@@ -45,14 +45,17 @@ async def extract_checklist(text: str = Body(..., embed=True)):
     Accepts raw text and returns a checklist of actionable/contextual items using the LLM.
     Each item will have a 'label' and 'text'.
     Now iteratively refines the checklist by asking the LLM to compare its output to the document and add missed items.
+    Explicitly instructs the LLM to split out all sub-items (bullets, lettered/numbered lists, etc.) as separate checklist items.
     """
     base_prompt = [
         {"role": "system", "content": (
             "You are an expert at reading documents. The following document text contains special layout clues: "
             "---PAGE N--- marks page breaks, ###HEADING### marks headings, and lines starting with * or - are bullet points. "
-            "Numbered lists may appear as lines starting with a number and a period. "
+            "Numbered lists may appear as lines starting with a number and a period, or a letter and a period. "
             "These clues indicate the original document's structure. "
             "Determine by context and layout what separate items are listed in the document, and return a JSON array where each item has a 'label' (short description) and 'text' (the full text of the item). "
+            "If a section contains a list of items (e.g., a., b., c., or 1., 2., 3.), treat each as a separate checklist item, not as a single combined item. "
+            "If any checklist item contains multiple actionable items, split them into separate checklist items. "
             "Only output the JSON array, no explanation or markdown."
         )},
         {"role": "user", "content": text[:12000]}
@@ -68,6 +71,8 @@ async def extract_checklist(text: str = Body(..., embed=True)):
                 {"role": "system", "content": (
                     "You are an expert at reading documents. Compare the following checklist to the document text. "
                     "If you find any items in the document that are not represented in the checklist, add them. "
+                    "If any checklist item contains multiple actionable items, split them into separate checklist items. "
+                    "If a section contains a list of items (e.g., a., b., c., or 1., 2., 3.), treat each as a separate checklist item, not as a single combined item. "
                     "Return the improved checklist as a JSON array with 'label' and 'text' for each item. "
                     "Only output the JSON array, no explanation or markdown."
                 )},
