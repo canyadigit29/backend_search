@@ -26,8 +26,7 @@ def perform_search(tool_args):
     start_date = tool_args.get("start_date")
     end_date = tool_args.get("end_date")
     user_id_filter = tool_args.get("user_id_filter")
-
-
+    user_prompt = tool_args.get("user_prompt")
 
     if not query_embedding:
         print("[DEBUG] perform_search early return: missing embedding", flush=True)
@@ -37,18 +36,7 @@ def perform_search(tool_args):
         return {"error": "user_id must be provided to perform search."}
     try:
         print("[DEBUG] perform_search main try block entered", flush=True)
-        try:
-            total_chunks = supabase.table("document_chunks").select("id").execute().data
-        except Exception as e:
-            pass
-        try:
-            user_chunks = supabase.table("document_chunks").select("id").eq("user_id", user_id_filter).execute().data
-        except Exception as e:
-            pass
-        try:
-            with_embedding = supabase.table("document_chunks").select("id").not_.is_("openai_embedding", None).execute().data
-        except Exception as e:
-            pass
+        # Semantic search
         rpc_args = {
             "query_embedding": query_embedding,
             "user_id_filter": user_id_filter,
@@ -56,35 +44,70 @@ def perform_search(tool_args):
             "description_filter": description_filter,
             "start_date": start_date,
             "end_date": end_date,
-            "match_threshold": 0.2,  # Lowered to 0.3 for more inclusive search
-            "match_count": tool_args.get("match_count", 300)  # Increased default to 500, allow override
+            "match_threshold": 0.2,
+            "match_count": tool_args.get("match_count", 300)
         }
         response = supabase.rpc("match_documents", rpc_args).execute()
         if getattr(response, "error", None):
             print(f"[DEBUG] perform_search Supabase RPC error: {response.error.message}", flush=True)
             return {"error": f"Supabase RPC failed: {response.error.message}"}
-        matches = response.data or []
-        print(f"[DEBUG] perform_search matches retrieved: {len(matches)}", flush=True)
-        if matches:
-            print(f"[DEBUG] perform_search first match sample: {str(matches[0])[:300]}", flush=True)
+        semantic_matches = response.data or []
+        print(f"[DEBUG] perform_search matches retrieved: {len(semantic_matches)}", flush=True)
+        if semantic_matches:
+            print(f"[DEBUG] perform_search first match sample: {str(semantic_matches[0])[:300]}", flush=True)
         else:
             print("[DEBUG] perform_search: matches is empty, returning early", flush=True)
+        semantic_matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        # Hybrid/boosted merging and debug output
+        import re
+        stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
+        # Use search_query from user_prompt if available
+        search_query = tool_args.get("search_query")
+        if not search_query and user_prompt:
+            search_query = user_prompt
+        keywords = [w for w in re.split(r"\W+", search_query or "") if w and w.lower() not in stopwords]
+        from app.api.file_ops.search_docs import keyword_search
+        keyword_results = keyword_search(keywords, user_id_filter=user_id_filter)
+        print("[DEBUG] Entered hybrid search/boosting section", flush=True)
+        all_matches = {m["id"]: m for m in semantic_matches}
+        phrase = (search_query or "").strip('"') if (search_query or "").startswith('"') and (search_query or "").endswith('"') else (search_query or "")
+        phrase_lower = phrase.lower()
+        boosted_ids = set()
+        for k in keyword_results:
+            content_lower = k.get("content", "").lower()
+            orig_score = k.get("score", 0)
+            if phrase_lower in content_lower:
+                k["score"] = 1.2  # Strong boost for exact phrase match
+                k["boosted_reason"] = "exact_phrase"
+                k["original_score"] = orig_score
+                all_matches[k["id"]] = k
+                boosted_ids.add(k["id"])
+            elif k["id"] in all_matches:
+                prev_score = all_matches[k["id"]].get("score", 0)
+                if prev_score < 1.0:
+                    all_matches[k["id"]]["original_score"] = prev_score
+                    all_matches[k["id"]]["score"] = 1.0  # Boost score
+                    all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
+                    boosted_ids.add(k["id"])
+            else:
+                k["score"] = 0.8  # Lower score for pure keyword
+                all_matches[k["id"]] = k
+        matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
-        # Remove old top match debug
-        # if matches:
-        #     top = matches[0]
-        #     preview = top["content"][:200].replace("\n", " ")
-        #     print(f"[DEBUG] Top match score: {top.get('score')}, preview: {preview}", file=sys.stderr)
-        #     logger.debug(f"🔝 Top match (score {top.get('score')}): {preview}")
-        # else:
-        #     print("[DEBUG] No matches found", file=sys.stderr)
-        #     logger.debug("⚠️ No matches found.")
-        # Print top 5 results with logger.debug for Railway
+        # New debug: print top 5 results with score and content preview, and boosting info
+        print("[DEBUG] Top 5 search results:", flush=True)
         for i, m in enumerate(matches[:5]):
-            preview = m.get("content", "")[:200].replace("\n", " ")
-        if expected_phrase:
-            expected_lower = expected_phrase.lower()
-            matches = [x for x in matches if expected_lower not in x["content"].lower()]
+            preview = (m.get("content", "") or "")[:200].replace("\n", " ")
+            boost_info = ""
+            if m.get("boosted_reason") == "exact_phrase":
+                boost_info = f" [BOOSTED: exact phrase, orig_score={m.get('original_score', 'n/a')}]"
+            elif m.get("boosted_reason") == "keyword_overlap":
+                boost_info = f" [BOOSTED: keyword overlap, orig_score={m.get('original_score', 'n/a')}]"
+            sim_score = m.get("score", 0)
+            orig_score = m.get("original_score", sim_score)
+            print(f"[DEBUG] #{i+1} | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
+        print(f"[DEBUG] matches for response: {len(matches)}", flush=True)
         return {"retrieved_chunks": matches}
     except Exception as e:
         print(f"[DEBUG] perform_search exception: {str(e)}", flush=True)
@@ -168,101 +191,9 @@ async def api_search_docs(request: Request):
         "end_date": data.get("end_date"),
         "user_prompt": user_prompt  # Pass original prompt for downstream use
     }
-    # --- Hybrid search: semantic + keyword ---
+    # --- Semantic search only (no hybrid) ---
     semantic_result = perform_search(tool_args)
-    semantic_matches = semantic_result.get("retrieved_chunks", [])
-    # Extract keywords from search_query (split on spaces, remove stopwords for simplicity)
-    import re
-    stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
-    keywords = [w for w in re.split(r"\W+", search_query) if w and w.lower() not in stopwords]
-    keyword_results = keyword_search(keywords, user_id_filter=user_id)
-    # Merge results: boost or deduplicate
-    print("[DEBUG] Entered hybrid search/boosting section", flush=True)
-    all_matches = {m["id"]: m for m in semantic_matches}
-    phrase = search_query.strip('"') if search_query.startswith('"') and search_query.endswith('"') else search_query
-    phrase_lower = phrase.lower()
-    boosted_ids = set()
-    # For each keyword result, print if the phrase is in the content
-    for k in keyword_results:
-        content_lower = k.get("content", "").lower()
-        orig_score = k.get("score", 0)
-        if phrase_lower in content_lower:
-            k["score"] = 1.2  # Strong boost for exact phrase match
-            k["boosted_reason"] = "exact_phrase"
-            k["original_score"] = orig_score
-            all_matches[k["id"]] = k
-            boosted_ids.add(k["id"])
-        elif k["id"] in all_matches:
-            prev_score = all_matches[k["id"]].get("score", 0)
-            if prev_score < 1.0:
-                all_matches[k["id"]]["original_score"] = prev_score
-                all_matches[k["id"]]["score"] = 1.0  # Boost score
-                all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
-                boosted_ids.add(k["id"])
-        else:
-            k["score"] = 0.8  # Lower score for pure keyword
-            all_matches[k["id"]] = k
-    matches = list(all_matches.values())
-    matches.sort(key=lambda x: x.get("score", 0), reverse=True)
-    # New debug: print top 5 results with score and content preview, and boosting info
-    print("[DEBUG] Top 5 search results:", flush=True)
-    for i, m in enumerate(matches[:5]):
-        preview = (m.get("content", "") or "")[:200].replace("\n", " ")
-        boost_info = ""
-        if m.get("boosted_reason") == "exact_phrase":
-            boost_info = f" [BOOSTED: exact phrase, orig_score={m.get('original_score', 'n/a')}]"
-        elif m.get("boosted_reason") == "keyword_overlap":
-            boost_info = f" [BOOSTED: keyword overlap, orig_score={m.get('original_score', 'n/a')}]"
-        sim_score = m.get("score", 0)
-        orig_score = m.get("original_score", sim_score)
-        print(f"[DEBUG] #{i+1} | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
-    print(f"[DEBUG] matches for response: {len(matches)}", flush=True)
-    # Compose output to include all required fields for frontend compatibility
-    retrieved_chunks = []
-    for m in matches:
-        retrieved_chunks.append({
-            # file_items table fields
-            "id": m.get("id"),
-            "file_id": m.get("file_id"),
-            "user_id": m.get("user_id"),
-            "created_at": m.get("created_at"),
-            "updated_at": m.get("updated_at"),
-            "sharing": m.get("sharing"),
-            "content": m.get("content"),
-            "tokens": m.get("tokens"),
-            "openai_embedding": m.get("openai_embedding"),
-            # search score
-            "score": m.get("score"),
-            # files table fields (as file_metadata)
-            "file_metadata": {
-                "file_id": m.get("file_id"),
-                "folder_id": m.get("folder_id"),
-                "created_at": m.get("file_created_at") or m.get("created_at"),
-                "updated_at": m.get("file_updated_at") or m.get("updated_at"),
-                "sharing": m.get("file_sharing"),
-                "description": m.get("description"),
-                "file_path": m.get("file_path"),
-                "name": m.get("name") or m.get("file_name"),
-                "size": m.get("size"),
-                "tokens": m.get("file_tokens"),
-                "type": m.get("type"),
-                "message_index": m.get("message_index"),
-                "timestamp": m.get("timestamp"),
-                "topic_id": m.get("topic_id"),
-                "chunk_index": m.get("chunk_index"),
-                "embedding_json": m.get("embedding_json"),
-                "session_id": m.get("session_id"),
-                "status": m.get("status"),
-                "content": m.get("file_content"),
-                "topic_name": m.get("topic_name"),
-                "speaker_role": m.get("speaker_role"),
-                "ingested": m.get("ingested"),
-                "ingested_at": m.get("ingested_at"),
-                "uploaded_at": m.get("uploaded_at"),
-                "relevant_date": m.get("relevant_date"),
-            }
-        })
-
+    matches = semantic_result.get("retrieved_chunks", [])
     # --- LLM-based summary of top search results ---
     
     summary = None
@@ -304,7 +235,7 @@ async def api_search_docs(request: Request):
         pass
         summary = None
 
-    return JSONResponse({"retrieved_chunks": retrieved_chunks, "summary": summary})
+    return JSONResponse({"retrieved_chunks": matches, "summary": summary})
 
 
 # Legacy endpoint maintained for backward compatibility
