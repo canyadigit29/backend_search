@@ -88,7 +88,7 @@ def perform_search(tool_args):
             orig_score = k.get("score", 0)
             if phrase_lower in content_lower:
                 print(f"[DEBUG] BOOSTED: phrase '{phrase_lower}' found in content for id={k.get('id')}", flush=True)
-                k["score"] = orig_score + 1.2  # Additive boost for exact phrase match
+                k["score"] = orig_score + 0.08  # Additive boost for exact phrase match (was 1.2)
                 k["boosted_reason"] = "exact_phrase"
                 k["original_score"] = orig_score
                 all_matches[k["id"]] = k
