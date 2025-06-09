@@ -58,4 +58,4 @@ app.include_router(ingestion_worker.router, prefix=settings.API_PREFIX)
 app.include_router(search_docs.router, prefix=settings.API_PREFIX)
 app.include_router(enrich_agenda_router, prefix=settings.API_PREFIX)
 app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)  # New route for PDF text extraction
-app.include_router(item_history.router, prefix=settings.API_PREFIX)  # Mount item_history endpoint
+app.include_router(item_history.router, prefix=f"{settings.API_PREFIX}/file_ops")  # Mount item_history endpoint at /api/file_ops
