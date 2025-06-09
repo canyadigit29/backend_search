@@ -82,6 +82,15 @@ async def item_history(
                 "summary": summary
             })
             filtered_matches.extend(chunks)
+        # Add file_metadata to each chunk for frontend grouping
+        for chunk in filtered_matches:
+            # Only add if not already present
+            if 'file_metadata' not in chunk:
+                chunk['file_metadata'] = {
+                    'id': chunk.get('file_id'),
+                    'name': chunk.get('file_name'),
+                    'type': 'pdf',  # or infer from file_name if possible
+                }
         return {"history": history, "retrieved_chunks": filtered_matches}
     except Exception as e:
         print(f"[ERROR] item_history failed: {e}")
