@@ -103,7 +103,7 @@ def perform_search(tool_args):
                     boosted_ids.add(k["id"])
             else:
                 print(f"[DEBUG] No boost for id={k.get('id')}", flush=True)
-                k["score"] = orig_score + 0.8  # Additive, but still lower for pure keyword
+                k["score"] = orig_score + 0.5  # Additive, but still lower for pure keyword (was 0.8)
                 all_matches[k["id"]] = k
         matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
