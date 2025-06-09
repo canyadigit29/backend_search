@@ -229,14 +229,15 @@ async def api_search_docs(request: Request):
     semantic_result = perform_search(tool_args)
     matches = semantic_result.get("retrieved_chunks", [])
     # --- LLM-based summary of top search results ---
-    
     summary = None
+    filtered_chunks = []
     try:
         # GPT-4o supports a large context window; include as many top chunks as fit in ~60,000 chars
         MAX_SUMMARY_CHARS = 60000
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
         top_texts = []
         total_chars = 0
+        used_chunk_ids = set()
         for chunk in sorted_chunks:
             content = chunk.get("content", "")
             if not content:
@@ -245,8 +246,12 @@ async def api_search_docs(request: Request):
                 break
             top_texts.append(content)
             total_chars += len(content)
+            used_chunk_ids.add(chunk.get("id"))
         top_text = "\n\n".join(top_texts)
 
+        # Filter matches to only those used in the summary
+        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
+        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary.", flush=True)
 
         if top_text.strip():
             from app.core.openai_client import chat_completion
@@ -269,7 +274,7 @@ async def api_search_docs(request: Request):
         pass
         summary = None
 
-    return JSONResponse({"retrieved_chunks": matches, "summary": summary})
+    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
 
 
 # Legacy endpoint maintained for backward compatibility
