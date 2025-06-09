@@ -31,45 +31,64 @@ async def item_history(
     For a given topic, return agenda/minutes pairs: each with the agenda match and the exact quote(s) from the minutes where the topic is discussed.
     """
     try:
-        # 1. Keyword search for topic in agenda chunks (from document_chunks)
+        # Step 1: Keyword search for topic in agenda chunks (content, not file name)
         stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
         keywords = [w for w in re.split(r"\W+", topic or "") if w and w.lower() not in stopwords]
-        from app.api.file_ops.search_docs import keyword_search
-        agenda_chunks = keyword_search(keywords, user_id_filter=user_id)
-        agenda_chunks = [c for c in agenda_chunks if re.search(r"agenda", c.get("file_name", ""), re.I)]
+        from app.api.file_ops.search_docs import keyword_search, perform_search
+        agenda_chunks = (
+            supabase.table("document_chunks")
+            .select("*")
+            .eq("user_id", user_id)
+            .ilike("file_name", "%agenda%")
+            .or_("{}".format(",".join([f"content.ilike.%{kw}%" for kw in keywords])))
+            .execute().data or []
+        )
         if not agenda_chunks:
-            return {"history": [], "agenda_minutes_pairs": []}
+            return {"history": [
+                {"summary": "There were no results for this item. This may be a new topic."}
+            ], "agenda_minutes_pairs": []}
         results = []
         for agenda_chunk in agenda_chunks:
             agenda_file = agenda_chunk.get("file_name", "")
             agenda_date = parse_date_from_filename(agenda_file)
             if not agenda_date:
                 continue
-            # 2. Find all minutes chunks with matching date in file_name
             date_str = agenda_date.strftime("%d-%B-%Y")
             alt_date_str = agenda_date.strftime("%d_%B_%Y")
-            # Query all minutes chunks for this user
-            all_minutes_chunks = supabase.table("document_chunks").select("*") \
-                .eq("user_id", user_id) \
+            # Step 2: For each agenda, do a full semantic search on minutes for that date (no keyword boost)
+            embedding = embed_text(topic)
+            # Query minutes chunks for this user and date
+            minutes_chunks = (
+                supabase.table("document_chunks")
+                .select("*")
+                .eq("user_id", user_id)
+                .or_(f"file_name.ilike.%{date_str}%minutes%,file_name.ilike.%{alt_date_str}%minutes%")
                 .execute().data or []
-            minutes_chunks = [c for c in all_minutes_chunks if (
-                (re.search(rf"{date_str}.*minutes", c.get("file_name", ""), re.I) or
-                 re.search(rf"{alt_date_str}.*minutes", c.get("file_name", ""), re.I))
-            )]
+            )
             if not minutes_chunks:
                 continue
-            # 3. For each minutes chunk, semantic search for topic and extract exact quotes
-            embedding = embed_text(topic)
-            # Filter minutes chunks by semantic similarity (dot product or use OpenAI if available)
-            # For now, use keyword match as a proxy, or just include all
-            quotes = []
-            for chunk in minutes_chunks:
-                content = chunk.get("content", "")
-                if topic.lower() in content.lower():
-                    quotes.append(content)
-            if not quotes:
-                # If no exact phrase match, just take the top 1-2 chunks
-                quotes = [c.get("content", "") for c in minutes_chunks[:2]]
+            # Full semantic search (no keyword boost)
+            # Use perform_search with only embedding and file_name filter
+            tool_args = {
+                "embedding": embedding,
+                "user_id_filter": user_id,
+                "file_name_filter": None,  # We'll filter by file_name below
+                "match_count": 20
+            }
+            # Filter minutes_chunks to just those for this date
+            filtered_minutes = [c for c in minutes_chunks if (date_str in c.get("file_name", "") or alt_date_str in c.get("file_name", ""))]
+            # Compute dot product similarity manually (since we have the embedding)
+            def dot(a, b):
+                return sum(x*y for x, y in zip(a, b))
+            try:
+                for chunk in filtered_minutes:
+                    if "embedding" in chunk:
+                        chunk["score"] = dot(chunk["embedding"], embedding)
+            except Exception:
+                pass
+            filtered_minutes.sort(key=lambda c: c.get("score", 0), reverse=True)
+            # Extract top quotes (top 2 chunks)
+            quotes = [c.get("content", "") for c in filtered_minutes[:2] if c.get("content")]
             results.append({
                 "agenda": {
                     "file_name": agenda_chunk.get("file_name"),
@@ -81,7 +100,8 @@ async def item_history(
                         "file_name": c.get("file_name"),
                         "chunk_index": c.get("chunk_index"),
                         "content": c.get("content"),
-                    } for c in minutes_chunks
+                        "score": c.get("score", 0),
+                    } for c in filtered_minutes
                 ],
                 "quotes": quotes,
             })
