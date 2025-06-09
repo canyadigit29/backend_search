@@ -60,25 +60,51 @@ async def item_history(
             file_groups[key].append(m)
         # Order by date
         ordered = sorted(file_groups.items(), key=lambda x: x[0][0])
-        # Instead of summarizing per file/date, summarize all relevant chunks at once
+        # --- Two-pass approach: First, ask LLM to label each chunk as Relevant/Not Relevant ---
         if not matches:
             return {"history": [], "retrieved_chunks": []}
-        # Compose a single prompt for all matches
-        all_text = "\n\n---\n\n".join(f"File: {m.get('file_name', '')}\nChunk: {m.get('content', '')}" for m in matches)
+        chunk_texts = [f"File: {m.get('file_name', '')}\nChunk: {m.get('content', '')}" for m in matches]
+        labeling_prompt = [
+            {"role": "system", "content": (
+                "You are an expert at reading meeting minutes. For each chunk below, determine if it contains information directly relevant to the topic. "
+                "If it is relevant, respond with 'Relevant'. If not, respond with 'Not Relevant'. "
+                "Respond with a JSON array of 'Relevant' or 'Not Relevant' for each chunk in order."
+            )},
+            {"role": "user", "content": f"Topic: {topic}\nChunks:\n" + "\n---\n".join(chunk_texts)[:12000]}
+        ]
+        labeling_response = chat_completion(labeling_prompt)
+        try:
+            relevance_labels = json.loads(labeling_response)
+        except Exception:
+            relevance_labels = ["Relevant"] * len(matches)  # fallback: treat all as relevant
+        # Filter matches to only relevant ones
+        relevant_matches = [m for m, label in zip(matches, relevance_labels) if label.lower() == "relevant"]
+        if not relevant_matches:
+            return {"history": [{"summary": "No relevant information found in any source."}], "retrieved_chunks": []}
+        # --- Second pass: Summarize only relevant chunks ---
+        all_text = "\n\n---\n\n".join(f"File: {m.get('file_name', '')}\nChunk: {m.get('content', '')}" for m in relevant_matches)
         prompt = [
             {"role": "system", "content": (
                 "You are an expert at reading meeting minutes. The following are chunks of text from different meeting minutes files. "
                 "Each chunk may be much larger than the information relevant to the topic. "
                 "For each chunk, extract and summarize ONLY the information that is directly relevant to the topic. "
                 "If a chunk contains no relevant information, do not include it in the summary. "
-                "For each file/chunk, output a summary in the format: \nFile: <file_name>\nSummary: <summary of relevant info or 'No relevant info'>. "
+                "For each file/chunk, output a summary in the format: \nFile: <file_name>\nSummary: <summary of relevant info>. "
                 "At the end, provide a brief overall summary of what was discussed about the topic across all files. "
+                "Quote or extract the exact relevant sentences if possible."
             )},
             {"role": "user", "content": f"Topic: {topic}\nMeeting chunks:\n{all_text[:12000]}"}
         ]
         summary = chat_completion(prompt)
-        # Return the summary and all retrieved chunks for frontend display
-        return {"history": [{"summary": summary}], "retrieved_chunks": matches}
+        # Add file_metadata to each chunk for frontend grouping
+        for chunk in relevant_matches:
+            if 'file_metadata' not in chunk:
+                chunk['file_metadata'] = {
+                    'id': chunk.get('file_id'),
+                    'name': chunk.get('file_name'),
+                    'type': 'pdf',
+                }
+        return {"history": [{"summary": summary}], "retrieved_chunks": relevant_matches}
     except Exception as e:
         print(f"[ERROR] item_history failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get item history: {str(e)}")
