@@ -144,6 +144,9 @@ def perform_search(tool_args):
         else:
             print("[DEBUG] No boosted results found.", flush=True)
         print(f"[DEBUG] matches for response: {len(matches)}", flush=True)
+        # Limit to top 20 results for all semantic/hybrid searches
+        matches = matches[:20]
+        print(f"[DEBUG] Returning {len(matches)} matches (max 20) in perform_search.", flush=True)
         return {"retrieved_chunks": matches}
     except Exception as e:
         print(f"[DEBUG] perform_search exception: {str(e)}", flush=True)
