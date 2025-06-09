@@ -31,86 +31,58 @@ async def item_history(
     For a given topic, return agenda/minutes pairs: each with the agenda match and the exact quote(s) from the minutes where the topic is discussed.
     """
     try:
-        # 1. Find agenda files matching the topic (keyword search)
+        # 1. Keyword search for topic in agenda chunks (from document_chunks)
         stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
         keywords = [w for w in re.split(r"\W+", topic or "") if w and w.lower() not in stopwords]
-        agenda_files = (
-            supabase.table("files")
-            .select("*")
-            .ilike("name", "%agenda%")
-            .eq("user_id", user_id)
-            .execute()
-            .data or []
-        )
-        # Filter agenda files by keyword match in name or description
-        agenda_matches = [
-            f for f in agenda_files if any(kw.lower() in (f.get("name", "") + " " + f.get("description", "")).lower() for kw in keywords)
-        ]
-        if not agenda_matches:
+        from app.api.file_ops.search_docs import keyword_search
+        agenda_chunks = keyword_search(keywords, user_id_filter=user_id)
+        agenda_chunks = [c for c in agenda_chunks if re.search(r"agenda", c.get("file_name", ""), re.I)]
+        if not agenda_chunks:
             return {"history": [], "agenda_minutes_pairs": []}
-        # 2. For each agenda, find corresponding minutes file by date
         results = []
-        for agenda in agenda_matches:
-            agenda_name = agenda.get("name", "")
-            agenda_date = parse_date_from_filename(agenda_name)
+        for agenda_chunk in agenda_chunks:
+            agenda_file = agenda_chunk.get("file_name", "")
+            agenda_date = parse_date_from_filename(agenda_file)
             if not agenda_date:
                 continue
-            # Find minutes file with same date
+            # 2. Find all minutes chunks with matching date in file_name
             date_str = agenda_date.strftime("%d-%B-%Y")
-            # Accept both - and _ separators, and case-insensitive
-            minutes_files = (
-                supabase.table("files")
-                .select("*")
-                .ilike("name", f"%{agenda_date.strftime('%d-%B-%Y')}%minutes%")
-                .eq("user_id", user_id)
-                .execute()
-                .data or []
-            )
-            if not minutes_files:
-                # Try with _ separator
-                alt_date_str = agenda_date.strftime("%d_%B_%Y")
-                minutes_files = (
-                    supabase.table("files")
-                    .select("*")
-                    .ilike("name", f"%{alt_date_str}%minutes%")
-                    .eq("user_id", user_id)
-                    .execute()
-                    .data or []
-                )
-            if not minutes_files:
+            alt_date_str = agenda_date.strftime("%d_%B_%Y")
+            # Query all minutes chunks for this user
+            all_minutes_chunks = supabase.table("document_chunks").select("*") \
+                .eq("user_id", user_id) \
+                .execute().data or []
+            minutes_chunks = [c for c in all_minutes_chunks if (
+                (re.search(rf"{date_str}.*minutes", c.get("file_name", ""), re.I) or
+                 re.search(rf"{alt_date_str}.*minutes", c.get("file_name", ""), re.I))
+            )]
+            if not minutes_chunks:
                 continue
-            minutes_file = minutes_files[0]  # If multiple, just take the first
-            # 3. For the minutes file, perform a semantic search for the topic and extract exact quotes
+            # 3. For each minutes chunk, semantic search for topic and extract exact quotes
             embedding = embed_text(topic)
-            # Use match_file_items_openai for semantic search on this file
-            file_id = minutes_file["id"]
-            rpc_args = {
-                "query_embedding": embedding,
-                "file_ids": [file_id],
-                "match_count": 20,
-            }
-            response = supabase.rpc("match_file_items_openai", rpc_args).execute()
-            if getattr(response, "error", None):
-                continue
-            matches = response.data or []
-            # Extract exact quotes (not summary): just return the content of each match
-            quotes = [m["content"] for m in matches if topic.lower() in m["content"].lower()]
+            # Filter minutes chunks by semantic similarity (dot product or use OpenAI if available)
+            # For now, use keyword match as a proxy, or just include all
+            quotes = []
+            for chunk in minutes_chunks:
+                content = chunk.get("content", "")
+                if topic.lower() in content.lower():
+                    quotes.append(content)
             if not quotes:
-                # If no exact phrase match, just take the top 1-2 matches
-                quotes = [m["content"] for m in matches[:2]]
+                # If no exact phrase match, just take the top 1-2 chunks
+                quotes = [c.get("content", "") for c in minutes_chunks[:2]]
             results.append({
                 "agenda": {
-                    "id": agenda.get("id"),
-                    "name": agenda.get("name"),
-                    "description": agenda.get("description"),
-                    "file_path": agenda.get("file_path"),
+                    "file_name": agenda_chunk.get("file_name"),
+                    "content": agenda_chunk.get("content"),
+                    "chunk_index": agenda_chunk.get("chunk_index"),
                 },
-                "minutes": {
-                    "id": minutes_file.get("id"),
-                    "name": minutes_file.get("name"),
-                    "description": minutes_file.get("description"),
-                    "file_path": minutes_file.get("file_path"),
-                },
+                "minutes": [
+                    {
+                        "file_name": c.get("file_name"),
+                        "chunk_index": c.get("chunk_index"),
+                        "content": c.get("content"),
+                    } for c in minutes_chunks
+                ],
                 "quotes": quotes,
             })
         return {"history": [], "agenda_minutes_pairs": results}
