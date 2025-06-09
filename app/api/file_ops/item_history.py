@@ -26,16 +26,12 @@ async def item_history(
     user_id: str = Body(..., embed=True)
 ):
     """
-    For a given topic, return a chronological history of when it appeared in previous meetings (agendas/minutes),
-    with a summary of what was discussed, and only the sources used for the history.
+    For a given topic, return all relevant chunks (with metadata) from previous meetings (agendas/minutes),
+    so the frontend can display sources/files in the same way as normal semantic search.
     """
     try:
-        # 1. Semantic search across all agenda/minutes files
-        # (Assume all files are in the same table, filter by file name containing 'agenda' or 'minutes')
-        # Use the same embedding logic as search_docs
         from app.api.file_ops.embed import embed_text
         embedding = embed_text(topic)
-        # Query for relevant chunks
         rpc_args = {
             "query_embedding": embedding,
             "file_name_filter": None,
@@ -48,9 +44,9 @@ async def item_history(
         if getattr(response, "error", None):
             raise HTTPException(status_code=500, detail=f"Supabase RPC failed: {response.error.message}")
         matches = response.data or []
-        # Only keep agenda/minutes files
-        matches = [m for m in matches if re.search(r'(agenda|minut)', m.get("file_name", ""), re.I)]
-        # 2. Group by file/date
+        # Only keep minutes files
+        matches = [m for m in matches if re.search(r'minutes', m.get("file_name", ""), re.I)]
+        # Group by file/date
         file_groups = {}
         for m in matches:
             file_name = m.get("file_name") or m.get("name") or ""
@@ -62,26 +58,23 @@ async def item_history(
             if key not in file_groups:
                 file_groups[key] = []
             file_groups[key].append(m)
-        # 3. Order by date
+        # Order by date
         ordered = sorted(file_groups.items(), key=lambda x: x[0][0])
-        # 4. Summarize per meeting
+        # Summarize per meeting (file/date)
         history = []
         for (date, file_name), chunks in ordered:
-            # Concatenate all relevant chunks for this file/date
             text = "\n".join(c.get("content", "") for c in chunks)
-            # Summarize what was discussed about the topic
             prompt = [
-                {"role": "system", "content": "You are an expert at reading meeting records. Summarize what was discussed about the following topic in this meeting. Only summarize what is present in the provided text."},
+                {"role": "system", "content": "You are an expert at reading meeting minutes. Summarize what was discussed about the following topic in this meeting. Only summarize what is present in the provided text. Make it clear this summary is for this specific file/date."},
                 {"role": "user", "content": f"Topic: {topic}\nMeeting text:\n{text[:8000]}"}
             ]
             summary = chat_completion(prompt)
             history.append({
                 "date": date.strftime("%Y-%m-%d"),
                 "file_name": file_name,
-                "summary": summary,
-                "sources": [c.get("id") for c in chunks]
+                "summary": summary
             })
-        return {"history": history}
+        return {"history": history, "retrieved_chunks": matches}
     except Exception as e:
         print(f"[ERROR] item_history failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get item history: {str(e)}")
