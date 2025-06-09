@@ -61,8 +61,7 @@ async def chat_with_context(payload: ChatRequest):
         embedding = embedding_response.data[0].embedding
 
         # Use the same hybrid/boosted search logic as /file_ops/search_docs
-        from app.api.file_ops.search_docs import extract_search_query, extract_entities_and_intent, embed_text, keyword_search
-        # LLM-based query extraction (already done above as extracted_query)
+        from app.api.file_ops.search_docs import extract_entities_and_intent, embed_text, perform_search, keyword_search
         search_query = extracted_query
         query_info = extract_entities_and_intent(prompt)
         try:
@@ -79,38 +78,9 @@ async def chat_with_context(payload: ChatRequest):
             "user_prompt": prompt
         }
         # --- Hybrid search: semantic + keyword ---
+        # Only call perform_search, which now handles all boosting, merging, and debug output
         semantic_result = perform_search(tool_args)
-        semantic_matches = semantic_result.get("retrieved_chunks", [])
-        import re
-        stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
-        keywords = [w for w in re.split(r"\W+", search_query) if w and w.lower() not in stopwords]
-        keyword_results = keyword_search(keywords, user_id_filter=payload.user_id)
-        all_matches = {m["id"]: m for m in semantic_matches}
-        phrase = search_query.strip('"') if search_query.startswith('"') and search_query.endswith('"') else search_query
-        phrase_lower = phrase.lower()
-        boosted_ids = set()
-        for k in keyword_results:
-            content_lower = k.get("content", "").lower()
-            orig_score = k.get("score", 0)
-            if phrase_lower in content_lower:
-                k["score"] = 1.2  # Strong boost for exact phrase match
-                k["boosted_reason"] = "exact_phrase"
-                k["original_score"] = orig_score
-                all_matches[k["id"]] = k
-                boosted_ids.add(k["id"])
-            elif k["id"] in all_matches:
-                prev_score = all_matches[k["id"]].get("score", 0)
-                if prev_score < 1.0:
-                    all_matches[k["id"]]["original_score"] = prev_score
-                    all_matches[k["id"]]["score"] = 1.0  # Boost score
-                    all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
-                    boosted_ids.add(k["id"])
-            else:
-                k["score"] = 0.8  # Lower score for pure keyword
-                all_matches[k["id"]] = k
-        matches = list(all_matches.values())
-        matches.sort(key=lambda x: x.get("score", 0), reverse=True)
-        chunks = matches
+        chunks = semantic_result.get("retrieved_chunks", [])
 
         # --- LLM-based summary of top search results (mirroring /file_ops/search_docs.py) ---
         summary = None
