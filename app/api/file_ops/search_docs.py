@@ -161,8 +161,7 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
     """
     Simple keyword search over document_chunks table. Returns chunks containing any of the keywords.
     """
-    # Use the global supabase client instead of creating a new one
-    query = supabase.table("document_chunks").select("*")  # <-- Fix: add .select("*")
+    query = supabase.table("document_chunks").select("*")
     if user_id_filter:
         query = query.eq("user_id", user_id_filter)
     if file_name_filter:
@@ -173,12 +172,10 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
         query = query.gte("created_at", start_date)
     if end_date:
         query = query.lte("created_at", end_date)
-    # Build OR filter for keywords
-    or_filters = []
-    for kw in keywords:
-        or_filters.append(f"content.ilike.%{{kw}}%")
+    # Build OR filter for keywords (fix: use correct syntax)
+    or_filters = [f"content.ilike.%{kw}%" for kw in keywords]
     if or_filters:
-        query = query.or_(" , ".join(or_filters))
+        query = query.or_(",".join(or_filters))
     query = query.limit(match_count)
     results = query.execute().data or []
     return results
