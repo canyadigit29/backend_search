@@ -70,8 +70,40 @@ def perform_search(tool_args):
         from app.api.file_ops.search_docs import keyword_search
         keyword_results = keyword_search(keywords, user_id_filter=user_id_filter)
         print(f"[DEBUG] Keyword search returned {len(keyword_results)} results.", flush=True)
-        # Remove debug output for all keyword search results and all boosted results
-        # Keep only the debug output for the top 5 results and main search steps
+        for k in keyword_results:
+            print(f"[DEBUG] Keyword result id={k.get('id')} content={k.get('content', '')[:300]}", flush=True)
+        print("[DEBUG] Entered hybrid search/boosting section", flush=True)
+        all_matches = {m["id"]: m for m in semantic_matches}
+        phrase = (search_query or "").strip('"') if (search_query or "").startswith('"') and (search_query or "").endswith('"') else (search_query or "")
+        phrase_lower = phrase.lower()
+        boosted_ids = set()
+        print(f"[DEBUG] Boosting check: phrase_lower='{phrase_lower}'", flush=True)
+        for k in keyword_results:
+            content_lower = k.get("content", "").lower()
+            print(f"[DEBUG] Checking keyword result id={k.get('id')} content_lower[:100]='{content_lower[:100]}'", flush=True)
+            orig_score = k.get("score", 0)
+            if phrase_lower in content_lower:
+                print(f"[DEBUG] BOOSTED: phrase '{phrase_lower}' found in content for id={k.get('id')}", flush=True)
+                k["score"] = 1.2  # Strong boost for exact phrase match
+                k["boosted_reason"] = "exact_phrase"
+                k["original_score"] = orig_score
+                all_matches[k["id"]] = k
+                boosted_ids.add(k["id"])
+            elif k["id"] in all_matches:
+                prev_score = all_matches[k["id"]].get("score", 0)
+                if prev_score < 1.0:
+                    print(f"[DEBUG] BOOSTED: keyword overlap for id={k.get('id')}", flush=True)
+                    all_matches[k["id"]]["original_score"] = prev_score
+                    all_matches[k["id"]]["score"] = 1.0  # Boost score
+                    all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
+                    boosted_ids.add(k["id"])
+            else:
+                print(f"[DEBUG] No boost for id={k.get('id')}", flush=True)
+                k["score"] = 0.8  # Lower score for pure keyword
+                all_matches[k["id"]] = k
+        matches = list(all_matches.values())
+        matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # New debug: print top 5 results with score and content preview, and boosting info
         print("[DEBUG] Top 5 search results:", flush=True)
         for i, m in enumerate(matches[:5]):
             preview = (m.get("content", "") or "")[:200].replace("\n", " ")
@@ -83,6 +115,18 @@ def perform_search(tool_args):
             sim_score = m.get("score", 0)
             orig_score = m.get("original_score", sim_score)
             print(f"[DEBUG] #{i+1} | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
+        # After boosting, print all boosted results
+        boosted_results = [m for m in matches if m.get("boosted_reason")]
+        if boosted_results:
+            print(f"[DEBUG] Boosted results found: {len(boosted_results)}", flush=True)
+            for m in boosted_results:
+                preview = (m.get("content", "") or "")[:200].replace("\n", " ")
+                boost_info = f" [BOOSTED: {m.get('boosted_reason')}, orig_score={m.get('original_score', 'n/a')}]"
+                sim_score = m.get("score", 0)
+                orig_score = m.get("original_score", sim_score)
+                print(f"[DEBUG] BOOSTED RESULT | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
+        else:
+            print("[DEBUG] No boosted results found.", flush=True)
         print(f"[DEBUG] matches for response: {len(matches)}", flush=True)
         return {"retrieved_chunks": matches}
     except Exception as e:
