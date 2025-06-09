@@ -84,14 +84,20 @@ def perform_search(tool_args):
         print(f"[DEBUG] Matches returned: {len(matches)}", file=sys.stderr)
         logger.debug(f"📊 Matches returned: {len(matches)}")
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
-        if matches:
-            top = matches[0]
-            preview = top["content"][:200].replace("\n", " ")
-            print(f"[DEBUG] Top match score: {top.get('score')}, preview: {preview}", file=sys.stderr)
-            logger.debug(f"🔝 Top match (score {top.get('score')}): {preview}")
-        else:
-            print("[DEBUG] No matches found", file=sys.stderr)
-            logger.debug("⚠️ No matches found.")
+        # Remove old top match debug
+        # if matches:
+        #     top = matches[0]
+        #     preview = top["content"][:200].replace("\n", " ")
+        #     print(f"[DEBUG] Top match score: {top.get('score')}, preview: {preview}", file=sys.stderr)
+        #     logger.debug(f"🔝 Top match (score {top.get('score')}): {preview}")
+        # else:
+        #     print("[DEBUG] No matches found", file=sys.stderr)
+        #     logger.debug("⚠️ No matches found.")
+        # Print top 5 results with logger.debug for Railway
+        logger.debug("[DEBUG] Top 5 search results:")
+        for i, m in enumerate(matches[:5]):
+            preview = m.get("content", "")[:200].replace("\n", " ")
+            logger.debug(f"[DEBUG] #{i+1} | score: {m.get('score')} | id: {m.get('id')} | preview: {preview}")
         if expected_phrase:
             expected_lower = expected_phrase.lower()
             matches = [x for x in matches if expected_lower not in x["content"].lower()]
@@ -191,7 +197,7 @@ async def api_search_docs(request: Request):
         "file_name_filter": data.get("file_name_filter"),
         "description_filter": data.get("description_filter"),
         "start_date": data.get("start_date"),
-        "end_date": data.get("end_date"),
+        "end_date": data.get("end_date),
         "user_prompt": user_prompt  # Pass original prompt for downstream use
     }
     print(f"[DEBUG] tool_args for perform_search: {json.dumps(tool_args, default=str)[:500]}", file=sys.stderr)
