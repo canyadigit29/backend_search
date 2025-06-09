@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from app.core.extract_text import extract_text
 from app.core.supabase_client import supabase
+from app.core.openai_client import chat_completion
 import os
 import tempfile
 import traceback
+import json
 
 router = APIRouter()
 
@@ -36,3 +38,25 @@ async def api_extract_text(file_path: str = Query(...)):
         print(f"[ERROR] Exception in extract_text: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Failed to extract text: {str(e)}")
+
+@router.post("/extract_checklist")
+async def extract_checklist(text: str = Body(..., embed=True)):
+    """
+    Accepts raw text and returns a checklist of actionable/contextual items using the LLM.
+    Each item will have a 'label' and 'text'.
+    """
+    prompt = [
+        {"role": "system", "content": "You are an expert at reading documents. Read the following document and return a JSON array. Each array item should represent a distinct actionable or contextual item, with a 'label' (short description) and 'text' (the full text of the item). Only output the JSON array, no explanation or markdown."},
+        {"role": "user", "content": text[:12000]}
+    ]
+    try:
+        llm_response = chat_completion(prompt)
+        checklist = json.loads(llm_response)
+        # Validate structure
+        if not isinstance(checklist, list) or not all(isinstance(item, dict) and 'label' in item and 'text' in item for item in checklist):
+            raise ValueError("LLM did not return a valid checklist array")
+        return {"checklist": checklist}
+    except Exception as e:
+        print(f"[ERROR] Checklist extraction failed: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to extract checklist: {str(e)}")
