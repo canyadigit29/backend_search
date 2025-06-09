@@ -57,7 +57,18 @@ async def extract_checklist(text: str = Body(..., embed=True)):
             "If a section contains a list of items (e.g., a., b., c., or 1., 2., 3.), treat each as a separate checklist item, not as a single combined item. "
             "If any checklist item contains multiple actionable items, split them into separate checklist items. "
             "For any section titled 'Action Items', ensure each sub-item is split out as a separate checklist item, and if the sub-item is designated by a letter (a., b., c., etc.), include that letter as a prefix in the checklist item's label (e.g., 'a. Approve minutes'). "
-            "Only output the JSON array, no explanation or markdown."
+            "Only output the JSON array, no explanation or markdown.\n"
+            "\nEXAMPLE INPUT (from a document):\n"
+            "Action Items\n"
+            "a. Approve minutes\n"
+            "b. Review budget\n"
+            "c. Schedule next meeting\n"
+            "\nEXAMPLE OUTPUT (JSON):\n"
+            "[\n"
+            "  {\"label\": \"a. Approve minutes\", \"text\": \"a. Approve minutes\"},\n"
+            "  {\"label\": \"b. Review budget\", \"text\": \"b. Review budget\"},\n"
+            "  {\"label\": \"c. Schedule next meeting\", \"text\": \"c. Schedule next meeting\"}\n"
+            "]\n"
         )},
         {"role": "user", "content": text[:12000]}
     ]
@@ -75,8 +86,18 @@ async def extract_checklist(text: str = Body(..., embed=True)):
                     "If any checklist item contains multiple actionable items, split them into separate checklist items. "
                     "If a section contains a list of items (e.g., a., b., c., or 1., 2., 3.), treat each as a separate checklist item, not as a single combined item. "
                     "For any section titled 'Action Items', ensure each sub-item is split out as a separate checklist item, and if the sub-item is designated by a letter (a., b., c., etc.), include that letter as a prefix in the checklist item's label (e.g., 'a. Approve minutes'). "
-                    "Return the improved checklist as a JSON array with 'label' and 'text' for each item. "
-                    "Only output the JSON array, no explanation or markdown."
+                    "Only output the JSON array, no explanation or markdown.\n"
+                    "\nEXAMPLE INPUT (from a document):\n"
+                    "Action Items\n"
+                    "a. Approve minutes\n"
+                    "b. Review budget\n"
+                    "c. Schedule next meeting\n"
+                    "\nEXAMPLE OUTPUT (JSON):\n"
+                    "[\n"
+                    "  {\"label\": \"a. Approve minutes\", \"text\": \"a. Approve minutes\"},\n"
+                    "  {\"label\": \"b. Review budget\", \"text\": \"b. Review budget\"},\n"
+                    "  {\"label\": \"c. Schedule next meeting\", \"text\": \"c. Schedule next meeting\"}\n"
+                    "]\n"
                 )},
                 {"role": "user", "content": f"Document text:\n{text[:12000]}\n\nChecklist so far:\n{json.dumps(checklist, ensure_ascii=False)}"}
             ]
