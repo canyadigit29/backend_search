@@ -74,10 +74,13 @@ def perform_search(tool_args):
         phrase = (search_query or "").strip('"') if (search_query or "").startswith('"') and (search_query or "").endswith('"') else (search_query or "")
         phrase_lower = phrase.lower()
         boosted_ids = set()
+        print(f"[DEBUG] Boosting check: phrase_lower='{phrase_lower}'", flush=True)
         for k in keyword_results:
             content_lower = k.get("content", "").lower()
+            print(f"[DEBUG] Checking keyword result id={k.get('id')} content_lower[:100]='{content_lower[:100]}'", flush=True)
             orig_score = k.get("score", 0)
             if phrase_lower in content_lower:
+                print(f"[DEBUG] BOOSTED: phrase '{phrase_lower}' found in content for id={k.get('id')}", flush=True)
                 k["score"] = 1.2  # Strong boost for exact phrase match
                 k["boosted_reason"] = "exact_phrase"
                 k["original_score"] = orig_score
@@ -86,11 +89,13 @@ def perform_search(tool_args):
             elif k["id"] in all_matches:
                 prev_score = all_matches[k["id"]].get("score", 0)
                 if prev_score < 1.0:
+                    print(f"[DEBUG] BOOSTED: keyword overlap for id={k.get('id')}", flush=True)
                     all_matches[k["id"]]["original_score"] = prev_score
                     all_matches[k["id"]]["score"] = 1.0  # Boost score
                     all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
                     boosted_ids.add(k["id"])
             else:
+                print(f"[DEBUG] No boost for id={k.get('id')}", flush=True)
                 k["score"] = 0.8  # Lower score for pure keyword
                 all_matches[k["id"]] = k
         matches = list(all_matches.values())
