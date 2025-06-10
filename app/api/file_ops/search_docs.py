@@ -2,6 +2,7 @@ import json
 import os
 from collections import defaultdict
 import sys
+import statistics
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -120,6 +121,31 @@ def perform_search(tool_args):
                 all_matches[k["id"]] = k
         matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # [DEBUG SCORES] Begin score analysis
+        def avg(lst):
+            return sum(lst) / len(lst) if lst else 0.0
+        def med(lst):
+            return statistics.median(lst) if lst else 0.0
+        def score_stats(match_list):
+            scores = [m.get("score", 0) for m in match_list]
+            boosted = [m.get("score", 0) for m in match_list if m.get("boosted_reason")]
+            non_boosted = [m.get("score", 0) for m in match_list if not m.get("boosted_reason")]
+            return {
+                "avg": avg(scores),
+                "median": med(scores),
+                "boosted_avg": avg(boosted),
+                "non_boosted_avg": avg(non_boosted),
+                "boosted_count": len(boosted),
+                "non_boosted_count": len(non_boosted),
+                "count": len(scores)
+            }
+        all_stats = score_stats(matches)
+        top20_stats = score_stats(matches[:20])
+        top10_stats = score_stats(matches[:10])
+        print(f"[DEBUG SCORES] All: avg={all_stats['avg']:.4f}, median={all_stats['median']:.4f}, boosted avg={all_stats['boosted_avg']:.4f} (n={all_stats['boosted_count']}), non-boosted avg={all_stats['non_boosted_avg']:.4f} (n={all_stats['non_boosted_count']})", flush=True)
+        print(f"[DEBUG SCORES] Top 20: avg={top20_stats['avg']:.4f}, median={top20_stats['median']:.4f}, boosted avg={top20_stats['boosted_avg']:.4f} (n={top20_stats['boosted_count']}), non-boosted avg={top20_stats['non_boosted_avg']:.4f} (n={top20_stats['non_boosted_count']})", flush=True)
+        print(f"[DEBUG SCORES] Top 10: avg={top10_stats['avg']:.4f}, median={top10_stats['median']:.4f}, boosted avg={top10_stats['boosted_avg']:.4f} (n={top10_stats['boosted_count']}), non-boosted avg={top10_stats['non_boosted_avg']:.4f} (n={top10_stats['non_boosted_count']})", flush=True)
+        # [DEBUG SCORES] End score analysis
         # New debug: print top 5 results with score and content preview, and boosting info
         print("[DEBUG] Top 5 search results:", flush=True)
         for i, m in enumerate(matches[:5]):
