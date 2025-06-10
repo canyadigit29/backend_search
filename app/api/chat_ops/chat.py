@@ -101,7 +101,17 @@ async def chat_with_context(payload: ChatRequest):
             top_text = "\n\n".join(top_texts)
             if top_text.strip():
                 summary_prompt = [
-                    {"role": "system", "content": "You are an expert assistant. Summarize the following retrieved search results for the user in a concise, clear, and helpful way. Only include information relevant to the user's query."},
+                    {"role": "system", "content": (
+                        "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
+                        "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
+                        "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
+                        "- Use a conversational, engaging tone.\n"
+                        "- Use bullet points, sections, or narrative as you see fit for clarity and impact.\n"
+                        "- Reference file names, dates, or section headers where possible.\n"
+                        "- Do not add information that is not present in the results, but you may offer thoughtful analysis, context, or commentary based on what is present.\n"
+                        "- If the results are lengthy, provide a high-level summary first, then details.\n"
+                        "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
+                    )},
                     {"role": "user", "content": f"User query: {prompt}\n\nSearch results:\n{top_text}"}
                 ]
                 summary = chat_completion(summary_prompt, model="gpt-4o")
