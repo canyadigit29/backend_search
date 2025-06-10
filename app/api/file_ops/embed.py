@@ -21,11 +21,11 @@ def embed_text(text: str) -> list[float]:
     if not text.strip():
         raise ValueError("Cannot embed empty text")
 
-    response = client.embeddings.create(model="text-embedding-3-large", input=text)
+    response = client.embeddings.create(model="text-embedding-3-small", input=text)
     embedding = normalize_vector(np.array(response.data[0].embedding))
 
-    if not isinstance(embedding, list) or len(embedding) != 3072:
-        raise ValueError(f"Embedding shape mismatch: expected 3072-dim vector, got {len(embedding)}")
+    if not isinstance(embedding, list) or len(embedding) != 1536:
+        raise ValueError(f"Embedding shape mismatch: expected 1536-dim vector, got {len(embedding)}")
 
     return embedding
 

@@ -22,7 +22,7 @@ def detect_section_headers(paragraphs):
         section_headers[idx] = current_section
     return section_headers
 
-def smart_chunk(text, max_tokens=2000, overlap_tokens=200):
+def smart_chunk(text, max_tokens=1000, overlap_tokens=200):
     encoding = tiktoken.get_encoding("cl100k_base")
     tokens = encoding.encode(text)
     total_tokens = len(tokens)
@@ -76,7 +76,7 @@ def chunk_file(file_id: str, user_id: str = None):
             return []
 
         # Use improved smart_chunk logic with section/page metadata
-        chunk_tuples = smart_chunk(text, max_tokens=2000, overlap_tokens=200)
+        chunk_tuples = smart_chunk(text, max_tokens=1000, overlap_tokens=200)
         db_chunks = []
         for i, (chunk_text, meta) in enumerate(chunk_tuples):
             chunk_id = str(uuid4())
