@@ -194,17 +194,19 @@ def perform_search(tool_args):
 
 def extract_search_query(user_prompt: str) -> str:
     """
-    Use OpenAI to extract the main topic or keywords for semantic search from the user prompt.
+    Use OpenAI to extract the most effective search phrase or keywords for semantic document retrieval from the user's request.
     """
     system_prompt = (
-        "You are a helpful assistant. Extract the main topic, keywords, or search query from the user's request. "
-        "Return only the search phrase or keywords, not instructions."
+        "You are a helpful assistant. Given a user request, extract a search phrase or keywords that would best match the content of relevant documents in a semantic search system. "
+        "Be specific and use terminology likely to appear in the documents. "
+        "Return only the search phrase or keywords, not instructions or explanations."
     )
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt}
     ]
     result = chat_completion(messages)
+    print(f"[DEBUG] Extracted search query: {result.strip()}", flush=True)
     return result.strip()
 
 
