@@ -63,7 +63,7 @@ def embed_and_store_chunk(chunk):
         # Prepare data for insert, including all original chunk fields
         data = dict(chunk)  # Copy all fields from chunk
         data["openai_embedding"] = embedding
-        data["embedding"] = embedding
+        # Do NOT write to 'embedding' column anymore
         data["timestamp"] = timestamp
         # Ensure id is present
         if "id" not in data:
