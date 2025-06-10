@@ -2,6 +2,7 @@ import json
 import os
 from collections import defaultdict
 import sys
+import statistics
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -19,7 +20,6 @@ SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
 def perform_search(tool_args):
-    print("[DEBUG] perform_search called", flush=True)
     query_embedding = tool_args.get("embedding")
     expected_phrase = tool_args.get("expected_phrase")
     file_name_filter = tool_args.get("file_name_filter")
@@ -34,16 +34,13 @@ def perform_search(tool_args):
     if not query_embedding:
         text_to_embed = search_query or user_prompt
         if not text_to_embed:
-            print("[DEBUG] perform_search early return: missing embedding and no text to embed", flush=True)
             return {"error": "Embedding must be provided to perform similarity search."}
         from app.api.file_ops.embed import embed_text
         query_embedding = embed_text(text_to_embed)
 
     if not user_id_filter:
-        print("[DEBUG] perform_search early return: missing user_id", flush=True)
         return {"error": "user_id must be provided to perform search."}
     try:
-        print("[DEBUG] perform_search main try block entered", flush=True)
         # Semantic search
         rpc_args = {
             "query_embedding": query_embedding,
@@ -57,21 +54,14 @@ def perform_search(tool_args):
         }
         response = supabase.rpc("match_documents", rpc_args).execute()
         if getattr(response, "error", None):
-            print(f"[DEBUG] perform_search Supabase RPC error: {response.error.message}", flush=True)
             return {"error": f"Supabase RPC failed: {response.error.message}"}
         semantic_matches = response.data or []
-        print(f"[DEBUG] perform_search matches retrieved: {len(semantic_matches)}", flush=True)
         if semantic_matches:
-            print(f"[DEBUG] perform_search first match sample: {str(semantic_matches[0])[:300]}", flush=True)
-        else:
-            print("[DEBUG] perform_search: matches is empty, returning early", flush=True)
-        semantic_matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+            semantic_matches.sort(key=lambda x: x.get("score", 0), reverse=True)
 
         # Debug: print top 5 semantic matches before any boosting
-        print("[DEBUG] Top 5 semantic matches before boosting:", flush=True)
         for i, m in enumerate(semantic_matches[:5]):
             preview = (m.get("content", "") or "")[:200].replace("\n", " ")
-            print(f"[DEBUG] SEMANTIC #{i+1} | score: {m.get('score', 0)} | id: {m.get('id')} | preview: {preview}", flush=True)
 
         # Hybrid/boosted merging and debug output
         import re
@@ -82,22 +72,17 @@ def perform_search(tool_args):
         keywords = [w for w in re.split(r"\W+", search_query or "") if w and w.lower() not in stopwords]
         from app.api.file_ops.search_docs import keyword_search
         keyword_results = keyword_search(keywords, user_id_filter=user_id_filter)
-        print(f"[DEBUG] Keyword search returned {len(keyword_results)} results.", flush=True)
-        print("[DEBUG] Entered hybrid search/boosting section", flush=True)
         all_matches = {m["id"]: m for m in semantic_matches}
         phrase = (search_query or "").strip('"') if (search_query or "").startswith('"') and (search_query or "").endswith('"') else (search_query or "")
         phrase_lower = phrase.lower()
         boosted_ids = set()
-        print(f"[DEBUG] Boosting check: phrase_lower='{phrase_lower}'", flush=True)
         for k in keyword_results:
             content_lower = k.get("content", "").lower()
-            print(f"[DEBUG] Checking keyword result id={k.get('id')} content_lower[:100]='{content_lower[:100]}'", flush=True)
             orig_score = k.get("score", 0)
             # Determine if we should apply a higher boost
             num_words = len((phrase_lower or '').split())
             high_boost = (num_words <= 4) or (len(keyword_results) <= 3)
             if phrase_lower in content_lower:
-                print(f"[DEBUG] BOOSTED: phrase '{phrase_lower}' found in content for id={k.get('id')}", flush=True)
                 if high_boost:
                     k["score"] = orig_score + 1.0  # Reduced boost for exact phrase match
                 else:
@@ -109,48 +94,53 @@ def perform_search(tool_args):
             elif k["id"] in all_matches:
                 prev_score = all_matches[k["id"]].get("score", 0)
                 if prev_score < 1.0:
-                    print(f"[DEBUG] BOOSTED: keyword overlap for id={k.get('id')}", flush=True)
                     all_matches[k["id"]]["original_score"] = prev_score
                     all_matches[k["id"]]["score"] = prev_score + 1.0  # Additive boost for keyword overlap
                     all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
                     boosted_ids.add(k["id"])
             else:
-                print(f"[DEBUG] No boost for id={k.get('id')}", flush=True)
                 k["score"] = orig_score + 0.5  # Additive, but still lower for pure keyword (was 0.8)
                 all_matches[k["id"]] = k
         matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # --- BEGIN SCORE ANALYSIS ---
+        def avg(lst):
+            return sum(lst) / len(lst) if lst else 0.0
+        def med(lst):
+            return statistics.median(lst) if lst else 0.0
+        def score_stats(match_list):
+            scores = [m.get("score", 0) for m in match_list]
+            boosted = [m.get("score", 0) for m in match_list if m.get("boosted_reason")]
+            non_boosted = [m.get("score", 0) for m in match_list if not m.get("boosted_reason")]
+            return {
+                "avg": avg(scores),
+                "median": med(scores),
+                "boosted_avg": avg(boosted),
+                "non_boosted_avg": avg(non_boosted),
+                "boosted_count": len(boosted),
+                "non_boosted_count": len(non_boosted),
+                "count": len(scores)
+            }
+        all_stats = score_stats(matches)
+        top20_stats = score_stats(matches[:20])
+        top10_stats = score_stats(matches[:10])
+        print(f"[SCORES] All: avg={all_stats['avg']:.4f}, median={all_stats['median']:.4f}, boosted avg={all_stats['boosted_avg']:.4f} (n={all_stats['boosted_count']}), non-boosted avg={all_stats['non_boosted_avg']:.4f} (n={all_stats['non_boosted_count']})")
+        print(f"[SCORES] Top 20: avg={top20_stats['avg']:.4f}, median={top20_stats['median']:.4f}, boosted avg={top20_stats['boosted_avg']:.4f} (n={top20_stats['boosted_count']}), non-boosted avg={top20_stats['non_boosted_avg']:.4f} (n={top20_stats['non_boosted_count']})")
+        print(f"[SCORES] Top 10: avg={top10_stats['avg']:.4f}, median={top10_stats['median']:.4f}, boosted avg={top10_stats['boosted_avg']:.4f} (n={top10_stats['boosted_count']}), non-boosted avg={top10_stats['non_boosted_avg']:.4f} (n={top10_stats['non_boosted_count']})")
+        # --- END SCORE ANALYSIS ---
         # New debug: print top 5 results with score and content preview, and boosting info
-        print("[DEBUG] Top 5 search results:", flush=True)
-        for i, m in enumerate(matches[:5]):
-            preview = (m.get("content", "") or "")[:200].replace("\n", " ")
-            boost_info = ""
-            if m.get("boosted_reason") == "exact_phrase":
-                boost_info = f" [BOOSTED: exact phrase, orig_score={m.get('original_score', 'n/a')}]"
-            elif m.get("boosted_reason") == "keyword_overlap":
-                boost_info = f" [BOOSTED: keyword overlap, orig_score={m.get('original_score', 'n/a')}]"
-            sim_score = m.get("score", 0)
-            orig_score = m.get("original_score", sim_score)
-            print(f"[DEBUG] #{i+1} | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
         # After boosting, print all boosted results
         boosted_results = [m for m in matches if m.get("boosted_reason")]
         if boosted_results:
-            print(f"[DEBUG] Boosted results found: {len(boosted_results)}", flush=True)
             for m in boosted_results:
                 preview = (m.get("content", "") or "")[:200].replace("\n", " ")
                 boost_info = f" [BOOSTED: {m.get('boosted_reason')}, orig_score={m.get('original_score', 'n/a')}]"
                 sim_score = m.get("score", 0)
                 orig_score = m.get("original_score", sim_score)
-                print(f"[DEBUG] BOOSTED RESULT | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
-        else:
-            print("[DEBUG] No boosted results found.", flush=True)
-        print(f"[DEBUG] matches for response: {len(matches)}", flush=True)
         # Limit to top 20 results for all semantic/hybrid searches
         matches = matches[:20]
-        print(f"[DEBUG] Returning {len(matches)} matches (max 20) in perform_search.", flush=True)
         return {"retrieved_chunks": matches}
     except Exception as e:
-        print(f"[DEBUG] perform_search exception: {str(e)}", flush=True)
         return {"error": f"Error during search: {str(e)}"}
 
 
@@ -203,7 +193,6 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
 
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
-    print("[DEBUG] /file_ops/search_docs endpoint called", flush=True)
     data = await request.json()
     user_prompt = data.get("query") or data.get("user_prompt")
     user_id = data.get("user_id")
@@ -257,11 +246,9 @@ async def api_search_docs(request: Request):
 
         # Filter matches to only those used in the summary
         filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary (token-based, max 64,000 tokens).", flush=True)
 
         # Limit to top 20 sources for frontend
         filtered_chunks = filtered_chunks[:20]
-        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 20) actually used in summary.", flush=True)
 
         if top_text.strip():
             from app.core.openai_client import chat_completion
