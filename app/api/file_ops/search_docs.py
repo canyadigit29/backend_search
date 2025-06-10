@@ -40,6 +40,15 @@ def perform_search(tool_args):
         from app.api.file_ops.embed import embed_text
         query_embedding = embed_text(text_to_embed)
 
+    # --- DEBUG: Print embedding length and type ---
+    print(f"[DEBUG] Query embedding type: {type(query_embedding)}", flush=True)
+    if isinstance(query_embedding, (list, tuple)):
+        print(f"[DEBUG] Query embedding length: {len(query_embedding)}", flush=True)
+    elif hasattr(query_embedding, 'shape'):
+        print(f"[DEBUG] Query embedding shape: {query_embedding.shape}", flush=True)
+    else:
+        print(f"[DEBUG] Query embedding: {query_embedding}", flush=True)
+
     if not user_id_filter:
         print("[DEBUG] perform_search early return: missing user_id", flush=True)
         return {"error": "user_id must be provided to perform search."}
@@ -123,9 +132,13 @@ def perform_search(tool_args):
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
         # [DEBUG SCORES] Begin score analysis
         def avg(lst):
-            return sum(lst) / len(lst) if lst else 0.0
+            return sum(lst) / len(lst) if lst else 0
         def med(lst):
-            return statistics.median(lst) if lst else 0.0
+            n = len(lst)
+            if n == 0:
+                return 0
+            s = sorted(lst)
+            return s[n // 2] if n % 2 == 1 else (s[n // 2 - 1] + s[n // 2]) / 2
         def score_stats(match_list):
             scores = [m.get("score", 0) for m in match_list]
             boosted = [m.get("score", 0) for m in match_list if m.get("boosted_reason")]
@@ -134,10 +147,9 @@ def perform_search(tool_args):
                 "avg": avg(scores),
                 "median": med(scores),
                 "boosted_avg": avg(boosted),
-                "non_boosted_avg": avg(non_boosted),
                 "boosted_count": len(boosted),
+                "non_boosted_avg": avg(non_boosted),
                 "non_boosted_count": len(non_boosted),
-                "count": len(scores)
             }
         all_stats = score_stats(matches)
         top20_stats = score_stats(matches[:20])
