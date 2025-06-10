@@ -10,6 +10,7 @@ from app.core.query_understanding import extract_entities_and_intent
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+import tiktoken
 
 
 
@@ -236,25 +237,27 @@ async def api_search_docs(request: Request):
     filtered_chunks = []
     try:
         # GPT-4o supports a large context window; include as many top chunks as fit in ~60,000 chars
-        MAX_SUMMARY_CHARS = 60000
+        encoding = tiktoken.get_encoding("cl100k_base")
+        MAX_SUMMARY_TOKENS = 64000
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
         top_texts = []
-        total_chars = 0
+        total_tokens = 0
         used_chunk_ids = set()
         for chunk in sorted_chunks:
             content = chunk.get("content", "")
             if not content:
                 continue
-            if total_chars + len(content) > MAX_SUMMARY_CHARS:
+            chunk_tokens = len(encoding.encode(content))
+            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
                 break
             top_texts.append(content)
-            total_chars += len(content)
+            total_tokens += chunk_tokens
             used_chunk_ids.add(chunk.get("id"))
         top_text = "\n\n".join(top_texts)
 
         # Filter matches to only those used in the summary
         filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary.", flush=True)
+        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary (token-based, max 64,000 tokens).", flush=True)
 
         # Limit to top 20 sources for frontend
         filtered_chunks = filtered_chunks[:20]
@@ -264,13 +267,15 @@ async def api_search_docs(request: Request):
             from app.core.openai_client import chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
-                    "You are an expert assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
-                    "- Focus on information directly relevant to the user's question.\n"
-                    "- Group similar findings and highlight key points.\n"
-                    "- Use bullet points or sections if it helps clarity.\n"
+                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
+                    "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
+                    "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
+                    "- Use a conversational, engaging tone.\n"
+                    "- Use bullet points, sections, or narrative as you see fit for clarity and impact.\n"
                     "- Reference file names, dates, or section headers where possible.\n"
-                    "- Do not add information that is not present in the results.\n"
-                    "- If the results are lengthy, provide a high-level summary first, then details."
+                    "- Do not add information that is not present in the results, but you may offer thoughtful analysis, context, or commentary based on what is present.\n"
+                    "- If the results are lengthy, provide a high-level summary first, then details.\n"
+                    "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
