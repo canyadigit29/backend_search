@@ -17,8 +17,8 @@ BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 def list_all_files_in_bucket(bucket: str):
     logger.info(f"[DEBUG] list_all_files_in_bucket called with bucket: {bucket}")
     all_files = []
-    def walk(prefix=""):
-        logger.info(f"[DEBUG] walk called with prefix: '{prefix}'")
+    def walk(prefix="", is_root=True):
+        logger.info(f"[DEBUG] walk called with prefix: '{prefix}' (is_root={is_root})")
         if prefix and not prefix.endswith("/"):
             prefix_slash = prefix + "/"
         else:
@@ -32,13 +32,18 @@ def list_all_files_in_bucket(bucket: str):
             name = obj.get("name")
             if not name:
                 continue
-            if name.endswith("/"):
-                logger.info(f"[DEBUG] Entering folder: {prefix_slash + name}")
-                walk(prefix_slash + name)
+            # At root, treat all as folders and recurse
+            if is_root:
+                logger.info(f"[DEBUG] At root, recursing into: {prefix_slash + name}")
+                walk(prefix_slash + name, is_root=False)
             else:
-                logger.info(f"[DEBUG] Found file: {prefix_slash + name}")
-                all_files.append(prefix_slash + name)
-    walk("")
+                if name.endswith("/"):
+                    logger.info(f"[DEBUG] Entering folder: {prefix_slash + name}")
+                    walk(prefix_slash + name, is_root=False)
+                else:
+                    logger.info(f"[DEBUG] Found file: {prefix_slash + name}")
+                    all_files.append(prefix_slash + name)
+    walk("", is_root=True)
     logger.info(f"[DEBUG] list_all_files_in_bucket: Found {len(all_files)} files. Sample: {all_files[:5]}")
     return all_files
 
