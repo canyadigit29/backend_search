@@ -13,10 +13,57 @@ logger.setLevel(logging.INFO)
 
 BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 
+async def sync_storage_to_files_table():
+    """
+    Ensure every file in the Supabase storage bucket has a row in the files table.
+    Only add rows for files not already present, with ingestion=False.
+    """
+    logger.info("[SYNC] Checking for storage files missing from files table...")
+    bucket = BUCKET or "files"
+    try:
+        # List all files in the storage bucket (flat, no folders)
+        list_response = supabase.storage.from_(bucket).list(options={"limit": 10000})
+        storage_files = getattr(list_response, "data", [])
+        logger.info(f"[SYNC] Found {len(storage_files)} files in storage bucket '{bucket}'")
+        # Get all file_paths in the files table
+        db_files = supabase.table("files").select("file_path").execute()
+        db_file_paths = set(f["file_path"] for f in (db_files.data or []))
+        new_files = [f for f in storage_files if f["name"] not in db_file_paths]
+        logger.info(f"[SYNC] {len(new_files)} files in storage not in files table")
+        for file_obj in new_files:
+            # Try to extract user_id from path if possible (e.g. user_id/filename)
+            file_path = file_obj["name"]
+            size = file_obj.get("metadata", {}).get("size", file_obj.get("size", 0))
+            created_at = file_obj.get("created_at") or datetime.utcnow().isoformat()
+            # Try to parse user_id from file_path (assume format: user_id/filename)
+            user_id = None
+            if "/" in file_path:
+                user_id = file_path.split("/")[0]
+            # Insert minimal row; set ingestion=False
+            file_row = {
+                "user_id": user_id or None,
+                "file_path": file_path,
+                "name": os.path.basename(file_path),
+                "description": "(auto-ingested)",
+                "size": size,
+                "tokens": 0,
+                "type": os.path.splitext(file_path)[-1][1:] or "unknown",
+                "created_at": created_at,
+                "ingestion": False,
+            }
+            try:
+                supabase.table("files").insert(file_row).execute()
+                logger.info(f"[SYNC] Inserted missing file row for {file_path}")
+            except Exception as e:
+                logger.warning(f"[SYNC] Failed to insert file row for {file_path}: {e}")
+    except Exception as e:
+        logger.error(f"[SYNC] Exception during storage-to-table sync: {e}")
+
 async def run_ingestion_once():
     logger.info("🔁 Starting ingestion cycle (refactored logic)")
     print("[DEBUG] run_ingestion_once started")
     try:
+        await sync_storage_to_files_table()
         logger.info("[DEBUG] Querying files table for un-ingested files...")
         files_to_ingest = supabase.table("files").select("*").neq("ingested", True).execute()
         logger.info(f"[DEBUG] files_to_ingest query result: {files_to_ingest}")
