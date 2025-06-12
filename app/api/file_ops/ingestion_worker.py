@@ -51,6 +51,8 @@ def ensure_file_record(file_path: str):
         return result.data["id"]
     file_id = str(uuid.uuid4())
     file_name = os.path.basename(file_path)
+    # Extract user_id as the first folder in the file path
+    user_id = file_path.split("/")[0] if "/" in file_path else file_path
     supabase.table("files").insert({
         "id": file_id,
         "file_path": file_path,
@@ -60,7 +62,7 @@ def ensure_file_record(file_path: str):
         "type": "pdf" if file_name.lower().endswith(".pdf") else "other",
         "size": 0,
         "tokens": 0,
-        "user_id": None,
+        "user_id": user_id,
         "sharing": "private"
     }).execute()
     return file_id
