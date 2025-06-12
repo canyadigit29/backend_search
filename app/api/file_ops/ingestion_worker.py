@@ -16,11 +16,9 @@ BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 
 def list_all_files_in_bucket(bucket: str):
     logger.info(f"[DEBUG] list_all_files_in_bucket called with bucket: {bucket}")
-    """Recursively list all files in the given Supabase storage bucket, including all subfolders."""
     all_files = []
     def walk(prefix=""):
         logger.info(f"[DEBUG] walk called with prefix: '{prefix}'")
-        # Ensure prefix ends with '/' if not empty and doesn't already
         if prefix and not prefix.endswith("/"):
             prefix_slash = prefix + "/"
         else:
@@ -34,12 +32,10 @@ def list_all_files_in_bucket(bucket: str):
             name = obj.get("name")
             if not name:
                 continue
-            if obj.get("id") and name.endswith("/"):
-                # It's a folder, recurse
+            if name.endswith("/"):
                 logger.info(f"[DEBUG] Entering folder: {prefix_slash + name}")
                 walk(prefix_slash + name)
-            elif obj.get("id"):
-                # It's a file
+            else:
                 logger.info(f"[DEBUG] Found file: {prefix_slash + name}")
                 all_files.append(prefix_slash + name)
     walk("")
