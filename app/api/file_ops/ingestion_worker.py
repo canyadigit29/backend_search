@@ -25,7 +25,7 @@ def list_all_files_in_bucket(bucket: str):
             prefix_slash = prefix
         page = supabase.storage.from_(bucket).list(prefix_slash)
         if not page:
-            print(f"[DEBUG] No entries at prefix: '{prefix_slash}'")
+            logger.info(f"[DEBUG] No entries at prefix: '{prefix_slash}'")
             return
         for obj in page:
             name = obj.get("name")
@@ -33,14 +33,14 @@ def list_all_files_in_bucket(bucket: str):
                 continue
             if obj.get("id") and name.endswith("/"):
                 # It's a folder, recurse
-                print(f"[DEBUG] Entering folder: {prefix_slash + name}")
+                logger.info(f"[DEBUG] Entering folder: {prefix_slash + name}")
                 walk(prefix_slash + name)
             elif obj.get("id"):
                 # It's a file
-                print(f"[DEBUG] Found file: {prefix_slash + name}")
+                logger.info(f"[DEBUG] Found file: {prefix_slash + name}")
                 all_files.append(prefix_slash + name)
     walk("")
-    print(f"[DEBUG] list_all_files_in_bucket: Found {len(all_files)} files. Sample: {all_files[:5]}")
+    logger.info(f"[DEBUG] list_all_files_in_bucket: Found {len(all_files)} files. Sample: {all_files[:5]}")
     return all_files
 
 
