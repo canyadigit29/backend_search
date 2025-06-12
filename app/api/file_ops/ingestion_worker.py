@@ -67,7 +67,7 @@ def ensure_file_record(file_path: str):
 
 async def run_ingestion_once():
     logger.info("🔁 Starting ingestion cycle (refactored logic)")
-    print("[DEBUG] run_ingestion_once started")
+    logger.info(f"[DEBUG] About to call list_all_files_in_bucket with BUCKET={BUCKET!r}")
     try:
         # --- NEW: Sync files table with all files in storage bucket ---
         all_files = list_all_files_in_bucket(BUCKET)
