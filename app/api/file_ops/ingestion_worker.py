@@ -15,20 +15,30 @@ logger.setLevel(logging.INFO)
 BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 
 def list_all_files_in_bucket(bucket: str):
-    """Recursively list all files in the given Supabase storage bucket."""
+    """Recursively list all files in the given Supabase storage bucket, including all subfolders."""
     all_files = []
     def walk(prefix=""):
-        page = supabase.storage.from_(bucket).list(prefix)
+        # Ensure prefix ends with '/' if not empty and doesn't already
+        if prefix and not prefix.endswith("/"):
+            prefix_slash = prefix + "/"
+        else:
+            prefix_slash = prefix
+        page = supabase.storage.from_(bucket).list(prefix_slash)
         if not page:
+            print(f"[DEBUG] No entries at prefix: '{prefix_slash}'")
             return
         for obj in page:
-            if obj.get("id") and obj.get("name"):
-                if obj.get("name").endswith("/"):
-                    # It's a folder, recurse
-                    walk(prefix + obj["name"])
-                else:
-                    # It's a file
-                    all_files.append(prefix + obj["name"])
+            name = obj.get("name")
+            if not name:
+                continue
+            if obj.get("id") and name.endswith("/"):
+                # It's a folder, recurse
+                print(f"[DEBUG] Entering folder: {prefix_slash + name}")
+                walk(prefix_slash + name)
+            elif obj.get("id"):
+                # It's a file
+                print(f"[DEBUG] Found file: {prefix_slash + name}")
+                all_files.append(prefix_slash + name)
     walk("")
     return all_files
 
