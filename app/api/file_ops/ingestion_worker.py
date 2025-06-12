@@ -17,7 +17,9 @@ async def run_ingestion_once():
     logger.info("🔁 Starting ingestion cycle (refactored logic)")
     print("[DEBUG] run_ingestion_once started")
     try:
+        logger.info("[DEBUG] Querying files table for un-ingested files...")
         files_to_ingest = supabase.table("files").select("*").neq("ingested", True).execute()
+        logger.info(f"[DEBUG] files_to_ingest query result: {files_to_ingest}")
         print(f"[DEBUG] files_to_ingest: {len(files_to_ingest.data) if files_to_ingest and files_to_ingest.data else 0}")
         if not files_to_ingest or not files_to_ingest.data:
             logger.info("📭 No un-ingested files found.")
@@ -55,6 +57,7 @@ async def run_ingestion_once():
                 traceback.print_exc()
                 continue
             try:
+                logger.info(f"[DEBUG] Marking file as ingested in DB: {file_id}")
                 supabase.table("files").update({
                     "ingested": True,
                     "ingested_at": datetime.utcnow().isoformat()
