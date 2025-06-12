@@ -58,6 +58,11 @@ def embed_and_store_chunk(chunk):
 
     try:
         embedding = retry_embed_text(chunk_text)
+        # Embedding quality checks
+        norm = np.linalg.norm(embedding)
+        if norm < 0.1 or np.allclose(embedding, 0):
+            logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {chunk.get('chunk_index')} of {chunk.get('file_name')}")
+            return {"skipped": True, "reason": "low-quality embedding", "norm": float(norm)}
         timestamp = datetime.utcnow().isoformat()
 
         # Prepare data for insert, including all original chunk fields

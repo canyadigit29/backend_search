@@ -47,36 +47,72 @@ def extract_metadata_from_filename(file_name):
         meta['file_extension'] = ext_match.group(1).lower()
     return meta
 
+def parse_page_markers(paragraphs):
+    """
+    Returns a dict mapping paragraph index to page number, based on ---PAGE N--- markers.
+    """
+    page_number = 1
+    para_to_page = {}
+    for idx, para in enumerate(paragraphs):
+        if re.match(r"---PAGE (\d+)---", para.strip()):
+            m = re.match(r"---PAGE (\d+)---", para.strip())
+            page_number = int(m.group(1))
+        para_to_page[idx] = page_number
+    return para_to_page
+
 def smart_chunk(text, max_tokens=1000, overlap_tokens=200):
     encoding = tiktoken.get_encoding("cl100k_base")
-    tokens = encoding.encode(text)
-    total_tokens = len(tokens)
-    chunks = []
-    chunk_meta = []
-    start = 0
-    # Section header detection
     paragraphs = text.split('\n')
     section_headers = detect_section_headers(paragraphs)
-    para_token_indices = []
-    idx = 0
-    for para in paragraphs:
-        para_tokens = encoding.encode(para)
-        para_token_indices.append((idx, idx + len(para_tokens)))
-        idx += len(para_tokens)
-    while start < total_tokens:
-        end = min(start + max_tokens, total_tokens)
-        chunk_tokens = tokens[start:end]
-        chunk_text = encoding.decode(chunk_tokens)
-        # Find section header for this chunk (by first paragraph in chunk)
-        para_idx = 0
-        for i, (p_start, p_end) in enumerate(para_token_indices):
-            if p_start <= start < p_end:
-                para_idx = i
-                break
-        section = section_headers.get(para_idx)
-        chunk_meta.append({"section_header": section, "page_number": None})
-        chunks.append(chunk_text)
-        start += max_tokens - overlap_tokens
+    para_to_page = parse_page_markers(paragraphs)
+    # Group paragraphs by section
+    section_groups = []
+    current_section = None
+    current_paragraphs = []
+    current_para_indices = []
+    for idx, para in enumerate(paragraphs):
+        section = section_headers.get(idx)
+        if section != current_section and current_paragraphs:
+            section_groups.append((current_section, current_paragraphs, current_para_indices))
+            current_paragraphs = []
+            current_para_indices = []
+        current_section = section
+        current_paragraphs.append(para)
+        current_para_indices.append(idx)
+    if current_paragraphs:
+        section_groups.append((current_section, current_paragraphs, current_para_indices))
+    # Chunk within each section, but do not cross section boundaries
+    chunks = []
+    chunk_meta = []
+    for section, paras, para_indices in section_groups:
+        # Track page numbers for this section
+        page_numbers = [para_to_page[i] for i in para_indices]
+        # Tokenize section
+        section_text = '\n'.join(paras)
+        section_tokens = encoding.encode(section_text)
+        total_tokens = len(section_tokens)
+        start = 0
+        while start < total_tokens:
+            end = min(start + max_tokens, total_tokens)
+            chunk_tokens = section_tokens[start:end]
+            chunk_text = encoding.decode(chunk_tokens)
+            # Determine which paragraphs are in this chunk
+            chunk_paragraphs = []
+            chunk_para_indices = []
+            token_count = 0
+            for para, idx in zip(paras, para_indices):
+                para_tokens = encoding.encode(para)
+                if token_count + len(para_tokens) > end:
+                    break
+                if token_count >= start:
+                    chunk_paragraphs.append(para)
+                    chunk_para_indices.append(idx)
+                token_count += len(para_tokens)
+            # Assign page number as the lowest page in this chunk
+            chunk_page = min([para_to_page[i] for i in chunk_para_indices]) if chunk_para_indices else None
+            chunk_meta.append({"section_header": section, "page_number": chunk_page})
+            chunks.append(chunk_text)
+            start += max_tokens - overlap_tokens
     return list(zip(chunks, chunk_meta))
 
 def chunk_file(file_id: str, user_id: str = None):

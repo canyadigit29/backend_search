@@ -241,6 +241,21 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
     return results
 
 
+def get_neighbor_chunks(chunk, all_chunks_by_file):
+    file_id = chunk.get("file_id")
+    chunk_index = chunk.get("chunk_index")
+    if file_id is None or chunk_index is None:
+        return None, None
+    file_chunks = all_chunks_by_file.get(file_id, [])
+    prev_chunk = next_chunk = None
+    for c in file_chunks:
+        if c.get("chunk_index") == chunk_index - 1:
+            prev_chunk = c
+        if c.get("chunk_index") == chunk_index + 1:
+            next_chunk = c
+    return prev_chunk, next_chunk
+
+
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
     print("[DEBUG] /file_ops/search_docs endpoint called", flush=True)
@@ -278,6 +293,21 @@ async def api_search_docs(request: Request):
     # --- Semantic search only (no hybrid) ---
     semantic_result = perform_search(tool_args)
     matches = semantic_result.get("retrieved_chunks", [])
+    # --- Neighbor chunk retrieval ---
+    # Group all returned chunks by file_id for neighbor lookup
+    all_chunks_by_file = {}
+    for chunk in matches:
+        file_id = chunk.get("file_id")
+        if file_id not in all_chunks_by_file:
+            all_chunks_by_file[file_id] = []
+        all_chunks_by_file[file_id].append(chunk)
+    # For each chunk, attach prev/next chunk if available
+    for chunk in matches:
+        prev_chunk, next_chunk = get_neighbor_chunks(chunk, all_chunks_by_file)
+        if prev_chunk:
+            chunk["prev_chunk"] = {k: prev_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in prev_chunk}
+        if next_chunk:
+            chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
     # --- LLM-based summary of top search results ---
     summary = None
     filtered_chunks = []
