@@ -15,6 +15,7 @@ logger.setLevel(logging.INFO)
 BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 
 def list_all_files_in_bucket(bucket: str):
+    logger.info(f"[DEBUG] list_all_files_in_bucket called with bucket: {bucket}")
     """Recursively list all files in the given Supabase storage bucket, including all subfolders."""
     all_files = []
     def walk(prefix=""):
