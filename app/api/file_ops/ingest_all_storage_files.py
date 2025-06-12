@@ -8,15 +8,18 @@ BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
 
 
 def list_all_files_in_bucket(bucket: str):
-    """Recursively list all files in the given Supabase storage bucket."""
+    """Recursively list all files in the given Supabase storage bucket, with debug output."""
     all_files = []
     # Use the Supabase Storage API to list all files recursively
     # The supabase-py client returns a list of dicts with 'name' and 'id' keys
     def walk(prefix=""):
+        print(f"[DEBUG] Listing: '{prefix}'")
         page = supabase.storage.from_(bucket).list(prefix)
+        print(f"[DEBUG] Result for '{prefix}': {page}")
         if not page:
             return
         for obj in page:
+            print(f"[DEBUG] Object: {obj}")
             if obj.get("id") and obj.get("name"):
                 if obj.get("name").endswith("/"):
                     # It's a folder, recurse
@@ -26,6 +29,7 @@ def list_all_files_in_bucket(bucket: str):
                     all_files.append(prefix + obj["name"])
 
     walk("")
+    print(f"[DEBUG] All files found: {all_files}")
     return all_files
 
 
