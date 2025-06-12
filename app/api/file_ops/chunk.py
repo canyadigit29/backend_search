@@ -24,27 +24,53 @@ def detect_section_headers(paragraphs):
     return section_headers
 
 def extract_metadata_from_filename(file_name):
-    # Example: 'Ordinance_2023-05-12_Title_of_Ordinance.pdf'
+    import re
+    import calendar
     meta = {}
-    # Document type (e.g., Ordinance, Agenda, Minutes, etc.)
-    doc_type_match = re.match(r'(Ordinance|Agenda|Minutes|Resolution|Misc)', file_name, re.IGNORECASE)
-    if doc_type_match:
-        meta['document_type'] = doc_type_match.group(1)
-    # Date (YYYY-MM-DD or YYYY_MM_DD or YYYYMMDD)
-    date_match = re.search(r'(\d{4})[-_]?([01]?\d)[-_]?([0-3]?\d)', file_name)
-    if date_match:
-        meta['meeting_year'] = int(date_match.group(1))
-        meta['meeting_month'] = int(date_match.group(2))
-        meta['meeting_month_name'] = calendar.month_name[int(date_match.group(2))]
-        meta['meeting_day'] = int(date_match.group(3))
-    # Ordinance/Resolution title (after date)
-    title_match = re.search(r'\d{4}[-_][01]?\d[-_][0-3]?\d[_-](.*)\.', file_name)
-    if title_match:
-        meta['ordinance_title'] = title_match.group(1).replace('_', ' ').replace('-', ' ').strip()
-    # File extension
-    ext_match = re.search(r'\.([a-zA-Z0-9]+)$', file_name)
-    if ext_match:
-        meta['file_extension'] = ext_match.group(1).lower()
+    name = file_name.rsplit('.', 1)[0].strip()
+    ext = file_name.rsplit('.', 1)[-1].lower() if '.' in file_name else ''
+    meta['file_extension'] = ext
+
+    # Agendas
+    m = re.match(r'([A-Za-z]+) (\d{4}) Agenda(?: ([A-Za-z ]+))?$', name)
+    if m:
+        meta['document_type'] = 'Agenda'
+        meta['meeting_month_name'] = m.group(1).capitalize()
+        try:
+            meta['meeting_month'] = list(calendar.month_name).index(m.group(1).capitalize())
+        except ValueError:
+            meta['meeting_month'] = None
+        meta['meeting_year'] = int(m.group(2))
+        if m.group(3):
+            meta['extra'] = m.group(3).strip()
+        return meta
+
+    # Minutes
+    m = re.match(r'([A-Za-z]+) (\d{4}) Minutes(?: ([A-Za-z ]+))?$', name)
+    if m:
+        meta['document_type'] = 'Minutes'
+        meta['meeting_month_name'] = m.group(1).capitalize()
+        try:
+            meta['meeting_month'] = list(calendar.month_name).index(m.group(1).capitalize())
+        except ValueError:
+            meta['meeting_month'] = None
+        meta['meeting_year'] = int(m.group(2))
+        if m.group(3):
+            meta['extra'] = m.group(3).strip()
+        return meta
+
+    # Ordinaces
+    m = re.match(r'(\d+)?\s*(.*?) Ordinance$', name)
+    if m:
+        meta['document_type'] = 'Ordinance'
+        if m.group(1):
+            meta['ordinance_number'] = m.group(1).strip()
+        meta['ordinance_title'] = m.group(2).strip()
+        return meta
+
+    # Misc
+    meta['document_type'] = 'Misc'
+    meta['misc_title'] = name
     return meta
 
 def parse_page_markers(paragraphs):
