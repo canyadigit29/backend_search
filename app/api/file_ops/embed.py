@@ -128,6 +128,10 @@ def embed_chunks(chunks, file_name: str = None, batch_size: int = 100):
                 data["timestamp"] = datetime.utcnow().isoformat()
                 if "id" not in data:
                     data["id"] = str(uuid.uuid4())
+                print(f"[DEBUG] Inserting chunk {data.get('chunk_index')} with metadata: "
+                      f"document_type={data.get('document_type')}, meeting_year={data.get('meeting_year')}, "
+                      f"meeting_month={data.get('meeting_month')}, meeting_day={data.get('meeting_day')}, "
+                      f"ordinance_title={data.get('ordinance_title')}, file_extension={data.get('file_extension')}")
                 result = supabase.table("document_chunks").insert(data).execute()
                 if getattr(result, "error", None):
                     logging.error(f"Supabase insert failed: {result.error.message}")
