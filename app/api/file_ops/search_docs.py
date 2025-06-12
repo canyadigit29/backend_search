@@ -7,7 +7,7 @@ import statistics
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
 from app.core.openai_client import chat_completion
-from app.core.query_understanding import extract_entities_and_intent
+from app.core.query_understanding import extract_entities_and_intent, extract_search_filters
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -253,8 +253,8 @@ async def api_search_docs(request: Request):
         return JSONResponse({"error": "Missing user_id"}, status_code=400)
     # LLM-based query extraction
     search_query = extract_search_query(user_prompt)
-    # --- Entity and intent extraction ---
-    query_info = extract_entities_and_intent(user_prompt)
+    # --- Metadata filter extraction ---
+    search_filters = extract_search_filters(user_prompt)
     try:
         embedding = embed_text(search_query)
     except Exception as e:
@@ -262,13 +262,19 @@ async def api_search_docs(request: Request):
     tool_args = {
         "embedding": embedding,
         "user_id_filter": user_id,
-        "file_name_filter": data.get("file_name_filter"),
-        "description_filter": data.get("description_filter"),
+        "file_name_filter": search_filters.get("file_name") or data.get("file_name_filter"),
+        "description_filter": search_filters.get("description") or data.get("description_filter"),
         "start_date": data.get("start_date"),
         "end_date": data.get("end_date"),
         "user_prompt": user_prompt,  # Pass original prompt for downstream use
         "search_query": search_query  # Pass extracted search phrase for boosting
     }
+    # Add new metadata filters if present
+    for meta_field in [
+        "document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title", "file_extension", "section_header", "page_number"
+    ]:
+        if search_filters.get(meta_field) is not None:
+            tool_args[meta_field] = search_filters[meta_field]
     # --- Semantic search only (no hybrid) ---
     semantic_result = perform_search(tool_args)
     matches = semantic_result.get("retrieved_chunks", [])
