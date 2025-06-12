@@ -19,12 +19,14 @@ def list_all_files_in_bucket(bucket: str):
     """Recursively list all files in the given Supabase storage bucket, including all subfolders."""
     all_files = []
     def walk(prefix=""):
+        logger.info(f"[DEBUG] walk called with prefix: '{prefix}'")
         # Ensure prefix ends with '/' if not empty and doesn't already
         if prefix and not prefix.endswith("/"):
             prefix_slash = prefix + "/"
         else:
             prefix_slash = prefix
         page = supabase.storage.from_(bucket).list(prefix_slash)
+        logger.info(f"[DEBUG] API response for prefix '{prefix_slash}': {page}")
         if not page:
             logger.info(f"[DEBUG] No entries at prefix: '{prefix_slash}'")
             return
