@@ -40,6 +40,7 @@ def list_all_files_in_bucket(bucket: str):
                 print(f"[DEBUG] Found file: {prefix_slash + name}")
                 all_files.append(prefix_slash + name)
     walk("")
+    print(f"[DEBUG] list_all_files_in_bucket: Found {len(all_files)} files. Sample: {all_files[:5]}")
     return all_files
 
 
