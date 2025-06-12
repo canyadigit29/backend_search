@@ -3,6 +3,7 @@ import asyncio
 import logging
 from datetime import datetime
 import traceback
+import uuid
 
 from fastapi import APIRouter
 from app.core.supabase_client import supabase
@@ -13,10 +14,55 @@ logger.setLevel(logging.INFO)
 
 BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 
+def list_all_files_in_bucket(bucket: str):
+    """Recursively list all files in the given Supabase storage bucket."""
+    all_files = []
+    def walk(prefix=""):
+        page = supabase.storage.from_(bucket).list(prefix)
+        if not page:
+            return
+        for obj in page:
+            if obj.get("id") and obj.get("name"):
+                if obj.get("name").endswith("/"):
+                    # It's a folder, recurse
+                    walk(prefix + obj["name"])
+                else:
+                    # It's a file
+                    all_files.append(prefix + obj["name"])
+    walk("")
+    return all_files
+
+
+def ensure_file_record(file_path: str):
+    result = supabase.table("files").select("id").eq("file_path", file_path).maybe_single().execute()
+    if result.data and result.data.get("id"):
+        return result.data["id"]
+    file_id = str(uuid.uuid4())
+    file_name = os.path.basename(file_path)
+    supabase.table("files").insert({
+        "id": file_id,
+        "file_path": file_path,
+        "file_name": file_name,
+        "created_at": datetime.utcnow().isoformat(),
+        "description": file_name,
+        "type": "pdf" if file_name.lower().endswith(".pdf") else "other",
+        "size": 0,
+        "tokens": 0,
+        "user_id": None,
+        "sharing": "private"
+    }).execute()
+    return file_id
+
 async def run_ingestion_once():
     logger.info("🔁 Starting ingestion cycle (refactored logic)")
     print("[DEBUG] run_ingestion_once started")
     try:
+        # --- NEW: Sync files table with all files in storage bucket ---
+        all_files = list_all_files_in_bucket(BUCKET)
+        print(f"[DEBUG] Found {len(all_files)} files in bucket '{BUCKET}'")
+        for file_path in all_files:
+            ensure_file_record(file_path)
+        # --- END SYNC ---
         files_to_ingest = supabase.table("files").select("*").neq("ingested", True).execute()
         print(f"[DEBUG] files_to_ingest: {len(files_to_ingest.data) if files_to_ingest and files_to_ingest.data else 0}")
         if not files_to_ingest or not files_to_ingest.data:
@@ -26,9 +72,8 @@ async def run_ingestion_once():
         for file in files_to_ingest.data:
             file_path = file.get("file_path")
             file_id = file.get("id")
-            user_id = file.get("user_id")
-            print(f"[DEBUG] Processing file: {file_path}, id: {file_id}, user: {user_id}")
-            if not file_path or not user_id or not file_id:
+            print(f"[DEBUG] Processing file: {file_path}, id: {file_id}")
+            if not file_path or not file_id:
                 logger.warning(f"⚠️ Skipping invalid row: {file}")
                 print(f"[DEBUG] Skipping invalid row: {file}")
                 continue
@@ -47,7 +92,7 @@ async def run_ingestion_once():
             logger.info(f"🧾 Ingesting: {file_path}")
             print(f"[DEBUG] Ingesting: {file_path}")
             try:
-                process_file(file_path=file_path, file_id=file_id, user_id=user_id)
+                process_file(file_path=file_path, file_id=file_id, user_id=None)
                 print(f"[DEBUG] process_file completed for {file_path}")
             except Exception as e:
                 logger.error(f"[ERROR] Exception during process_file: {e}")
