@@ -1,26 +1,20 @@
 import os
-from app.core.supabase_client import supabase
+from pathlib import Path
 from app.api.file_ops.ingest import process_file
+from app.core.supabase_client import supabase
 from uuid import uuid4
 from datetime import datetime
 
-BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
+# Set the root directory to scan (local folder, not Supabase bucket)
+ROOT_DIR = os.path.join(os.path.dirname(__file__), '..')
 
-
-def list_all_files(bucket: str):
-    """Recursively list all files in the given Supabase storage bucket."""
-    all_files = []
-    # Supabase Storage API: list with no prefix lists all top-level and subfolder files
-    # Use an empty prefix and recursive=True to get all files
-    page = supabase.storage.from_(bucket).list(path="", recursive=True)
-    if not page:
-        print(f"[ERROR] Could not list files in bucket: {bucket}")
-        return []
-    for obj in page:
-        # Only include files (not folders)
-        if obj.get("id") and obj.get("name") and not obj.get("name").endswith("/"):
-            all_files.append(obj["name"])
-    return all_files
+# Folders to scan
+FOLDERS = [
+    'Agendas',
+    'Minutes',
+    'Misc',
+    'Ordinaces',
+]
 
 
 def ensure_file_record(file_path: str):
@@ -47,16 +41,21 @@ def ensure_file_record(file_path: str):
     return file_id
 
 
-def ingest_all_files():
-    files = list_all_files(BUCKET)
-    print(f"[INFO] Found {len(files)} files in bucket '{BUCKET}'")
-    for file_path in files:
-        print(f"[INFO] Ingesting: {file_path}")
-        file_id = ensure_file_record(file_path)
-        try:
-            process_file(file_path, file_id)
-        except Exception as e:
-            print(f"[ERROR] Failed to ingest {file_path}: {e}")
+def ingest_all_local_files():
+    for folder in FOLDERS:
+        folder_path = os.path.abspath(os.path.join(ROOT_DIR, folder))
+        if not os.path.exists(folder_path):
+            continue
+        for dirpath, _, filenames in os.walk(folder_path):
+            for filename in filenames:
+                if filename.lower().endswith('.pdf'):
+                    file_path = os.path.relpath(os.path.join(dirpath, filename), ROOT_DIR)
+                    print(f"[INFO] Ingesting: {file_path}")
+                    file_id = ensure_file_record(file_path)
+                    try:
+                        process_file(file_path, file_id)
+                    except Exception as e:
+                        print(f"[ERROR] Failed to ingest {file_path}: {e}")
 
 if __name__ == "__main__":
-    ingest_all_files()
+    ingest_all_local_files()
