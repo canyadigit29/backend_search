@@ -1,20 +1,32 @@
 import os
-from pathlib import Path
-from app.api.file_ops.ingest import process_file
 from app.core.supabase_client import supabase
+from app.api.file_ops.ingest import process_file
 from uuid import uuid4
 from datetime import datetime
 
-# Set the root directory to scan (local folder, not Supabase bucket)
-ROOT_DIR = os.path.join(os.path.dirname(__file__), '..')
+BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
 
-# Folders to scan
-FOLDERS = [
-    'Agendas',
-    'Minutes',
-    'Misc',
-    'Ordinaces',
-]
+
+def list_all_files_in_bucket(bucket: str):
+    """Recursively list all files in the given Supabase storage bucket."""
+    all_files = []
+    # Use the Supabase Storage API to list all files recursively
+    # The supabase-py client returns a list of dicts with 'name' and 'id' keys
+    def walk(prefix=""):
+        page = supabase.storage.from_(bucket).list(prefix)
+        if not page:
+            return
+        for obj in page:
+            if obj.get("id") and obj.get("name"):
+                if obj.get("name").endswith("/"):
+                    # It's a folder, recurse
+                    walk(prefix + obj["name"])
+                else:
+                    # It's a file
+                    all_files.append(prefix + obj["name"])
+
+    walk("")
+    return all_files
 
 
 def ensure_file_record(file_path: str):
@@ -41,21 +53,17 @@ def ensure_file_record(file_path: str):
     return file_id
 
 
-def ingest_all_local_files():
-    for folder in FOLDERS:
-        folder_path = os.path.abspath(os.path.join(ROOT_DIR, folder))
-        if not os.path.exists(folder_path):
-            continue
-        for dirpath, _, filenames in os.walk(folder_path):
-            for filename in filenames:
-                if filename.lower().endswith('.pdf'):
-                    file_path = os.path.relpath(os.path.join(dirpath, filename), ROOT_DIR)
-                    print(f"[INFO] Ingesting: {file_path}")
-                    file_id = ensure_file_record(file_path)
-                    try:
-                        process_file(file_path, file_id)
-                    except Exception as e:
-                        print(f"[ERROR] Failed to ingest {file_path}: {e}")
+def ingest_all_storage_files():
+    files = list_all_files_in_bucket(BUCKET)
+    print(f"[INFO] Found {len(files)} files in bucket '{BUCKET}'")
+    for file_path in files:
+        print(f"[INFO] Ingesting: {file_path}")
+        file_id = ensure_file_record(file_path)
+        try:
+            process_file(file_path, file_id)
+        except Exception as e:
+            print(f"[ERROR] Failed to ingest {file_path}: {e}")
+
 
 if __name__ == "__main__":
-    ingest_all_local_files()
+    ingest_all_storage_files()
