@@ -88,18 +88,60 @@ def embed_and_store_chunk(chunk):
         logging.exception(f"Unexpected error during embed/store: {e}")
         return {"error": str(e)}
 
-def embed_chunks(chunks, file_name: str = None):
+def embed_chunks(chunks, file_name: str = None, batch_size: int = 100):
     if not chunks:
         logging.warning("⚠️ No chunks to embed.")
         return []
 
-    results = []
+    # Optionally set file_name if not present
     for chunk in chunks:
-        # Optionally set file_name if not present
         if file_name and not chunk.get("file_name"):
             chunk["file_name"] = file_name
-        result = embed_and_store_chunk(chunk)
-        results.append(result)
+
+    # Batch embedding
+    results = []
+    total = len(chunks)
+    i = 0
+    while i < total:
+        batch = chunks[i:i+batch_size]
+        texts = [c["content"] for c in batch]
+        # Skip empty texts
+        valid_indices = [j for j, t in enumerate(texts) if t.strip()]
+        valid_texts = [texts[j] for j in valid_indices]
+        if not valid_texts:
+            i += batch_size
+            continue
+        try:
+            # Batch call to OpenAI
+            response = client.embeddings.create(model="text-embedding-3-small", input=valid_texts)
+            embeddings = response.data
+            for idx, j in enumerate(valid_indices):
+                embedding = np.array(embeddings[idx].embedding)
+                norm = np.linalg.norm(embedding)
+                if norm < 0.1 or np.allclose(embedding, 0):
+                    logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {batch[j].get('chunk_index')} of {batch[j].get('file_name')}")
+                    results.append({"skipped": True, "reason": "low-quality embedding", "norm": float(norm)})
+                    continue
+                embedding = (embedding / norm).tolist() if norm > 0 else embedding.tolist()
+                data = dict(batch[j])
+                data["openai_embedding"] = embedding
+                data["timestamp"] = datetime.utcnow().isoformat()
+                if "id" not in data:
+                    data["id"] = str(uuid.uuid4())
+                result = supabase.table("document_chunks").insert(data).execute()
+                if getattr(result, "error", None):
+                    logging.error(f"Supabase insert failed: {result.error.message}")
+                    results.append({"error": result.error.message})
+                else:
+                    logging.info(
+                        f"✅ Stored chunk {data.get('chunk_index')} of {data.get('file_name')} (section: {data.get('section_header')}, page: {data.get('page_number')})"
+                    )
+                    results.append({"success": True})
+        except Exception as e:
+            logging.exception(f"Batch embedding failed: {e}")
+            for j in valid_indices:
+                results.append({"error": str(e)})
+        i += batch_size
     return results
 
 def remove_embeddings_for_file(file_id: str):
