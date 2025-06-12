@@ -7,7 +7,7 @@ import statistics
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
 from app.core.openai_client import chat_completion
-from app.core.query_understanding import extract_entities_and_intent, extract_search_filters
+from app.core.query_understanding import extract_search_filters
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
