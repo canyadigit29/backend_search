@@ -45,7 +45,9 @@ def list_all_files_in_bucket(bucket: str):
 
 def ensure_file_record(file_path: str):
     result = supabase.table("files").select("id").eq("file_path", file_path).maybe_single().execute()
-    if result.data and result.data.get("id"):
+    if result is None:
+        logger.error(f"[ERROR] Supabase query for file_path '{file_path}' returned None (possible HTTP error)")
+    elif hasattr(result, 'data') and result.data and result.data.get("id"):
         return result.data["id"]
     file_id = str(uuid.uuid4())
     file_name = os.path.basename(file_path)
