@@ -153,7 +153,6 @@ def chunk_file(file_id: str, user_id: str = None):
 
         # Extract metadata from filename
         filename_meta = extract_metadata_from_filename(Path(file_name).name)
-        print(f"[DEBUG] Filename metadata for {file_name}: {filename_meta}")
         # Use improved smart_chunk logic with section/page metadata
         chunk_tuples = smart_chunk(text, max_tokens=1000, overlap_tokens=200)
         db_chunks = []
@@ -161,7 +160,6 @@ def chunk_file(file_id: str, user_id: str = None):
             chunk_id = str(uuid4())
             # Merge all metadata
             chunk_metadata = {**filename_meta, **meta}
-            print(f"[DEBUG] Chunk {i} metadata: {chunk_metadata}")
             chunk = {
                 "id": chunk_id,
                 "file_id": file_entry["id"],
