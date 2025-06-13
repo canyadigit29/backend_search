@@ -14,6 +14,8 @@ def extract_search_filters(user_prompt: str) -> dict:
     ]
     result = chat_completion(messages)
     print(f"[DEBUG] LLM search filter extraction for '{user_prompt}': {result}", file=sys.stderr)
+    # Also print to stdout for visibility in logs
+    print(f"[DEBUG] (stdout) LLM search filter extraction for '{user_prompt}': {result}", flush=True)
     try:
         return json.loads(result)
     except Exception:
