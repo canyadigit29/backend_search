@@ -3,7 +3,7 @@ import os
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request, Body
+from fastapi import APIRouter, HTTPException, Request
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -27,7 +27,7 @@ class ChatRequest(BaseModel):
     previous_chunks: list = None  # Optional, for follow-up queries
 
 @router.post("/chat")
-async def chat_with_context(request: Request, payload: ChatRequest = None):
+async def chat_with_context(request: Request):
     # --- Special command: run_score_test ---
     try:
         data = await request.json()
@@ -79,7 +79,10 @@ async def chat_with_context(request: Request, payload: ChatRequest = None):
     except Exception as e:
         return {"error": f"Score test failed: {e}"}
 
+    # --- Normal chat request: parse as ChatRequest ---
     try:
+        data = await request.json()
+        payload = ChatRequest(**data)
         prompt = payload.user_prompt.strip()
 
         try:
