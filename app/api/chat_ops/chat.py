@@ -53,17 +53,13 @@ async def chat_with_context(payload: ChatRequest):
         ]
         extracted_query = chat_completion(messages)
 
-        # Embed the extracted query
-        embedding_response = client.embeddings.create(
-            model="text-embedding-3-large",
-            input=extracted_query
-        )
-        embedding = embedding_response.data[0].embedding
+        # Extract metadata filters from the prompt
+        from app.core.query_understanding import extract_search_filters
+        search_filters = extract_search_filters(prompt)
 
         # Use the same hybrid/boosted search logic as /file_ops/search_docs
-        from app.api.file_ops.search_docs import extract_entities_and_intent, embed_text, perform_search, keyword_search
+        from app.api.file_ops.search_docs import embed_text, perform_search
         search_query = extracted_query
-        query_info = extract_entities_and_intent(prompt)
         try:
             embedding = embed_text(search_query)
         except Exception as e:
@@ -71,20 +67,25 @@ async def chat_with_context(payload: ChatRequest):
         tool_args = {
             "embedding": embedding,
             "user_id_filter": payload.user_id,
-            "file_name_filter": None,
-            "description_filter": None,
+            "file_name_filter": search_filters.get("file_name"),
+            "description_filter": search_filters.get("description"),
             "start_date": None,
             "end_date": None,
             "user_prompt": prompt,
-            "search_query": search_query  # Pass extracted search phrase for boosting
+            "search_query": search_query
         }
-        # --- Debug logging for prompt and query extraction ---
+        # Add new metadata filters if present
+        for meta_field in [
+            "document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title", "file_extension", "section_header", "page_number"
+        ]:
+            if search_filters.get(meta_field) is not None:
+                tool_args[meta_field] = search_filters[meta_field]
+        # Debug logging for prompt and query extraction
         print(f"[DEBUG] User prompt: {prompt}", flush=True)
         print(f"[DEBUG] Extracted query: {extracted_query}", flush=True)
         print(f"[DEBUG] Embedding length: {len(embedding) if hasattr(embedding, '__len__') else 'unknown'}", flush=True)
         print(f"[DEBUG] Tool args: {{k: v for k, v in tool_args.items() if k != 'embedding'}}", flush=True)
         # --- Hybrid search: semantic + keyword ---
-        # Only call perform_search, which now handles all boosting, merging, and debug output
         semantic_result = perform_search(tool_args)
         chunks = semantic_result.get("retrieved_chunks", [])
 
