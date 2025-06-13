@@ -64,8 +64,6 @@ def perform_search(tool_args):
         for tool_key, rpc_key in metadata_fields:
             if tool_args.get(tool_key) is not None:
                 rpc_args[rpc_key] = tool_args[tool_key]
-        # Debug: print the actual rpc_args sent to Supabase
-        print(f"[DEBUG] Supabase RPC args: {json.dumps(rpc_args, default=str)}", flush=True)
         response = supabase.rpc("match_documents", rpc_args).execute()
         if getattr(response, "error", None):
             return {"error": f"Supabase RPC failed: {response.error.message}"}
@@ -188,6 +186,37 @@ def perform_search(tool_args):
         # Limit to top 20 results for all semantic/hybrid searches
         matches = matches[:20]
         # Removed debug print: [DEBUG] Returning ... matches (max 20) in perform_search.
+        # --- Add keyword_score to each match ---
+        # Count keyword hits for each match
+        def count_keyword_hits(text, keywords):
+            text_lower = text.lower()
+            return sum(1 for kw in keywords if kw.lower() in text_lower)
+        max_keyword_hits = 1
+        for m in all_matches.values():
+            hits = count_keyword_hits(m.get("content", ""), keywords)
+            m["keyword_score"] = hits
+            if hits > max_keyword_hits:
+                max_keyword_hits = hits
+        # Normalize keyword_score to [0, 1]
+        for m in all_matches.values():
+            m["keyword_score"] = m["keyword_score"] / max_keyword_hits if max_keyword_hits > 0 else 0
+
+        # --- Normalize semantic score to [0, 1] ---
+        semantic_scores = [m.get("score", 0) for m in all_matches.values()]
+        min_sem = min(semantic_scores) if semantic_scores else 0
+        max_sem = max(semantic_scores) if semantic_scores else 1
+        for m in all_matches.values():
+            raw = m.get("score", 0)
+            m["semantic_score"] = (raw - min_sem) / (max_sem - min_sem) if max_sem > min_sem else 0
+
+        # --- Weighted sum for final score ---
+        alpha = 0.7  # weight for semantic
+        beta = 0.3   # weight for keyword
+        for m in all_matches.values():
+            m["final_score"] = alpha * m["semantic_score"] + beta * m["keyword_score"]
+
+        matches = list(all_matches.values())
+        matches.sort(key=lambda x: x.get("final_score", 0), reverse=True)
         return {"retrieved_chunks": matches}
     except Exception as e:
         # Removed debug print: [DEBUG] perform_search exception: ...
@@ -220,9 +249,12 @@ router = APIRouter()
 
 def keyword_search(keywords, user_id_filter=None, file_name_filter=None, description_filter=None, start_date=None, end_date=None, match_count=300):
     """
-    Simple keyword search over document_chunks table. Returns chunks containing any of the keywords.
+    Keyword search over document_chunks table using Postgres FTS (ts_rank/BM25).
+    Returns chunks containing any of the keywords, with a ts_rank score.
     """
-    query = supabase.table("document_chunks").select("*")
+    # Build the FTS query string
+    ts_query = ' & '.join([kw for kw in keywords if kw])
+    query = supabase.table("document_chunks").select("*", "ts_rank:ts_rank_cd(to_tsvector('english', content), plainto_tsquery('english', %s))" % (" | ".join(keywords)))
     if user_id_filter:
         query = query.eq("user_id", user_id_filter)
     if file_name_filter:
@@ -233,12 +265,12 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
         query = query.gte("created_at", start_date)
     if end_date:
         query = query.lte("created_at", end_date)
-    # Build OR filter for keywords (fix: use correct syntax)
-    or_filters = [f"content.ilike.%{kw}%" for kw in keywords]
-    if or_filters:
-        query = query.or_(",".join(or_filters))
+    query = query.order("ts_rank", desc=True)
     query = query.limit(match_count)
     results = query.execute().data or []
+    # Attach the ts_rank as keyword_score for downstream use
+    for r in results:
+        r["keyword_score"] = r.get("ts_rank", 0)
     return results
 
 
