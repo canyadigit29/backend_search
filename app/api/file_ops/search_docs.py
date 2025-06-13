@@ -252,22 +252,19 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
     Keyword search over document_chunks table using Postgres FTS (ts_rank/BM25).
     Returns chunks containing any of the keywords, with a ts_rank score.
     """
-    # Build the FTS query string
-    ts_query = ' & '.join([kw for kw in keywords if kw])
-    query = supabase.table("document_chunks").select("*", "ts_rank:ts_rank_cd(to_tsvector('english', content), plainto_tsquery('english', %s))" % (" | ".join(keywords)))
-    if user_id_filter:
-        query = query.eq("user_id", user_id_filter)
-    if file_name_filter:
-        query = query.eq("file_name", file_name_filter)
-    if description_filter:
-        query = query.eq("description", description_filter)
-    if start_date:
-        query = query.gte("created_at", start_date)
-    if end_date:
-        query = query.lte("created_at", end_date)
-    query = query.order("ts_rank", desc=True)
-    query = query.limit(match_count)
-    results = query.execute().data or []
+    # Join keywords for query
+    keyword_query = " ".join(keywords)
+    rpc_args = {
+        "keyword_query": keyword_query,
+        "user_id_filter": user_id_filter,
+        "file_name_filter": file_name_filter,
+        "description_filter": description_filter,
+        "match_count": match_count
+    }
+    response = supabase.rpc("match_documents_fts", rpc_args).execute()
+    if getattr(response, "error", None):
+        return []
+    results = response.data or []
     # Attach the ts_rank as keyword_score for downstream use
     for r in results:
         r["keyword_score"] = r.get("ts_rank", 0)
