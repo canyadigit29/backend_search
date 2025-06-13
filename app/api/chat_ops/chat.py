@@ -78,6 +78,11 @@ async def chat_with_context(payload: ChatRequest):
             "user_prompt": prompt,
             "search_query": search_query  # Pass extracted search phrase for boosting
         }
+        # --- Debug logging for prompt and query extraction ---
+        print(f"[DEBUG] User prompt: {prompt}", flush=True)
+        print(f"[DEBUG] Extracted query: {extracted_query}", flush=True)
+        print(f"[DEBUG] Embedding length: {len(embedding) if hasattr(embedding, '__len__') else 'unknown'}", flush=True)
+        print(f"[DEBUG] Tool args: {{k: v for k, v in tool_args.items() if k != 'embedding'}}", flush=True)
         # --- Hybrid search: semantic + keyword ---
         # Only call perform_search, which now handles all boosting, merging, and debug output
         semantic_result = perform_search(tool_args)
