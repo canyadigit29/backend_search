@@ -101,7 +101,6 @@ def perform_search(tool_args):
         print(f"[DEBUG] Boosting check: phrase_lower='{phrase_lower}'", flush=True)
         for k in keyword_results:
             content_lower = k.get("content", "").lower()
-            print(f"[DEBUG] Checking keyword result id={k.get('id')} content_lower[:100]='{content_lower[:100]}'", flush=True)
             orig_score = k.get("score", 0)
             # Determine if we should apply a higher boost
             num_words = len((phrase_lower or '').split())
@@ -119,7 +118,6 @@ def perform_search(tool_args):
             elif k["id"] in all_matches:
                 prev_score = all_matches[k["id"]].get("score", 0)
                 if prev_score < 1.0:
-                    print(f"[DEBUG] BOOSTED: keyword overlap for id={k.get('id')}", flush=True)
                     all_matches[k["id"]]["original_score"] = prev_score
                     all_matches[k["id"]]["score"] = prev_score + 1.0  # Additive boost for keyword overlap
                     all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
@@ -174,12 +172,13 @@ def perform_search(tool_args):
         boosted_results = [m for m in matches if m.get("boosted_reason")]
         if boosted_results:
             print(f"[DEBUG] Boosted results found: {len(boosted_results)}", flush=True)
-            for m in boosted_results:
-                preview = (m.get("content", "") or "")[:200].replace("\n", " ")
-                boost_info = f" [BOOSTED: {m.get('boosted_reason')}, orig_score={m.get('original_score', 'n/a')}]"
-                sim_score = m.get("score", 0)
-                orig_score = m.get("original_score", sim_score)
-                print(f"[DEBUG] BOOSTED RESULT | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
+            # Removed detailed BOOSTED RESULT debug print
+            # for m in boosted_results:
+            #     preview = (m.get("content", "") or "")[:200].replace("\n", " ")
+            #     boost_info = f" [BOOSTED: {m.get('boosted_reason')}, orig_score={m.get('original_score', 'n/a')}]"
+            #     sim_score = m.get("score", 0)
+            #     orig_score = m.get("original_score", sim_score)
+            #     print(f"[DEBUG] BOOSTED RESULT | sim_score: {sim_score} | orig_score: {orig_score} | id: {m.get('id')} | preview: {preview}{boost_info}", flush=True)
         else:
             print("[DEBUG] No boosted results found.", flush=True)
         print(f"[DEBUG] matches for response: {len(matches)}", flush=True)
