@@ -32,6 +32,7 @@ async def chat_with_context(request: Request):
     try:
         data = await request.json()
         if isinstance(data, dict) and data.get("command") == "run_score_test":
+            from app.api.file_ops.search_docs import perform_search  # Ensure perform_search is in scope
             # Step 1: Sample real meeting minutes content from the database
             # We'll sample 10 random chunks (meeting minutes snippets)
             rows = supabase.table("document_chunks").select("content").limit(20).execute().data
