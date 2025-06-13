@@ -3,7 +3,7 @@ import os
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -27,7 +27,64 @@ class ChatRequest(BaseModel):
     previous_chunks: list = None  # Optional, for follow-up queries
 
 @router.post("/chat")
-async def chat_with_context(payload: ChatRequest):
+async def chat_with_context(payload: ChatRequest, request: Request = None):
+    # --- Special command: run_score_test ---
+    try:
+        if request is not None:
+            data = await request.json()
+            if isinstance(data, dict) and data.get("command") == "run_score_test":
+                # --- LLM-driven threshold evaluation logic ---
+                # 1. Sample N queries from the database (e.g., 5 random meeting minutes queries)
+                # 2. For each query, run hybrid search at several thresholds (e.g., 0.2, 0.3, 0.4, 0.5, 0.6)
+                # 3. For each result set, ask the LLM to rate the quality of the results
+                # 4. Aggregate LLM ratings and recommend the best threshold
+                import random
+                from app.api.file_ops.search_docs import perform_search
+                from app.core.openai_client import chat_completion
+                # Step 1: Sample queries
+                # For demo: use hardcoded or random queries from the DB
+                sample_queries = [
+                    "What was discussed about zoning in 2024?",
+                    "Budget amendments in March meetings",
+                    "Appointments to the planning commission",
+                    "Public comments on ordinances",
+                    "Changes to city code in 2023"
+                ]
+                thresholds = [0.2, 0.3, 0.4, 0.5, 0.6]
+                ratings = {t: [] for t in thresholds}
+                for query in sample_queries:
+                    for t in thresholds:
+                        # Run hybrid search at this threshold
+                        tool_args = {
+                            "embedding": None,  # Will be generated in perform_search
+                            "user_id_filter": data.get("user_id", ""),
+                            "user_prompt": query,
+                            "search_query": query,
+                            "match_threshold": t,
+                            "match_count": 10
+                        }
+                        result = perform_search(tool_args)
+                        chunks = result.get("retrieved_chunks", [])
+                        # Prepare a summary of the results
+                        result_text = "\n\n".join([c.get("content", "")[:300] for c in chunks[:3]])
+                        llm_prompt = [
+                            {"role": "system", "content": "You are an expert search quality evaluator. Given a user query and the top 3 search results, rate the overall relevance and usefulness of the results on a scale from 1 (poor) to 5 (excellent). Respond only with a single integer rating and a one-sentence justification."},
+                            {"role": "user", "content": f"Query: {query}\n\nResults:\n{result_text}"}
+                        ]
+                        llm_response = chat_completion(llm_prompt, model="gpt-4o")
+                        # Parse rating (look for a number 1-5)
+                        import re
+                        match = re.search(r"([1-5])", llm_response)
+                        if match:
+                            ratings[t].append(int(match.group(1)))
+                # Aggregate ratings
+                avg_ratings = {t: (sum(ratings[t])/len(ratings[t]) if ratings[t] else 0) for t in thresholds}
+                best_threshold = max(avg_ratings, key=avg_ratings.get)
+                recommendation = f"Recommended similarity threshold: {best_threshold:.2f} (LLM-evaluated).\n\nDetails: {avg_ratings}"
+                return {"recommendation": recommendation}
+    except Exception as e:
+        return {"error": f"Score test failed: {e}"}
+
     try:
         prompt = payload.user_prompt.strip()
 
