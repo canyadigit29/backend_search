@@ -32,12 +32,9 @@ async def chat_with_context(request: Request):
     try:
         data = await request.json()
         if isinstance(data, dict) and data.get("command") == "run_score_test":
-            from app.api.file_ops.search_docs import perform_search  # Ensure perform_search is in scope
-            # Step 1: Sample real meeting minutes content from the database
-            # We'll sample 10 random chunks (meeting minutes snippets)
+            from app.api.file_ops.search_docs import perform_search
             rows = supabase.table("document_chunks").select("content").limit(20).execute().data
             sample_contents = [row["content"] for row in rows if row.get("content")]
-            # Step 2: Use LLM to generate realistic search queries based on these samples
             llm_query_prompt = [
                 {"role": "system", "content": "You are an expert at writing search queries for a council meeting minutes search engine. Given the following real meeting minutes snippets, generate 10 realistic, diverse search queries that a typical user (including residents, journalists, and staff) might ask to find information in these minutes. Mix general, everyday, and practical questions with a few professional or technical ones, but avoid only highly specific or expert-level queries. Return only the queries as a numbered list."},
                 {"role": "user", "content": "\n\n".join(sample_contents[:10])}
@@ -50,33 +47,71 @@ async def chat_with_context(request: Request):
                 sample_queries = [q.strip("- ") for q in queries_response.split("\n") if q.strip()]
             if len(sample_queries) > 10:
                 sample_queries = sample_queries[:10]
+            # --- Iterative LLM-in-the-loop tuning ---
             thresholds = [0.2, 0.3, 0.4, 0.5, 0.6]
-            ratings = {t: [] for t in thresholds}
-            for query in sample_queries:
-                for t in thresholds:
+            alpha_beta_grid = [(a, 1-a) for a in [0.5, 0.6, 0.7, 0.8]]
+            max_attempts = 5
+            attempt = 0
+            best_score = -1
+            best_params = None
+            best_results = None
+            history = []
+            params = {"threshold": 0.3, "alpha": 0.7, "beta": 0.3}
+            while attempt < max_attempts:
+                attempt += 1
+                all_llm_scores = []
+                all_llm_feedback = []
+                for query in sample_queries:
                     tool_args = {
-                        "embedding": None,  # Will be generated in perform_search
+                        "embedding": None,
                         "user_id_filter": data.get("user_id", ""),
                         "user_prompt": query,
                         "search_query": query,
-                        "match_threshold": t,
-                        "match_count": 10
+                        "match_threshold": params["threshold"],
+                        "match_count": 10,
+                        "alpha": params["alpha"],
+                        "beta": params["beta"]
                     }
                     result = perform_search(tool_args)
                     chunks = result.get("retrieved_chunks", [])
-                    result_text = "\n\n".join([c.get("content", "")[:300] for c in chunks[:3]])
+                    # Pass all results to LLM for re-ranking
+                    result_text = "\n\n".join([f"[{i+1}] {c.get('content','')[:300]}" for i, c in enumerate(chunks)])
                     llm_prompt = [
-                        {"role": "system", "content": "You are an expert search quality evaluator. Given a user query and the top 3 search results, rate the overall relevance and usefulness of the results on a scale from 1 (poor) to 5 (excellent). Respond only with a single integer rating and a one-sentence justification."},
-                        {"role": "user", "content": f"Query: {query}\n\nResults:\n{result_text}"}
+                        {"role": "system", "content": "You are an expert search quality evaluator and parameter tuner. Given a user query and the top 10 search results, re-rank the results for best relevance, assign a new score (0-1) to each, and suggest new values for the similarity threshold and hybrid weights (alpha for semantic, beta for keyword) if you think results can be improved. Respond in JSON: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str}"},
+                        {"role": "user", "content": f"Query: {query}\n\nResults:\n{result_text}\n\nCurrent params: threshold={params['threshold']}, alpha={params['alpha']}, beta={params['beta']}"}
                     ]
                     llm_response = chat_completion(llm_prompt, model="gpt-4o")
-                    match = re.search(r"([1-5])", llm_response)
-                    if match:
-                        ratings[t].append(int(match.group(1)))
-            avg_ratings = {t: (sum(ratings[t])/len(ratings[t]) if ratings[t] else 0) for t in thresholds}
-            best_threshold = max(avg_ratings, key=avg_ratings.get)
-            recommendation = f"Recommended similarity threshold: {best_threshold:.2f} (LLM-evaluated).\n\nDetails: {avg_ratings}\n\nSample queries: {sample_queries}"
-            return {"recommendation": recommendation}
+                    try:
+                        llm_json = json.loads(llm_response)
+                        reranked = llm_json.get("reranked", [])
+                        feedback = llm_json.get("feedback", "")
+                        suggested_threshold = llm_json.get("suggested_threshold", params["threshold"])
+                        suggested_alpha = llm_json.get("suggested_alpha", params["alpha"])
+                        suggested_beta = llm_json.get("suggested_beta", params["beta"])
+                        # Apply new scores and order
+                        for r in reranked:
+                            idx = r["index"]
+                            if 0 <= idx < len(chunks):
+                                chunks[idx]["llm_score"] = r["score"]
+                        chunks.sort(key=lambda x: x.get("llm_score", 0), reverse=True)
+                        all_llm_scores.append(sum([r["score"] for r in reranked])/len(reranked) if reranked else 0)
+                        all_llm_feedback.append(feedback)
+                        # Update params for next attempt
+                        params["threshold"] = suggested_threshold
+                        params["alpha"] = suggested_alpha
+                        params["beta"] = suggested_beta
+                    except Exception as e:
+                        all_llm_feedback.append(f"LLM response parse error: {e}, raw: {llm_response}")
+                avg_score = sum(all_llm_scores)/len(all_llm_scores) if all_llm_scores else 0
+                history.append({"attempt": attempt, "params": params.copy(), "avg_score": avg_score, "feedback": all_llm_feedback})
+                if avg_score > best_score:
+                    best_score = avg_score
+                    best_params = params.copy()
+                    best_results = {"queries": sample_queries, "chunks": chunks, "feedback": all_llm_feedback}
+                # Stopping condition: perfect score or no improvement
+                if avg_score >= 1.0 or attempt == max_attempts:
+                    break
+            return {"best_params": best_params, "best_score": best_score, "history": history, "results": best_results}
     except Exception as e:
         return {"error": f"Score test failed: {e}"}
 
