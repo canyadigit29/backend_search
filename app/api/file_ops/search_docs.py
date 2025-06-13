@@ -64,6 +64,8 @@ def perform_search(tool_args):
         for tool_key, rpc_key in metadata_fields:
             if tool_args.get(tool_key) is not None:
                 rpc_args[rpc_key] = tool_args[tool_key]
+        # Debug: print the actual rpc_args sent to Supabase
+        print(f"[DEBUG] Supabase RPC args: {json.dumps(rpc_args, default=str)}", flush=True)
         response = supabase.rpc("match_documents", rpc_args).execute()
         if getattr(response, "error", None):
             return {"error": f"Supabase RPC failed: {response.error.message}"}
