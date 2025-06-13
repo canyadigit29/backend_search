@@ -52,6 +52,13 @@ def perform_search(tool_args):
             "match_threshold": 0.3,  # Lowered from 3.5 to 0.3
             "match_count": tool_args.get("match_count", 300)
         }
+        # Add metadata filters if present
+        metadata_fields = [
+            "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "document_type", "ordinance_title"
+        ]
+        for field in metadata_fields:
+            if tool_args.get(field) is not None:
+                rpc_args[field] = tool_args[field]
         response = supabase.rpc("match_documents", rpc_args).execute()
         if getattr(response, "error", None):
             return {"error": f"Supabase RPC failed: {response.error.message}"}
