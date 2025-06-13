@@ -16,30 +16,42 @@ BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 async def sync_storage_to_files_table():
     """
     Ensure every file in the Supabase storage bucket has a row in the files table.
+    Recursively list all files in all subfolders (user folders).
     Only add rows for files not already present, with ingestion=False.
     """
     logger.info("[SYNC] Checking for storage files missing from files table...")
     bucket = BUCKET or "files"
     try:
-        # List all files in the storage bucket (flat, no folders)
-        list_response = supabase.storage.from_(bucket).list(options={"limit": 10000})
-        storage_files = getattr(list_response, "data", [])
-        logger.info(f"[SYNC] Found {len(storage_files)} files in storage bucket '{bucket}'")
+        # Helper to recursively list all files in all folders
+        def list_all_files(path=""):
+            files = []
+            list_response = supabase.storage.from_(bucket).list(path=path, options={"limit": 1000})
+            items = getattr(list_response, "data", [])
+            for item in items:
+                if item.get("metadata", {}).get("type") == "folder":
+                    # Recurse into subfolder
+                    files.extend(list_all_files(path + item["name"] + "/"))
+                else:
+                    # File object
+                    item_path = path + item["name"]
+                    item["name"] = item_path
+                    files.append(item)
+            return files
+
+        storage_files = list_all_files("")
+        logger.info(f"[SYNC] Found {len(storage_files)} files in storage bucket '{bucket}' (recursive)")
         # Get all file_paths in the files table
         db_files = supabase.table("files").select("file_path").execute()
         db_file_paths = set(f["file_path"] for f in (db_files.data or []))
         new_files = [f for f in storage_files if f["name"] not in db_file_paths]
         logger.info(f"[SYNC] {len(new_files)} files in storage not in files table")
         for file_obj in new_files:
-            # Try to extract user_id from path if possible (e.g. user_id/filename)
             file_path = file_obj["name"]
             size = file_obj.get("metadata", {}).get("size", file_obj.get("size", 0))
             created_at = file_obj.get("created_at") or datetime.utcnow().isoformat()
-            # Try to parse user_id from file_path (assume format: user_id/filename)
             user_id = None
             if "/" in file_path:
                 user_id = file_path.split("/")[0]
-            # Insert minimal row; set ingestion=False
             file_row = {
                 "user_id": user_id or None,
                 "file_path": file_path,
