@@ -125,6 +125,21 @@ def perform_search(tool_args):
                 all_matches[k["id"]] = k
         matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+        # --- Filter matches by metadata fields after merging ---
+        metadata_fields = [
+            ("meeting_year", "meeting_year"),
+            ("meeting_month", "meeting_month"),
+            ("meeting_month_name", "meeting_month_name"),
+            ("meeting_day", "meeting_day"),
+            ("document_type", "document_type"),
+            ("ordinance_title", "ordinance_title"),
+        ]
+        for tool_key, match_key in metadata_fields:
+            filter_value = tool_args.get(tool_key)
+            if filter_value is not None:
+                matches = [m for m in matches if m.get(match_key) == filter_value]
+
         # [DEBUG SCORES] Begin score analysis
         def avg(lst):
             return sum(lst) / len(lst) if lst else 0
