@@ -3,6 +3,7 @@ import os
 from collections import defaultdict
 import sys
 import statistics
+import httpx
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -261,14 +262,26 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
         "description_filter": description_filter,
         "match_count": match_count
     }
-    response = supabase.rpc("match_documents_fts", rpc_args).execute()
-    if getattr(response, "error", None):
+    # Manual HTTPX call to Supabase RPC endpoint with required headers
+    supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
+    service_role = os.environ["SUPABASE_SERVICE_ROLE"]
+    endpoint = f"{supabase_url}/rest/v1/rpc/match_documents_fts"
+    headers = {
+        "apikey": service_role,
+        "Authorization": f"Bearer {service_role}",
+        "Content-Type": "application/json"
+    }
+    try:
+        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
+        response.raise_for_status()
+        results = response.json() or []
+        # Attach the ts_rank as keyword_score for downstream use
+        for r in results:
+            r["keyword_score"] = r.get("ts_rank", 0)
+        return results
+    except Exception as e:
+        # Optionally log the error
         return []
-    results = response.data or []
-    # Attach the ts_rank as keyword_score for downstream use
-    for r in results:
-        r["keyword_score"] = r.get("ts_rank", 0)
-    return results
 
 
 def get_neighbor_chunks(chunk, all_chunks_by_file):
