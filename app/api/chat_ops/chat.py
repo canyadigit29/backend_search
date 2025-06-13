@@ -111,7 +111,13 @@ async def chat_with_context(request: Request):
                 # Stopping condition: perfect score or no improvement
                 if avg_score >= 1.0 or attempt == max_attempts:
                     break
-            return {"best_params": best_params, "best_score": best_score, "history": history, "results": best_results}
+            stopping_reason = ""
+            if avg_score >= 1.0:
+                stopping_reason = "LLM was satisfied with the results and ended the test."
+            elif attempt == max_attempts:
+                stopping_reason = "Maximum number of test rounds reached."
+            # Include stopping_reason in the full response
+            return {"best_params": best_params, "best_score": best_score, "history": history, "results": best_results, "stopping_reason": stopping_reason}
     except Exception as e:
         return {"error": f"Score test failed: {e}"}
 
