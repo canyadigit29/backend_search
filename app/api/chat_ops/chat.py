@@ -117,7 +117,19 @@ async def chat_with_context(request: Request):
             elif attempt == max_attempts:
                 stopping_reason = "Maximum number of test rounds reached."
             # Include stopping_reason in the full response
-            return {"best_params": best_params, "best_score": best_score, "history": history, "results": best_results, "stopping_reason": stopping_reason}
+            # Compose a human-readable summary for the UI
+            summary_lines = [
+                "Score test completed!",
+                f"{stopping_reason}",
+                f"Best parameters found: threshold={best_params['threshold']:.2f}, alpha={best_params['alpha']:.2f}, beta={best_params['beta']:.2f}",
+                f"Best average LLM score: {best_score:.2f}",
+            ]
+            if best_results and best_results.get("feedback"):
+                summary_lines.append("\nLLM Feedback on final attempt:")
+                for feedback in best_results["feedback"]:
+                    summary_lines.append(f"- {feedback}")
+            summary = "\n".join(summary_lines)
+            return {"content": summary}
     except Exception as e:
         return {"error": f"Score test failed: {e}"}
 
