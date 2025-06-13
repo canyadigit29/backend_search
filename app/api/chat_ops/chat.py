@@ -33,28 +33,27 @@ async def chat_with_context(payload: ChatRequest, request: Request = None):
         if request is not None:
             data = await request.json()
             if isinstance(data, dict) and data.get("command") == "run_score_test":
-                # --- LLM-driven threshold evaluation logic ---
-                # 1. Sample N queries from the database (e.g., 5 random meeting minutes queries)
-                # 2. For each query, run hybrid search at several thresholds (e.g., 0.2, 0.3, 0.4, 0.5, 0.6)
-                # 3. For each result set, ask the LLM to rate the quality of the results
-                # 4. Aggregate LLM ratings and recommend the best threshold
-                import random
-                from app.api.file_ops.search_docs import perform_search
-                from app.core.openai_client import chat_completion
-                # Step 1: Sample queries
-                # For demo: use hardcoded or random queries from the DB
-                sample_queries = [
-                    "What was discussed about zoning in 2024?",
-                    "Budget amendments in March meetings",
-                    "Appointments to the planning commission",
-                    "Public comments on ordinances",
-                    "Changes to city code in 2023"
+                # Step 1: Sample real meeting minutes content from the database
+                # We'll sample 10 random chunks (meeting minutes snippets)
+                rows = supabase.table("document_chunks").select("content").limit(20).execute().data
+                sample_contents = [row["content"] for row in rows if row.get("content")]
+                # Step 2: Use LLM to generate realistic search queries based on these samples
+                llm_query_prompt = [
+                    {"role": "system", "content": "You are an expert at writing search queries for a council meeting minutes search engine. Given the following real meeting minutes snippets, generate 10 realistic, diverse search queries that a typical user (including residents, journalists, and staff) might ask to find information in these minutes. Mix general, everyday, and practical questions with a few professional or technical ones, but avoid only highly specific or expert-level queries. Return only the queries as a numbered list."},
+                    {"role": "user", "content": "\n\n".join(sample_contents[:10])}
                 ]
+                queries_response = chat_completion(llm_query_prompt, model="gpt-4o")
+                import re
+                sample_queries = re.findall(r"\d+\.\s*(.+)", queries_response)
+                if not sample_queries:
+                    # fallback: split by lines
+                    sample_queries = [q.strip("- ") for q in queries_response.split("\n") if q.strip()]
+                if len(sample_queries) > 10:
+                    sample_queries = sample_queries[:10]
                 thresholds = [0.2, 0.3, 0.4, 0.5, 0.6]
                 ratings = {t: [] for t in thresholds}
                 for query in sample_queries:
                     for t in thresholds:
-                        # Run hybrid search at this threshold
                         tool_args = {
                             "embedding": None,  # Will be generated in perform_search
                             "user_id_filter": data.get("user_id", ""),
@@ -65,22 +64,18 @@ async def chat_with_context(payload: ChatRequest, request: Request = None):
                         }
                         result = perform_search(tool_args)
                         chunks = result.get("retrieved_chunks", [])
-                        # Prepare a summary of the results
                         result_text = "\n\n".join([c.get("content", "")[:300] for c in chunks[:3]])
                         llm_prompt = [
                             {"role": "system", "content": "You are an expert search quality evaluator. Given a user query and the top 3 search results, rate the overall relevance and usefulness of the results on a scale from 1 (poor) to 5 (excellent). Respond only with a single integer rating and a one-sentence justification."},
                             {"role": "user", "content": f"Query: {query}\n\nResults:\n{result_text}"}
                         ]
                         llm_response = chat_completion(llm_prompt, model="gpt-4o")
-                        # Parse rating (look for a number 1-5)
-                        import re
                         match = re.search(r"([1-5])", llm_response)
                         if match:
                             ratings[t].append(int(match.group(1)))
-                # Aggregate ratings
                 avg_ratings = {t: (sum(ratings[t])/len(ratings[t]) if ratings[t] else 0) for t in thresholds}
                 best_threshold = max(avg_ratings, key=avg_ratings.get)
-                recommendation = f"Recommended similarity threshold: {best_threshold:.2f} (LLM-evaluated).\n\nDetails: {avg_ratings}"
+                recommendation = f"Recommended similarity threshold: {best_threshold:.2f} (LLM-evaluated).\n\nDetails: {avg_ratings}\n\nSample queries: {sample_queries}"
                 return {"recommendation": recommendation}
     except Exception as e:
         return {"error": f"Score test failed: {e}"}
