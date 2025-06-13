@@ -14,7 +14,7 @@ def log_message(
     try:
         # Railway passes env variables directly — use them here
         supabase_url = os.environ["SUPABASE_URL"]
-        supabase_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+        supabase_key = os.environ["SUPABASE_SERVICE_ROLE"]
         supabase: Client = create_client(supabase_url, supabase_key)
 
         log_entry = {
