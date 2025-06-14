@@ -77,12 +77,20 @@ async def chat_with_context(request: Request):
                     # Pass all results to LLM for re-ranking
                     result_text = "\n\n".join([f"[{i+1}] {c.get('content','')[:300]}" for i, c in enumerate(chunks)])
                     llm_prompt = [
-                        {"role": "system", "content": "You are an expert search quality evaluator and parameter tuner. Given a user query and the top 10 search results, re-rank the results for best relevance, assign a new score (0-1) to each, and suggest new values for the similarity threshold and hybrid weights (alpha for semantic, beta for keyword) if you think results can be improved. Respond in JSON: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str}"},
+                        {"role": "system", "content": "You are an expert search quality evaluator and parameter tuner. Given a user query and the top 10 search results, re-rank the results for best relevance, assign a new score (0-1) to each, and suggest new values for the similarity threshold and hybrid weights (alpha for semantic, beta for keyword) if you think results can be improved. Respond ONLY with a valid JSON object, no markdown, no code block, no explanation outside the JSON. Example: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str}"},
                         {"role": "user", "content": f"Query: {query}\n\nResults:\n{result_text}\n\nCurrent params: threshold={params['threshold']}, alpha={params['alpha']}, beta={params['beta']}"}
                     ]
                     llm_response = chat_completion(llm_prompt, model="gpt-4o")
+                    # Fix: Strip code block markers if present
+                    llm_response_clean = llm_response.strip()
+                    if llm_response_clean.startswith('```json'):
+                        llm_response_clean = llm_response_clean[7:]
+                    if llm_response_clean.startswith('```'):
+                        llm_response_clean = llm_response_clean[3:]
+                    if llm_response_clean.endswith('```'):
+                        llm_response_clean = llm_response_clean[:-3]
                     try:
-                        llm_json = json.loads(llm_response)
+                        llm_json = json.loads(llm_response_clean)
                         reranked = llm_json.get("reranked", [])
                         feedback = llm_json.get("feedback", "")
                         suggested_threshold = llm_json.get("suggested_threshold", params["threshold"])
