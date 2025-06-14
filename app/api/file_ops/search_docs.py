@@ -90,37 +90,10 @@ def perform_search(tool_args):
         keywords = [w for w in re.split(r"\W+", search_query or "") if w and w.lower() not in stopwords]
         from app.api.file_ops.search_docs import keyword_search
         keyword_results = keyword_search(keywords, user_id_filter=user_id_filter)
-        # Removed debug print: [DEBUG] Keyword search returned ...
-        # Removed debug print: [DEBUG] Entered hybrid search/boosting section
         all_matches = {m["id"]: m for m in semantic_matches}
-        phrase = (search_query or "").strip('"') if (search_query or "").startswith('"') and (search_query or "").endswith('"') else (search_query or "")
-        phrase_lower = phrase.lower()
-        boosted_ids = set()
-        # Removed debug print: [DEBUG] Boosting check: phrase_lower=...
+        # Remove all additive boosting for phrase/keyword matches
         for k in keyword_results:
-            content_lower = k.get("content", "").lower()
-            orig_score = k.get("score", 0)
-            # Determine if we should apply a higher boost
-            num_words = len((phrase_lower or '').split())
-            high_boost = (num_words <= 4) or (len(keyword_results) <= 3)
-            if phrase_lower in content_lower:
-                if high_boost:
-                    k["score"] = orig_score + 1.0  # Reduced boost for exact phrase match
-                else:
-                    k["score"] = orig_score + 0.08  # Default (legacy) boost
-                k["boosted_reason"] = "exact_phrase"
-                k["original_score"] = orig_score
-                all_matches[k["id"]] = k
-                boosted_ids.add(k["id"])
-            elif k["id"] in all_matches:
-                prev_score = all_matches[k["id"]].get("score", 0)
-                if prev_score < 1.0:
-                    all_matches[k["id"]]["original_score"] = prev_score
-                    all_matches[k["id"]]["score"] = prev_score + 1.0  # Additive boost for keyword overlap
-                    all_matches[k["id"]]["boosted_reason"] = "keyword_overlap"
-                    boosted_ids.add(k["id"])
-            else:
-                k["score"] = orig_score + 0.5  # Additive, but still lower for pure keyword (was 0.8)
+            if k["id"] not in all_matches:
                 all_matches[k["id"]] = k
         matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
