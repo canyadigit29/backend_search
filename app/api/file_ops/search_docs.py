@@ -184,12 +184,15 @@ def perform_search(tool_args):
             m["semantic_score"] = (raw - min_sem) / (max_sem - min_sem) if max_sem > min_sem else 0
 
         # --- Weighted sum for final score ---
-        alpha = 0.7  # weight for semantic (updated to match latest score test)
-        beta = 0.3   # weight for keyword (updated to match latest score test)
+        alpha = 0.7  # weight for semantic (recommended default)
+        beta = 0.3   # weight for keyword (recommended default)
         for m in all_matches.values():
             m["final_score"] = alpha * m["semantic_score"] + beta * m["keyword_score"]
 
         matches = list(all_matches.values())
+        # Apply threshold to filter out weak matches
+        threshold = 0.4  # recommended starting threshold
+        matches = [m for m in matches if m["final_score"] >= threshold]
         matches.sort(key=lambda x: x.get("final_score", 0), reverse=True)
         return {"retrieved_chunks": matches}
     except Exception as e:
