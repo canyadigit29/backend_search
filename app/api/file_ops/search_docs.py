@@ -184,9 +184,9 @@ def perform_search(tool_args):
             # Removed debug print: [DEBUG] No boosted results found.
             pass
         # Removed debug print: [DEBUG] matches for response: ...
-        # Limit to top 20 results for all semantic/hybrid searches
-        matches = matches[:20]
-        # Removed debug print: [DEBUG] Returning ... matches (max 20) in perform_search.
+        # Limit to top 100 results for all semantic/hybrid searches
+        matches = matches[:100]
+        # Removed debug print: [DEBUG] Returning ... matches (max 100) in perform_search.
         # --- Add keyword_score to each match ---
         # Count keyword hits for each match
         def count_keyword_hits(text, keywords):
