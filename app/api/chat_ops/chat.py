@@ -153,6 +153,29 @@ async def chat_with_context(request: Request):
                 summary_lines.append("\nLLM Feedback on final attempt:")
                 for feedback in best_results["feedback"]:
                     summary_lines.append(f"- {feedback}")
+            # Final consolidated summary of best parameters and suggestions
+            final_suggestion = None
+            final_code_change = None
+            final_new_query = None
+            # Try to extract from the last attempt with feedback as dict (if LLM returned structured feedback)
+            for entry in reversed(history):
+                for fb in entry.get("feedback", []):
+                    if isinstance(fb, dict):
+                        if fb.get("suggested_code_change") and not final_code_change:
+                            final_code_change = fb["suggested_code_change"]
+                        if fb.get("new_query") and not final_new_query:
+                            final_new_query = fb["new_query"]
+                        if not final_suggestion:
+                            final_suggestion = fb
+            # Compose a clear summary
+            summary_lines.append("\nFinal LLM Parameter Suggestion:")
+            summary_lines.append(f"  threshold: {best_params['threshold']:.2f}")
+            summary_lines.append(f"  alpha: {best_params['alpha']:.2f}")
+            summary_lines.append(f"  beta: {best_params['beta']:.2f}")
+            if final_new_query:
+                summary_lines.append(f"  new_query: {final_new_query}")
+            if final_code_change:
+                summary_lines.append(f"  suggested_code_change:\n{final_code_change}")
             summary = "\n".join(summary_lines)
             # Print the summary to the Railway log for debugging
             print("\n" + summary + "\n", flush=True)
