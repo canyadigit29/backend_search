@@ -50,7 +50,7 @@ async def chat_with_context(request: Request):
             # --- Iterative LLM-in-the-loop tuning ---
             thresholds = [0.2, 0.3, 0.4, 0.5, 0.6]
             alpha_beta_grid = [(a, 1-a) for a in [0.5, 0.6, 0.7, 0.8]]
-            max_attempts = 5
+            max_attempts = 10
             attempt = 0
             best_score = -1
             best_params = None
@@ -244,7 +244,39 @@ async def chat_with_context(request: Request):
         except Exception as e:
             summary = None
 
-        return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query}
+        # --- LLM-driven parameter tuning: rerank and suggest new params ---
+        # Step 1: Run initial search as before (already done above)
+        # Step 2: Ask LLM to rerank and suggest new params
+        result_text = "\n\n".join([f"[{i+1}] {c.get('content','')[:300]}" for i, c in enumerate(chunks)])
+        llm_prompt = [
+            {"role": "system", "content": "You are an expert search quality evaluator and parameter tuner. Given a user query and the top 10-100 search results, re-rank the results for best relevance, assign a new score (0-1) to each, and suggest new values for the similarity threshold and hybrid weights (alpha for semantic, beta for keyword) if you think results can be improved. Respond ONLY with a valid JSON object, no markdown, no code block, no explanation outside the JSON. Example: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str}"},
+            {"role": "user", "content": f"Query: {prompt}\n\nResults:\n{result_text}\n\nCurrent params: threshold=0.6, alpha=0.9, beta=0.1"}
+        ]
+        llm_response = chat_completion(llm_prompt, model="gpt-4o")
+        llm_response_clean = llm_response.strip()
+        if llm_response_clean.startswith('```json'):
+            llm_response_clean = llm_response_clean[7:]
+        if llm_response_clean.startswith('```'):
+            llm_response_clean = llm_response_clean[3:]
+        if llm_response_clean.endswith('```'):
+            llm_response_clean = llm_response_clean[:-3]
+        try:
+            llm_json = json.loads(llm_response_clean)
+            reranked = llm_json.get("reranked", [])
+            feedback = llm_json.get("feedback", "")
+            suggested_threshold = llm_json.get("suggested_threshold", 0.6)
+            suggested_alpha = llm_json.get("suggested_alpha", 0.9)
+            suggested_beta = llm_json.get("suggested_beta", 0.1)
+            # Apply new scores and order
+            for r in reranked:
+                idx = r["index"]
+                if 0 <= idx < len(chunks):
+                    chunks[idx]["llm_score"] = r["score"]
+            chunks.sort(key=lambda x: x.get("llm_score", 0), reverse=True)
+            # Optionally, re-run search with new params (not required for first test)
+        except Exception as e:
+            feedback = f"LLM response parse error: {e}, raw: {llm_response}"
+        return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query, "llm_feedback": feedback}
 
     except Exception as e:
         return {"error": str(e)}
