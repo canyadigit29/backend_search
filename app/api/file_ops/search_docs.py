@@ -50,7 +50,7 @@ def perform_search(tool_args):
             "description_filter": description_filter,
             "start_date": start_date,
             "end_date": end_date,
-            "match_threshold": tool_args.get("match_threshold", 0.8),  # Updated default threshold to 0.8 per latest score test
+            "match_threshold": tool_args.get("match_threshold", 0.5),  # Updated default threshold to 0.5 per latest score test
             "match_count": tool_args.get("match_count", 300)
         }
         # Add metadata filters with filter_ prefix for SQL compatibility
@@ -211,8 +211,8 @@ def perform_search(tool_args):
             m["semantic_score"] = (raw - min_sem) / (max_sem - min_sem) if max_sem > min_sem else 0
 
         # --- Weighted sum for final score ---
-        alpha = 0.8  # weight for semantic (updated to match latest score test)
-        beta = 0.2   # weight for keyword (updated to match latest score test)
+        alpha = 0.7  # weight for semantic (updated to match latest score test)
+        beta = 0.3   # weight for keyword (updated to match latest score test)
         for m in all_matches.values():
             m["final_score"] = alpha * m["semantic_score"] + beta * m["keyword_score"]
 
