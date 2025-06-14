@@ -288,6 +288,36 @@ async def chat_with_context(request: Request):
             # Optionally, re-run search with new params (not required for first test)
         except Exception as e:
             feedback = f"LLM response parse error: {e}, raw: {llm_response}"
+        # --- Alias Extraction and Query Expansion ---
+        # Step 1: Run initial search as before (already done above)
+        # Step 2: Ask LLM to extract aliases/identifiers from the top results
+        alias_extraction_prompt = [
+            {"role": "system", "content": (
+                "You are an expert at entity and alias extraction. Given a user query and the top search results, identify any alternate names, roles, titles, legal names, addresses, or identifiers that refer to the same person, place, or thing as the original query. "
+                "Return a JSON list of all discovered aliases or identifiers, excluding the original query term. If none are found, return an empty list. Example: [\"Wellspring Church Building\", \"the solicitor\", \"123 Main St\"]"
+            )},
+            {"role": "user", "content": f"Query: {prompt}\n\nSearch results:\n{top_text}"}
+        ]
+        alias_response = chat_completion(alias_extraction_prompt, model="gpt-4o")
+        try:
+            alias_list = json.loads(alias_response)
+        except Exception:
+            alias_list = []
+        # Step 3: If aliases found, expand the search
+        expanded_chunks = chunks
+        if alias_list:
+            expanded_query = f"{search_query} OR " + " OR ".join([f'\"{alias}\"' for alias in alias_list])
+            try:
+                expanded_embedding = embed_text(expanded_query)
+            except Exception as e:
+                expanded_embedding = embedding
+            expanded_tool_args = tool_args.copy()
+            expanded_tool_args["embedding"] = expanded_embedding
+            expanded_tool_args["search_query"] = expanded_query
+            expanded_result = perform_search(expanded_tool_args)
+            expanded_chunks = expanded_result.get("retrieved_chunks", [])
+        # Use expanded_chunks for summary/history
+        chunks = expanded_chunks
         return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query, "llm_feedback": feedback}
 
     except Exception as e:
