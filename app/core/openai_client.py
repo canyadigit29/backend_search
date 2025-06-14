@@ -3,7 +3,7 @@ from openai import OpenAI
 client = OpenAI()
 
 
-def chat_completion(messages: list, model: str = "gpt-3.5-turbo") -> str:
+def chat_completion(messages: list, model: str = "gpt-4o") -> str:
     try:
         response = client.chat.completions.create(model=model, messages=messages)
         return response.choices[0].message.content.strip()
