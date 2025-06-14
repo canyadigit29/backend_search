@@ -220,7 +220,7 @@ async def chat_with_context(request: Request):
                 return (y, m, d)
             # Sort top N relevant chunks by date for summary/history
             sorted_chunks = sorted(chunks, key=lambda x: x.get('score', 0), reverse=True)
-            top_n = 100  # or whatever your max is
+            top_n = 50  # Reduce max results to top 50 for summary/history
             top_relevant = sorted_chunks[:top_n]
             top_chronological = sorted(top_relevant, key=chunk_date_key)
             top_texts = []
@@ -319,6 +319,53 @@ async def chat_with_context(request: Request):
             expanded_chunks = expanded_result.get("retrieved_chunks", [])
         # Use expanded_chunks for summary/history
         chunks = expanded_chunks
+        # --- Multi-round LLM parameter tuning for live queries ---
+        max_tuning_rounds = 3  # You can adjust this for more/less rounds
+        params = {"threshold": 0.5, "alpha": 0.7, "beta": 0.3}
+        best_chunks = chunks
+        best_score = -1
+        for tuning_round in range(max_tuning_rounds):
+            # Prepare LLM prompt for reranking and parameter suggestion
+            result_text = "\n\n".join([f"[{i+1}] {c.get('content','')[:300]}" for i, c in enumerate(best_chunks)])
+            llm_prompt = [
+                {"role": "system", "content": "You are an expert search quality evaluator and parameter tuner. Given a user query and the top 50 search results, re-rank the results for best relevance, assign a new score (0-1) to each, and suggest new values for the similarity threshold and hybrid weights (alpha for semantic, beta for keyword) if you think results can be improved. Respond ONLY with a valid JSON object, no markdown, no code block, no explanation outside the JSON. Example: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str}"},
+                {"role": "user", "content": f"Query: {prompt}\n\nResults:\n{result_text}\n\nCurrent params: threshold={params['threshold']}, alpha={params['alpha']}, beta={params['beta']}"}
+            ]
+            llm_response = chat_completion(llm_prompt, model="gpt-4o")
+            llm_response_clean = llm_response.strip()
+            if llm_response_clean.startswith('```json'):
+                llm_response_clean = llm_response_clean[7:]
+            if llm_response_clean.startswith('```'):
+                llm_response_clean = llm_response_clean[3:]
+            if llm_response_clean.endswith('```'):
+                llm_response_clean = llm_response_clean[:-3]
+            try:
+                llm_json = json.loads(llm_response_clean)
+                reranked = llm_json.get("reranked", [])
+                feedback = llm_json.get("feedback", "")
+                suggested_threshold = llm_json.get("suggested_threshold", params["threshold"])
+                suggested_alpha = llm_json.get("suggested_alpha", params["alpha"])
+                suggested_beta = llm_json.get("suggested_beta", params["beta"])
+                # Apply new scores and order
+                for r in reranked:
+                    idx = r["index"]
+                    if 0 <= idx < len(best_chunks):
+                        best_chunks[idx]["llm_score"] = r["score"]
+                best_chunks.sort(key=lambda x: x.get("llm_score", 0), reverse=True)
+                # Update params for next round
+                params["threshold"] = suggested_threshold
+                params["alpha"] = suggested_alpha
+                params["beta"] = suggested_beta
+                # Optionally, re-run search with new params (semantic search)
+                tool_args["match_threshold"] = params["threshold"]
+                tool_args["alpha"] = params["alpha"]
+                tool_args["beta"] = params["beta"]
+                semantic_result = perform_search(tool_args)
+                best_chunks = semantic_result.get("retrieved_chunks", [])
+            except Exception as e:
+                feedback = f"LLM response parse error: {e}, raw: {llm_response}"
+                break
+        chunks = best_chunks
         return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query, "llm_feedback": feedback}
 
     except Exception as e:
