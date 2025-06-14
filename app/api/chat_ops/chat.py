@@ -179,26 +179,8 @@ async def chat_with_context(request: Request):
             summary = "\n".join(summary_lines)
             # Print the summary to the Railway log for debugging
             print("\n" + summary + "\n", flush=True)
-            # Aggregate all LLM suggestions from all attempts
-            all_suggestions = []
-            for entry in history:
-                for fb in entry.get("feedback", []):
-                    all_suggestions.append(fb)
-            # Also collect any suggested code changes
-            all_code_changes = []
-            for entry in history:
-                if isinstance(entry.get("feedback", []), list):
-                    for fb in entry["feedback"]:
-                        if isinstance(fb, dict) and fb.get("suggested_code_change"):
-                            all_code_changes.append(fb["suggested_code_change"])
-            # Print all suggestions and code changes to Railway log
-            print("\n[DEBUG] All LLM suggestions from run_score_test:", flush=True)
-            for i, suggestion in enumerate(all_suggestions, 1):
-                print(f"  Suggestion {i}: {suggestion}", flush=True)
-            if all_code_changes:
-                print("\n[DEBUG] All LLM suggested code changes:", flush=True)
-                for i, code_change in enumerate(all_code_changes, 1):
-                    print(f"  Code Change {i}:\n{code_change}\n", flush=True)
+            # Print the final consolidated summary to the Railway log
+            print("\n[DEBUG] Final consolidated summary for run_score_test:\n" + summary + "\n", flush=True)
             return {"content": summary}
     except Exception as e:
         return {"error": f"Score test failed: {e}"}
