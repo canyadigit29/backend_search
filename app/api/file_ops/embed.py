@@ -10,6 +10,9 @@ from app.core.supabase_client import supabase
 logging.basicConfig(level=logging.INFO)
 client = OpenAI()
 
+EMBEDDING_MODEL = "text-embedding-3-large"  # 3072-dim
+EMBEDDING_DIM = 3072
+
 def normalize_vector(v):
     norm = np.linalg.norm(v)
     return (v / norm).tolist() if norm > 0 else v
@@ -21,11 +24,11 @@ def embed_text(text: str) -> list[float]:
     if not text.strip():
         raise ValueError("Cannot embed empty text")
 
-    response = client.embeddings.create(model="text-embedding-3-small", input=text)
+    response = client.embeddings.create(model=EMBEDDING_MODEL, input=text)
     embedding = normalize_vector(np.array(response.data[0].embedding))
 
-    if not isinstance(embedding, list) or len(embedding) != 1536:
-        raise ValueError(f"Embedding shape mismatch: expected 1536-dim vector, got {len(embedding)}")
+    if not isinstance(embedding, list) or len(embedding) != EMBEDDING_DIM:
+        raise ValueError(f"Embedding shape mismatch: expected {EMBEDDING_DIM}-dim vector, got {len(embedding)}")
 
     return embedding
 
