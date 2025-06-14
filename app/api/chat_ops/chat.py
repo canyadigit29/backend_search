@@ -77,9 +77,25 @@ async def chat_with_context(request: Request):
                     # Pass all results to LLM for re-ranking
                     result_text = "\n\n".join([f"[{i+1}] {c.get('content','')[:300]}" for i, c in enumerate(chunks)])
                     llm_prompt = [
-                        {"role": "system", "content": "You are an expert search quality evaluator and parameter tuner. Given a user query and the top 10 search results, re-rank the results for best relevance, assign a new score (0-1) to each, and suggest new values for the similarity threshold and hybrid weights (alpha for semantic, beta for keyword) if you think results can be improved. Respond ONLY with a valid JSON object, no markdown, no code block, no explanation outside the JSON. Example: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str}"},
+                        {"role": "system", "content": (
+                            "You are an expert in retrieval-augmented generation (RAG) systems and search quality engineering. "
+                            "Your job is to evaluate search results, rerank them for relevance, and suggest optimal search parameters (threshold, alpha, beta) within allowed ranges. "
+                            "If results are insufficient, suggest a new query and parameters. "
+                            "Only suggest values within these ranges: threshold [0.0, 1.0], alpha/beta [0.0, 1.0] and sum to 1.0. "
+                            f"You may suggest changes for up to {max_attempts} attempts. "
+                            "Here is the current perform_search function for your reference (Python):\n" +
+                            """\n" +
+                            open('app/api/file_ops/search_docs.py', encoding='utf-8').read().split('def perform_search')[1][:6000] +
+                            "\n""" +
+                            "Respond ONLY with a valid JSON object, no markdown, no code block, no explanation outside the JSON. "
+                            "If you suggest any code changes, include them in a 'suggested_code_change' field as a string. "
+                            "Example: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"rerun_search\": true/false, \"new_query\": str, \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str, \"suggested_code_change\": str}"
+                        )},
                         {"role": "user", "content": f"Query: {query}\n\nResults:\n{result_text}\n\nCurrent params: threshold={params['threshold']}, alpha={params['alpha']}, beta={params['beta']}"}
                     ]
+                    # Print LLM prompt and response to Railway log for debugging
+                    print("[DEBUG] LLM prompt for run_score_test:\n" + llm_prompt[0]["content"][:1000] + "...", flush=True)
+                    print("[DEBUG] LLM user message:\n" + llm_prompt[1]["content"][:1000] + "...", flush=True)
                     llm_response = chat_completion(llm_prompt, model="gpt-4o")
                     # Fix: Strip code block markers if present
                     llm_response_clean = llm_response.strip()
@@ -89,6 +105,7 @@ async def chat_with_context(request: Request):
                         llm_response_clean = llm_response_clean[3:]
                     if llm_response_clean.endswith('```'):
                         llm_response_clean = llm_response_clean[:-3]
+                    print(f"[DEBUG] LLM response for run_score_test: {llm_response_clean[:1000]}...", flush=True)
                     try:
                         llm_json = json.loads(llm_response_clean)
                         reranked = llm_json.get("reranked", [])
