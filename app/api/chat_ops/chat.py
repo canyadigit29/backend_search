@@ -262,7 +262,9 @@ async def chat_with_context(request: Request):
         # Step 2: Ask LLM to rerank and suggest new params
         result_text = "\n\n".join([f"[{i+1}] {c.get('content','')[:300]}" for i, c in enumerate(chunks)])
         llm_prompt = [
-            {"role": "system", "content": "You are an expert search quality evaluator and parameter tuner. Given a user query and the top 10-100 search results, re-rank the results for best relevance, assign a new score (0-1) to each, and suggest new values for the similarity threshold and hybrid weights (alpha for semantic, beta for keyword) if you think results can be improved. Respond ONLY with a valid JSON object, no markdown, no code block, no explanation outside the JSON. Example: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str}"},
+            {"role": "system", "content": (
+                "You are an expert search quality evaluator and parameter tuner. Given a user query and the top 10-100 search results, re-rank the results for best relevance, assign a new score (0-1) to each, and if the results are not relevant or sufficient, provide a new search query and/or new search parameters (threshold, alpha, beta) to improve the results. Respond ONLY with a valid JSON object, no markdown, no code block, no explanation outside the JSON. Example: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"rerun_search\": true/false, \"new_query\": str, \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str}"
+            )},
             {"role": "user", "content": f"Query: {prompt}\n\nResults:\n{result_text}\n\nCurrent params: threshold=0.6, alpha=0.9, beta=0.1"}
         ]
         llm_response = chat_completion(llm_prompt, model="gpt-4o")
@@ -277,16 +279,49 @@ async def chat_with_context(request: Request):
             llm_json = json.loads(llm_response_clean)
             reranked = llm_json.get("reranked", [])
             feedback = llm_json.get("feedback", "")
+            rerun_search = llm_json.get("rerun_search", False)
+            new_query = llm_json.get("new_query", None)
             suggested_threshold = llm_json.get("suggested_threshold", 0.6)
             suggested_alpha = llm_json.get("suggested_alpha", 0.9)
             suggested_beta = llm_json.get("suggested_beta", 0.1)
+
+            # Validate and clamp parameters
+            def clamp(val, minv, maxv):
+                try:
+                    return max(minv, min(maxv, float(val)))
+                except Exception:
+                    return minv
+            suggested_threshold = clamp(suggested_threshold, 0.0, 1.0)
+            suggested_alpha = clamp(suggested_alpha, 0.0, 1.0)
+            suggested_beta = clamp(suggested_beta, 0.0, 1.0)
+            # Optionally normalize alpha/beta to sum to 1
+            total = suggested_alpha + suggested_beta
+            if total > 0:
+                suggested_alpha /= total
+                suggested_beta /= total
+            else:
+                suggested_alpha, suggested_beta = 0.7, 0.3
+
             # Apply new scores and order
             for r in reranked:
-                idx = r["index"]
-                if 0 <= idx < len(chunks):
-                    chunks[idx]["llm_score"] = r["score"]
+                idx = r.get("index")
+                score = r.get("score")
+                if isinstance(idx, int) and 0 <= idx < len(chunks) and isinstance(score, (int, float)):
+                    chunks[idx]["llm_score"] = clamp(score, 0.0, 1.0)
             chunks.sort(key=lambda x: x.get("llm_score", 0), reverse=True)
-            # Optionally, re-run search with new params (not required for first test)
+
+            # If LLM says to rerun search, do it automatically (only once)
+            if rerun_search and new_query and isinstance(new_query, str) and new_query.strip():
+                print(f"[DEBUG] LLM requested rerun with new query: {new_query}", flush=True)
+                tool_args["search_query"] = new_query.strip()
+                tool_args["embedding"] = embed_text(new_query.strip())
+                tool_args["match_threshold"] = suggested_threshold
+                tool_args["alpha"] = suggested_alpha
+                tool_args["beta"] = suggested_beta
+                semantic_result = perform_search(tool_args)
+                chunks = semantic_result.get("retrieved_chunks", [])
+                if not chunks:
+                    print("[DEBUG] Rerun search returned no results.", flush=True)
         except Exception as e:
             feedback = f"LLM response parse error: {e}, raw: {llm_response}"
         # --- Alias Extraction and Query Expansion ---
