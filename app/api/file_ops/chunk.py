@@ -8,21 +8,6 @@ import calendar
 from app.core.extract_text import extract_text  # Assumed
 from app.core.supabase_client import supabase
 
-def detect_section_headers(paragraphs):
-    # Simple heuristic: all-caps lines, lines with numbers, or lines ending with ':'
-    section_headers = {}
-    current_section = None
-    for idx, para in enumerate(paragraphs):
-        line = para.strip()
-        if (
-            (line.isupper() and len(line) > 5) or
-            re.match(r'^[A-Z][A-Za-z0-9 .\-:]{0,80}:$', line) or
-            re.match(r'^(ARTICLE|SECTION|CHAPTER|PART|SUBPART|TITLE) [A-Z0-9 .-]+', line)
-        ):
-            current_section = line
-        section_headers[idx] = current_section
-    return section_headers
-
 def extract_metadata_from_filename(file_name):
     import re
     import calendar
@@ -86,59 +71,21 @@ def parse_page_markers(paragraphs):
         para_to_page[idx] = page_number
     return para_to_page
 
-def smart_chunk(text, max_tokens=1000, overlap_tokens=200):
+def fixed_size_chunk(text, max_tokens=1500, overlap_tokens=300):
     encoding = tiktoken.get_encoding("cl100k_base")
-    paragraphs = text.split('\n')
-    section_headers = detect_section_headers(paragraphs)
-    para_to_page = parse_page_markers(paragraphs)
-    # Group paragraphs by section
-    section_groups = []
-    current_section = None
-    current_paragraphs = []
-    current_para_indices = []
-    for idx, para in enumerate(paragraphs):
-        section = section_headers.get(idx)
-        if section != current_section and current_paragraphs:
-            section_groups.append((current_section, current_paragraphs, current_para_indices))
-            current_paragraphs = []
-            current_para_indices = []
-        current_section = section
-        current_paragraphs.append(para)
-        current_para_indices.append(idx)
-    if current_paragraphs:
-        section_groups.append((current_section, current_paragraphs, current_para_indices))
-    # Chunk within each section, but do not cross section boundaries
+    tokens = encoding.encode(text)
+    total_tokens = len(tokens)
     chunks = []
     chunk_meta = []
-    for section, paras, para_indices in section_groups:
-        # Track page numbers for this section
-        page_numbers = [para_to_page[i] for i in para_indices]
-        # Tokenize section
-        section_text = '\n'.join(paras)
-        section_tokens = encoding.encode(section_text)
-        total_tokens = len(section_tokens)
-        start = 0
-        while start < total_tokens:
-            end = min(start + max_tokens, total_tokens)
-            chunk_tokens = section_tokens[start:end]
-            chunk_text = encoding.decode(chunk_tokens)
-            # Determine which paragraphs are in this chunk
-            chunk_paragraphs = []
-            chunk_para_indices = []
-            token_count = 0
-            for para, idx in zip(paras, para_indices):
-                para_tokens = encoding.encode(para)
-                if token_count + len(para_tokens) > end:
-                    break
-                if token_count >= start:
-                    chunk_paragraphs.append(para)
-                    chunk_para_indices.append(idx)
-                token_count += len(para_tokens)
-            # Assign page number as the lowest page in this chunk
-            chunk_page = min([para_to_page[i] for i in chunk_para_indices]) if chunk_para_indices else None
-            chunk_meta.append({"section_header": section, "page_number": chunk_page})
-            chunks.append(chunk_text)
-            start += max_tokens - overlap_tokens
+    start = 0
+    while start < total_tokens:
+        end = min(start + max_tokens, total_tokens)
+        chunk_tokens = tokens[start:end]
+        chunk_text = encoding.decode(chunk_tokens)
+        # Optionally, estimate page number as None or use 1 for all
+        chunk_meta.append({"section_header": None, "page_number": None})
+        chunks.append(chunk_text)
+        start += max_tokens - overlap_tokens
     return list(zip(chunks, chunk_meta))
 
 def chunk_file(file_id: str, user_id: str = None):
@@ -177,15 +124,13 @@ def chunk_file(file_id: str, user_id: str = None):
             print(f"❌ Failed to extract text from {file_path}: {str(e)}")
             return []
 
-        # Extract metadata from filename
         filename_meta = extract_metadata_from_filename(Path(file_name).name)
         print(f"[DEBUG] Filename metadata for {file_name}: {filename_meta}")
-        # Use improved smart_chunk logic with section/page metadata
-        chunk_tuples = smart_chunk(text, max_tokens=1000, overlap_tokens=200)
+        # Use fixed-size overlapping chunking
+        chunk_tuples = fixed_size_chunk(text, max_tokens=1500, overlap_tokens=300)
         db_chunks = []
         for i, (chunk_text, meta) in enumerate(chunk_tuples):
             chunk_id = str(uuid4())
-            # Merge all metadata
             chunk_metadata = {**filename_meta, **meta}
             print(f"[DEBUG] Chunk {i} metadata: {chunk_metadata}")
             chunk = {
@@ -200,7 +145,7 @@ def chunk_file(file_id: str, user_id: str = None):
                 chunk["user_id"] = actual_user_id
             db_chunks.append(chunk)
 
-        print(f"🧹 Got {len(db_chunks)} semantic-aware chunks from {file_path}")
+        print(f"🧹 Got {len(db_chunks)} fixed-size chunks from {file_path}")
 
         return db_chunks  # Return full chunk dicts, do not insert here
 
