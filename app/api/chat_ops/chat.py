@@ -211,10 +211,21 @@ async def chat_with_context(request: Request):
         summary = None
         try:
             MAX_SUMMARY_CHARS = 60000
-            sorted_chunks = sorted(chunks, key=lambda x: x.get("score", 0), reverse=True)
+            # --- Chronological ordering for summaries/histories ---
+            def chunk_date_key(chunk):
+                # Use year, month, day if available, else fallback to 0
+                y = chunk.get('meeting_year') or 0
+                m = chunk.get('meeting_month') or 0
+                d = chunk.get('meeting_day') or 0
+                return (y, m, d)
+            # Sort top N relevant chunks by date for summary/history
+            sorted_chunks = sorted(chunks, key=lambda x: x.get('score', 0), reverse=True)
+            top_n = 100  # or whatever your max is
+            top_relevant = sorted_chunks[:top_n]
+            top_chronological = sorted(top_relevant, key=chunk_date_key)
             top_texts = []
             total_chars = 0
-            for chunk in sorted_chunks:
+            for chunk in top_chronological:
                 content = chunk.get("content", "")
                 if not content:
                     continue
@@ -234,7 +245,8 @@ async def chat_with_context(request: Request):
                         "- Reference file names, dates, or section headers where possible.\n"
                         "- Do not add information that is not present in the results, but you may offer thoughtful analysis, context, or commentary based on what is present.\n"
                         "- If the results are lengthy, provide a high-level summary first, then details.\n"
-                        "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
+                        "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator.\n"
+                        "- If you find any information even partially related to the query, summarize it directly. Avoid saying 'no direct reference' if there are any relevant details present."
                     )},
                     {"role": "user", "content": f"User query: {prompt}\n\nSearch results:\n{top_text}"}
                 ]
