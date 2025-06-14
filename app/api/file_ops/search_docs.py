@@ -9,6 +9,7 @@ from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
 from app.core.openai_client import chat_completion
 from app.core.query_understanding import extract_search_filters
+from app.core.llama_query_transform import llama_query_transform
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -305,10 +306,10 @@ async def api_search_docs(request: Request):
         return JSONResponse({"error": "Missing query"}, status_code=400)
     if not user_id:
         return JSONResponse({"error": "Missing user_id"}, status_code=400)
-    # LLM-based query extraction
-    search_query = extract_search_query(user_prompt)
-    # --- Metadata filter extraction ---
-    search_filters = extract_search_filters(user_prompt)
+    # --- LlamaIndex-style query transform ---
+    query_obj = llama_query_transform(user_prompt)
+    search_query = query_obj.get("query") or user_prompt
+    search_filters = query_obj.get("filters") or {}
     try:
         embedding = embed_text(search_query)
     except Exception as e:
@@ -320,10 +321,9 @@ async def api_search_docs(request: Request):
         "description_filter": search_filters.get("description") or data.get("description_filter"),
         "start_date": data.get("start_date"),
         "end_date": data.get("end_date"),
-        "user_prompt": user_prompt,  # Pass original prompt for downstream use
-        "search_query": search_query  # Pass extracted search phrase for boosting
+        "user_prompt": user_prompt,
+        "search_query": search_query
     }
-    # Add new metadata filters if present
     for meta_field in [
         "document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title", "file_extension", "section_header", "page_number"
     ]:
