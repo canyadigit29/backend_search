@@ -224,15 +224,35 @@ def perform_search(tool_args):
         return {"error": f"Error during search: {str(e)}"}
 
 
-def extract_search_query(user_prompt: str) -> str:
+def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
     """
     Use OpenAI to extract the most effective search phrase or keywords for semantic document retrieval from the user's request.
+    If agent_mode is True, use enhanced instructions for extraction.
     """
-    system_prompt = (
-        "You are a helpful assistant. Given a user request, extract a search phrase or keywords that would best match the content of relevant documents in a semantic search system. "
-        "Be specific and use terminology likely to appear in the documents. "
-        "Return only the search phrase or keywords, not instructions or explanations."
-    )
+    if agent_mode:
+        system_prompt = (
+            "You are a search assistant. Given a user's request, extract only the most relevant keywords or noun phrases that would best match the content of documents in a search system.\n"
+            "- Do not include generic phrases like \"reference to,\" \"information about,\" \"how,\" or \"give me a rundown.\"\n"
+            "- Only return concise, specific terms or noun phrases likely to appear in documents.\n"
+            "- Use terminology that matches how topics are described in official documents.\n"
+            "- Do not include instructions, explanations, or conversational words.\n"
+            "- Separate each keyword or phrase with a comma.\n\n"
+            "Examples:\n"
+            "User: search for reference to arpa and give me a rundown of how the money was used\n"
+            "Extracted: ARPA funding usage, ARPA money allocation\n\n"
+            "User: find documents about covid relief funding\n"
+            "Extracted: covid relief funding\n\n"
+            "User: show me reports on infrastructure spending in 2022\n"
+            "Extracted: infrastructure spending 2022\n\n"
+            "User: what are the guidelines for grant applications\n"
+            "Extracted: grant application guidelines\n"
+        )
+    else:
+        system_prompt = (
+            "You are a helpful assistant. Given a user request, extract a search phrase or keywords that would best match the content of relevant documents in a semantic search system. "
+            "Be specific and use terminology likely to appear in the documents. "
+            "Return only the search phrase or keywords, not instructions or explanations."
+        )
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt}
