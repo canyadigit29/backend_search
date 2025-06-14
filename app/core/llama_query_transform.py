@@ -12,7 +12,6 @@ LLAMA_QUERY_PROMPT = (
     "- 'query': Rewrite the query for best semantic search (concise, document-style, no instructions).\n"
     "- 'filters': Extract any metadata filters (document_type, year, section, etc.) as a JSON object.\n"
     "If a field is not present, use null or an empty object.\n"
-    "Example output: {\"intent\": \"Find ARPA funding details\", \"query\": \"ARPA funding allocation\", \"filters\": {\"document_type\": \"Agenda\", \"meeting_year\": 2024}}\n"
 )
 
 def llama_query_transform(user_prompt: str) -> dict:
