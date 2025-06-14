@@ -347,6 +347,41 @@ async def api_search_docs(request: Request):
             chunk["prev_chunk"] = {k: prev_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in prev_chunk}
         if next_chunk:
             chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
+    # --- Postprocessing: deduplication and neighbor expansion ---
+    def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
+        # Deduplicate by content
+        if deduplicate:
+            seen = set()
+            unique_chunks = []
+            for c in chunks:
+                content = c.get("content", "")
+                if content not in seen:
+                    seen.add(content)
+                    unique_chunks.append(c)
+            chunks = unique_chunks
+        # Expand neighbors (add prev/next chunk content inline)
+        if expand_neighbors:
+            expanded = []
+            for c in chunks:
+                expanded.append(c)
+                if c.get("prev_chunk"):
+                    prev = c["prev_chunk"]
+                    prev_copy = prev.copy()
+                    prev_copy["content"] = f"[PREV] {prev_copy.get('content','')}"
+                    expanded.append(prev_copy)
+                if c.get("next_chunk"):
+                    nxt = c["next_chunk"]
+                    nxt_copy = nxt.copy()
+                    nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
+                    expanded.append(nxt_copy)
+            chunks = expanded
+        # Custom filter
+        if custom_filter:
+            chunks = [c for c in chunks if custom_filter(c)]
+        return chunks
+
+    # After neighbor chunk attachment, before summary:
+    matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
     # --- LLM-based summary of top search results ---
     summary = None
     filtered_chunks = []
