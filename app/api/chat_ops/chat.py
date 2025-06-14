@@ -129,6 +129,8 @@ async def chat_with_context(request: Request):
                 for feedback in best_results["feedback"]:
                     summary_lines.append(f"- {feedback}")
             summary = "\n".join(summary_lines)
+            # Print the summary to the Railway log for debugging
+            print("\n" + summary + "\n", flush=True)
             return {"content": summary}
     except Exception as e:
         return {"error": f"Score test failed: {e}"}
