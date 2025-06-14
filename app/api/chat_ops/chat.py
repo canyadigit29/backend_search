@@ -11,6 +11,7 @@ from app.api.file_ops.search_docs import perform_search
 from app.core.openai_client import chat_completion
 from app.core.supabase_client import supabase
 from app.core.llm_answer_extraction import extract_answer_from_chunks_batched
+from app.core.answer_builder import build_structured_answer
 
 router = APIRouter()
 
@@ -299,6 +300,14 @@ async def chat_with_context(request: Request):
         except Exception as e:
             summary = None
 
+        # --- Modular LLM answer synthesis (structured answer with citations) ---
+        structured_answer = build_structured_answer(
+            user_query=prompt,
+            chunks=chunks,
+            style="conversational",
+            include_citations=True,
+            extra_instructions=None,
+        )
         # --- LLM-driven parameter tuning: rerank and suggest new params ---
         # Step 1: Run initial search as before (already done above)
         # Step 2: Ask LLM to rerank and suggest new params
@@ -443,7 +452,13 @@ async def chat_with_context(request: Request):
                 feedback = f"LLM response parse error: {e}, raw: {llm_response}"
                 break
         chunks = best_chunks
-        return {"retrieved_chunks": chunks, "summary": summary, "extracted_query": extracted_query, "llm_feedback": feedback}
+        return {
+            "retrieved_chunks": chunks,
+            "summary": summary,
+            "extracted_query": extracted_query,
+            "llm_feedback": feedback,
+            "structured_answer": structured_answer
+        }
 
     except Exception as e:
         return {"error": str(e)}
