@@ -90,12 +90,9 @@ async def enrich_agenda(
 ):
     # Validate user_id
     import uuid
+    # Accept any non-empty string for user_id (may come from assistant) or allow None if not provided
     if not user_id or not isinstance(user_id, str):
-        raise HTTPException(status_code=400, detail="user_id is required for enrichment.")
-    try:
-        uuid.UUID(user_id)
-    except Exception:
-        raise HTTPException(status_code=400, detail="user_id must be a valid UUID.")
+        raise HTTPException(status_code=400, detail="user_id is required for enrichment and must be a string.")
 
     # Save uploaded file to temp
     suffix = os.path.splitext(file.filename)[1].lower()

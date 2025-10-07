@@ -32,12 +32,7 @@ def embed_text(text: str) -> list[float]:
 
     return embedding
 
-def is_valid_uuid(value):
-    try:
-        uuid.UUID(str(value))
-        return True
-    except ValueError:
-        return False
+# UUID validation removed: accept plain string identifiers throughout the codebase
 
 def retry_embed_text(text, retries=3, delay=1.5):
     for attempt in range(retries):

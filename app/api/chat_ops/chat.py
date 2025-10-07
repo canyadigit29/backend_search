@@ -192,10 +192,8 @@ async def chat_with_context(request: Request):
         payload = ChatRequest(**data)
         prompt = payload.user_prompt.strip()
 
-        try:
-            uuid.UUID(str(payload.user_id))
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid user_id format. Must be a UUID.")
+        if not payload.user_id or not isinstance(payload.user_id, str):
+            raise HTTPException(status_code=400, detail="Missing or invalid user_id.")
 
         # If previous_chunks are provided, this is a follow-up query. Use all previous chunks for LLM answer extraction.
         if payload.previous_chunks:
