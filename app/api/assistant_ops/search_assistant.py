@@ -132,12 +132,14 @@ def handle_search_documents(arguments: Dict[str, Any]) -> Dict[str, Any]:
         match_count = arguments.get("match_count", 20)
         match_threshold = arguments.get("match_threshold", 0.5)
         
-        # Build search parameters
+        # Build search parameters. perform_search expects user_id_filter and may read search_query/user_prompt
         search_args = {
             "query": query,
-            "user_id": user_id,
+            "user_id_filter": user_id,
             "match_count": match_count,
-            "match_threshold": match_threshold
+            "match_threshold": match_threshold,
+            "user_prompt": query,
+            "search_query": query
         }
         
         # Add optional filters
