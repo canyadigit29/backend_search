@@ -4,7 +4,7 @@ import os
 from pdfdocument.document import PDFDocument
 from app.core.supabase_client import supabase
 
-def generate_pdf_report(title: str, content: str, user_id: str) -> str:
+def generate_pdf_report(title: str, content: str, user_id: str = "2532a036-5988-4e0b-8c0e-b0e94aabc1c9") -> str:
     """
     Generates a PDF in-memory and uploads it to Supabase storage.
 

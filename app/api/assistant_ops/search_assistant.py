@@ -10,7 +10,6 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from app.core.supabase_client import supabase
-import uuid
 from app.api.file_ops.search_docs import perform_search
 from app.api.file_ops.embed import embed_text
 
@@ -72,7 +71,7 @@ ASSISTANT_FUNCTIONS = [
                         "default": 0.5
                     }
                 },
-                "required": ["query"]
+                "required": ["query", "user_id"]
             }
         }
     },
@@ -81,12 +80,16 @@ ASSISTANT_FUNCTIONS = [
         "function": {
             "name": "get_file_list",
             "description": "Get a list of available files in the system, optionally filtered by user or file type",
-                "parameters": {
+            "parameters": {
                 "type": "object",
                 "properties": {
                     "user_id": {
                         "type": "string",
                         "description": "User ID to filter files for"
+                    },
+                    "file_type": {
+                        "type": "string", 
+                        "description": "Filter by file type (e.g., 'pdf', 'docx')"
                     },
                     "limit": {
                         "type": "integer",
@@ -125,16 +128,14 @@ def handle_search_documents(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Handle the search_documents function call from the assistant"""
     try:
         query = arguments.get("query")
-        user_id = arguments.get("user_id")
-        # Accept any non-empty string as user_id; pass through as user_id_filter
-        user_id_filter = user_id if user_id and isinstance(user_id, str) else None
+        user_id = arguments.get("user_id") 
         match_count = arguments.get("match_count", 20)
         match_threshold = arguments.get("match_threshold", 0.5)
         
         # Build search parameters. perform_search expects user_id_filter and may read search_query/user_prompt
         search_args = {
             "query": query,
-            "user_id_filter": user_id_filter,
+            "user_id_filter": user_id,
             "match_count": match_count,
             "match_threshold": match_threshold,
             "user_prompt": query,
@@ -192,25 +193,29 @@ def handle_get_file_list(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Handle the get_file_list function call from the assistant"""
     try:
         user_id = arguments.get("user_id")
-        # file_type intentionally ignored (DB doesn't have this column)
+        file_type = arguments.get("file_type")
         limit = arguments.get("limit", 50)
-
-        # Query files table - select columns that exist
-        query = supabase.table("files").select("id, name, description, file_extension, created_at, status")
-
-        # If a user_id string is provided, apply it as a filter
-        if user_id and isinstance(user_id, str):
+        
+        # Query files table
+        query = supabase.table("files").select("id, name, description, file_type, created_at, status")
+        
+        if user_id:
             query = query.eq("user_id", user_id)
-
+        if file_type:
+            query = query.eq("file_type", file_type)
+            
         query = query.limit(limit).order("created_at", desc=True)
-
+        
         response = query.execute()
-
+        
         if response.data:
-            return {"files": response.data, "count": len(response.data)}
+            return {
+                "files": response.data,
+                "count": len(response.data)
+            }
         else:
             return {"files": [], "count": 0}
-
+            
     except Exception as e:
         logger.exception("Error in handle_get_file_list")
         return {"error": f"Failed to get file list: {str(e)}"}
@@ -222,9 +227,6 @@ def handle_get_document_summary(arguments: Dict[str, Any]) -> Dict[str, Any]:
         user_id = arguments.get("user_id")
         
         # Get file info
-        # Require a user_id string for access control when requesting a specific file
-        if not user_id or not isinstance(user_id, str):
-            return {"error": "user_id is required to fetch a document"}
         file_response = supabase.table("files").select("*").eq("id", file_id).eq("user_id", user_id).execute()
         
         if not file_response.data:

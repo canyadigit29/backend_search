@@ -1,11 +1,19 @@
 import logging
 import time
+import uuid
 from datetime import datetime
 
 from app.api.file_ops.embed import embed_text
 from app.core.supabase_client import supabase
 
 logging.basicConfig(level=logging.INFO)
+
+def is_valid_uuid(value):
+    try:
+        uuid.UUID(str(value))
+        return True
+    except ValueError:
+        return False
 
 def retry_embed_text(text, retries=3, delay=1.5):
     for attempt in range(retries):
@@ -22,10 +30,9 @@ def retry_embed_text(text, retries=3, delay=1.5):
                 raise
 
 def save_message(user_id, project_id, content, session_id=None, speaker_role=None, message_index=None):
-    # Accept plain string identifiers for user_id and project_id (no UUID enforcement)
-    if not user_id or not project_id:
-        logging.error("Missing user_id or project_id")
-        return {"error": "Missing user_id or project_id"}
+    if not all(map(is_valid_uuid, [user_id, project_id])):
+        logging.error("Invalid UUID in user/project ID")
+        return {"error": "Invalid UUID input"}
 
     try:
         embedding = retry_embed_text(content)
