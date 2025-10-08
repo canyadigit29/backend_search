@@ -40,7 +40,8 @@ def perform_search(tool_args):
         from app.api.file_ops.embed import embed_text
         query_embedding = embed_text(text_to_embed)
 
-    # user_id_filter is optional now: if omitted, searches will run across all users
+    if not user_id_filter:
+        return {"error": "user_id must be provided to perform search."}
     try:
         # Semantic search
         rpc_args = {
@@ -303,7 +304,8 @@ async def api_search_docs(request: Request):
     user_id = data.get("user_id")
     if not user_prompt:
         return JSONResponse({"error": "Missing query"}, status_code=400)
-    # user_id is optional for searches; when omitted the search will run across all users
+    if not user_id:
+        return JSONResponse({"error": "Missing user_id"}, status_code=400)
     # --- LlamaIndex-style query transform ---
     query_obj = llama_query_transform(user_prompt)
     search_query = query_obj.get("query") or user_prompt
@@ -314,8 +316,7 @@ async def api_search_docs(request: Request):
         return JSONResponse({"error": f"Failed to generate embedding: {e}"}, status_code=500)
     tool_args = {
         "embedding": embedding,
-        # Pass user_id_filter only when provided; otherwise perform cross-tenant search
-        "user_id_filter": user_id if user_id else None,
+        "user_id_filter": user_id,
         "file_name_filter": search_filters.get("file_name") or data.get("file_name_filter"),
         "description_filter": search_filters.get("description") or data.get("description_filter"),
         "start_date": data.get("start_date"),
