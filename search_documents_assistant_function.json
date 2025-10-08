@@ -1,0 +1,42 @@
+{
+  "name": "search_documents_assistant",
+  "description": "Ask the backend to search documents and return relevant chunks and a concise summary. Include filters when available. If the assistant cannot provide the end-user's UUID, the backend will use the assistant fallback UUID.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Concise user search query. If the assistant has a conversation, extract the user's last question and put it here."
+      },
+      "user": {
+        "type": "object",
+        "description": "Optional object with the end-user identity. If absent the backend uses the assistant fallback UUID.",
+        "properties": {
+          "id": { "type": "string", "description": "Supabase user UUID (optional)." }
+        }
+      },
+      "user_id": {
+        "type": "string",
+        "description": "Alternative top-level user id (optional)."
+      },
+      "conversation": {
+        "type": ["array", "object"],
+        "description": "Optional conversation/messages structure. If messages array is supplied, the backend will attempt to use the last user message as the query."
+      },
+      "start_date": { "type": "string", "format": "date", "description": "Optional: start date filter (YYYY-MM-DD)" },
+      "end_date": { "type": "string", "format": "date", "description": "Optional: end date filter (YYYY-MM-DD)" },
+      "file_name_filter": { "type": "string", "description": "Optional file name filter" },
+      "description_filter": { "type": "string", "description": "Optional description filter" },
+      "document_type": { "type": "string" },
+      "meeting_year": { "type": "integer" },
+      "meeting_month": { "type": "integer" },
+      "meeting_month_name": { "type": "string" },
+      "meeting_day": { "type": "integer" },
+      "ordinance_title": { "type": "string" },
+      "file_extension": { "type": "string" },
+      "section_header": { "type": "string" },
+      "page_number": { "type": "integer" }
+    },
+    "required": ["query"]
+  }
+}

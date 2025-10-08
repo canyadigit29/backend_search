@@ -439,6 +439,175 @@ async def api_search_docs(request: Request):
     return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
 
 
+# Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
+@router.post("/assistant/search_docs")
+async def assistant_search_docs(request: Request):
+    """
+    Accepts a payload from an OpenAI assistant (function call or webhook). Normalizes fields
+    and forwards to the existing perform_search flow. If the assistant does not provide a
+    user_id, the endpoint will use ASSISTANT_DEFAULT_USER_ID environment variable as a fallback.
+    Expected minimal payload shape (assistant):
+    {
+        "query": "user query text",
+        "conversation": { ... optional ... },
+        "metadata": { ... optional ... },
+        "user": { "id": "uuid-or-empty" }  # optional
+    }
+    """
+    try:
+        data = await request.json()
+    except Exception as e:
+        return JSONResponse({"error": f"Invalid JSON payload: {e}"}, status_code=400)
+
+    # Normalize assistant payload
+    # If the assistant provided a top-level 'query' or nested 'input' use it.
+    user_prompt = data.get("query") or data.get("input") or data.get("user_prompt")
+    # Try a few conversation locations commonly used by assistant function calls
+    if not user_prompt:
+        conv = data.get("conversation") or data.get("messages") or {}
+        # If messages is a list, attempt to find the last user message
+        if isinstance(conv, list):
+            for msg in reversed(conv):
+                if msg.get("role") == "user" and msg.get("content"):
+                    user_prompt = msg.get("content")
+                    break
+        elif isinstance(conv, dict):
+            user_prompt = conv.get("last_user_message") or conv.get("content") or user_prompt
+
+    if not user_prompt:
+        return JSONResponse({"error": "Missing query in assistant payload"}, status_code=400)
+
+    # Determine user id: prefer explicit user.id, then top-level user_id, then env fallback
+    user_id = None
+    if isinstance(data.get("user"), dict):
+        user_id = data.get("user").get("id")
+    user_id = user_id or data.get("user_id") or data.get("userId")
+    if not user_id:
+        # Use hard-coded assistant key UUID as a fallback so the assistant can perform
+        # searches even when it doesn't have access to the real user's Supabase UUID.
+        # This acts as a stable 'assistant' service account.
+        user_id = os.environ.get("ASSISTANT_DEFAULT_USER_ID") or "4a867500-7423-4eaa-bc79-94e368555e05"
+
+    # Apply query transform (llama-based) to extract filters if possible
+    query_obj = llama_query_transform(user_prompt)
+    search_query = query_obj.get("query") or user_prompt
+    search_filters = query_obj.get("filters") or {}
+
+    try:
+        embedding = embed_text(search_query)
+    except Exception as e:
+        return JSONResponse({"error": f"Failed to generate embedding: {e}"}, status_code=500)
+
+    tool_args = {
+        "embedding": embedding,
+        "user_id_filter": user_id,
+        "file_name_filter": search_filters.get("file_name") or data.get("file_name_filter") or None,
+        "description_filter": search_filters.get("description") or data.get("description_filter") or None,
+        "start_date": data.get("start_date"),
+        "end_date": data.get("end_date"),
+        "user_prompt": user_prompt,
+        "search_query": search_query
+    }
+    for meta_field in [
+        "document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title", "file_extension", "section_header", "page_number"
+    ]:
+        if search_filters.get(meta_field) is not None:
+            tool_args[meta_field] = search_filters[meta_field]
+
+    # Forward to existing perform_search logic
+    semantic_result = perform_search(tool_args)
+    matches = semantic_result.get("retrieved_chunks", [])
+
+    # Keep neighbor chunk behavior consistent with /file_ops/search_docs
+    all_chunks_by_file = {}
+    for chunk in matches:
+        file_id = chunk.get("file_id")
+        if file_id not in all_chunks_by_file:
+            all_chunks_by_file[file_id] = []
+        all_chunks_by_file[file_id].append(chunk)
+    for chunk in matches:
+        prev_chunk, next_chunk = get_neighbor_chunks(chunk, all_chunks_by_file)
+        if prev_chunk:
+            chunk["prev_chunk"] = {k: prev_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in prev_chunk}
+        if next_chunk:
+            chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
+
+    # Postprocess and summarize similar to existing endpoint
+    def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
+        if deduplicate:
+            seen = set()
+            unique_chunks = []
+            for c in chunks:
+                content = c.get("content", "")
+                if content not in seen:
+                    seen.add(content)
+                    unique_chunks.append(c)
+            chunks = unique_chunks
+        if expand_neighbors:
+            expanded = []
+            for c in chunks:
+                expanded.append(c)
+                if c.get("prev_chunk"):
+                    prev = c["prev_chunk"]
+                    prev_copy = prev.copy()
+                    prev_copy["content"] = f"[PREV] {prev_copy.get('content','')}"
+                    expanded.append(prev_copy)
+                if c.get("next_chunk"):
+                    nxt = c["next_chunk"]
+                    nxt_copy = nxt.copy()
+                    nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
+                    expanded.append(nxt_copy)
+            chunks = expanded
+        if custom_filter:
+            chunks = [c for c in chunks if custom_filter(c)]
+        return chunks
+
+    matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
+
+    summary = None
+    try:
+        encoding = tiktoken.get_encoding("cl100k_base")
+        MAX_SUMMARY_TOKENS = 64000
+        sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
+        top_texts = []
+        total_tokens = 0
+        used_chunk_ids = set()
+        for chunk in sorted_chunks:
+            content = chunk.get("content", "")
+            if not content:
+                continue
+            chunk_tokens = len(encoding.encode(content))
+            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
+                break
+            top_texts.append(content)
+            total_tokens += chunk_tokens
+            used_chunk_ids.add(chunk.get("id"))
+        top_text = "\n\n".join(top_texts)
+        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
+        filtered_chunks = filtered_chunks[:20]
+        if top_text.strip():
+            from app.core.openai_client import chat_completion
+            summary_prompt = [
+                {"role": "system", "content": (
+                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
+                    "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
+                    "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
+                    "- Use a conversational, engaging tone.\n"
+                    "- Use bullet points, sections, or narrative as you see fit for clarity and impact.\n"
+                    "- Reference file names, dates, or section headers where possible.\n"
+                    "- Do not add information that is not present in the results, but you may offer thoughtful analysis, context, or commentary based on what is present.\n"
+                    "- If the results are lengthy, provide a high-level summary first, then details.\n"
+                    "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
+                )},
+                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
+            ]
+            summary = chat_completion(summary_prompt, model="gpt-4o")
+    except Exception:
+        summary = None
+
+    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+
+
 # Legacy endpoint maintained for backward compatibility
 @router.post("/search")
 async def api_search_documents(request: Request):
