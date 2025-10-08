@@ -26,11 +26,12 @@
 --- Block 2: get_file_list ---
 {
   "name": "get_file_list",
-  "description": "Get a list of available files in the system, optionally filtered by user.",
+  "description": "Get a list of available files in the system, optionally filtered by user or file type.",
   "parameters": {
     "type": "object",
     "properties": {
       "user_id": { "type": "string", "description": "User ID to filter files for" },
+      "file_type": { "type": "string", "description": "Filter by file type (e.g., 'pdf', 'docx')" },
       "limit": { "type": "integer", "minimum": 1, "maximum": 200, "description": "Maximum number of files to return" }
     },
     "required": ["user_id"],
