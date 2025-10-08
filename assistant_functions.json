@@ -1,50 +1,85 @@
-[
-  {
-    "name": "search_documents",
-    "description": "Semantic search over Supabase document_chunks; returns top passages with source metadata for citation.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "query": { "type": "string", "description": "Natural-language query to search for." },
-  "user_id": { "type": "string", "description": "Tenant/user scope (caller user_id)." },
-        "file_name_filter": { "type": "string", "description": "Optional filter by file name." },
-        "description_filter": { "type": "string", "description": "Optional filter by file description/notes." },
-        "project_filter": { "type": "string", "description": "Optional project key/name." },
-        "tag_filter": { "type": "string", "description": "Optional tag/label." },
-        "start_date": { "type": "string", "format": "date", "description": "YYYY-MM-DD; include docs ON/AFTER this date." },
-        "end_date": { "type": "string", "format": "date", "description": "YYYY-MM-DD; include docs ON/BEFORE this date." },
-        "match_threshold": { "type": "number", "minimum": 0, "maximum": 1, "description": "Min similarity (0–1)." },
-        "match_count": { "type": "integer", "minimum": 1, "maximum": 20, "description": "How many passages to return." }
-      },
-  "required": ["query", "user_id"],
-      "additionalProperties": false
+{
+  "functions": [
+    {
+      "name": "search_documents",
+      "description": "Search through the document database using semantic similarity and keyword matching. Use this to find relevant information from meeting minutes, agendas, ordinances, and other municipal documents.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The search query - can be a question, keywords, or specific terms to search for"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "User ID to filter results for"
+          },
+          "match_count": {
+            "type": "integer",
+            "description": "Maximum number of results to return (default 20)",
+            "default": 20
+          },
+          "meeting_year": {
+            "type": "integer",
+            "description": "Filter by specific meeting year (e.g., 2023, 2024)"
+          },
+          "meeting_month": {
+            "type": "integer",
+            "description": "Filter by specific meeting month (1-12)"
+          },
+          "document_type": {
+            "type": "string",
+            "description": "Filter by document type (e.g., 'minutes', 'agenda', 'ordinance')"
+          },
+          "match_threshold": {
+            "type": "number",
+            "description": "Minimum similarity threshold for results (0.0-1.0, default 0.5)",
+            "default": 0.5
+          }
+        },
+        "required": ["query", "user_id"]
+      }
+    },
+    {
+      "name": "get_file_list",
+      "description": "Get a list of available files in the system, optionally filtered by user or file type",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "User ID to filter files for"
+          },
+          "file_type": {
+            "type": "string",
+            "description": "Filter by file type (e.g., 'pdf', 'docx')"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maximum number of files to return (default 50)",
+            "default": 50
+          }
+        },
+        "required": ["user_id"]
+      }
+    },
+    {
+      "name": "get_document_summary",
+      "description": "Get a summary or overview of a specific document by file ID",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "description": "The ID of the file to get summary for"
+          },
+          "user_id": {
+            "type": "string",
+            "description": "User ID for access control"
+          }
+        },
+        "required": ["file_id", "user_id"]
+      }
     }
-  },
-  {
-    "name": "get_file_list",
-    "description": "Get a list of available files in the system, optionally filtered by user or file type.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "user_id": { "type": "string", "description": "User ID to filter files for" },
-        "file_type": { "type": "string", "description": "Filter by file type (e.g., 'pdf', 'docx')" },
-        "limit": { "type": "integer", "minimum": 1, "maximum": 200, "description": "Maximum number of files to return" }
-      },
-      "required": ["user_id"],
-      "additionalProperties": false
-    }
-  },
-  {
-    "name": "get_document_summary",
-    "description": "Get a summary or overview of a specific document by file ID.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "file_id": { "type": "string", "description": "The ID of the file to get summary for" },
-        "user_id": { "type": "string", "description": "User ID for access control" }
-      },
-      "required": ["file_id", "user_id"],
-      "additionalProperties": false
-    }
-  }
-]
+  ]
+}
