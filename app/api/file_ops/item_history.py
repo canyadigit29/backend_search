@@ -25,20 +25,19 @@ def parse_date_from_filename(filename: str):
 
 @router.post("/item_history")
 async def item_history(
-    topic: str = Body(..., embed=True),
-    user_id: str = Body(..., embed=True)
+    topic: str = Body(..., embed=True)
 ):
     """
     For a given topic, return the most relevant quote from minutes files where the topic is discussed, using LLM extraction and keyword boost logic.
     """
     try:
-        print(f"[DEBUG] Step 1: Starting minutes semantic/hybrid search for topic: '{topic}' and user_id: {user_id}")
+        print(f"[DEBUG] Step 1: Starting minutes semantic/hybrid search for topic: '{topic}' (no user filter)")
         is_acronym = topic.isupper() and len(topic) <= 5 and ' ' not in topic
         print(f"[DEBUG] Step 1: Acronym detected: {is_acronym}")
         # Use perform_search to get hybrid/boosted results (semantic + keyword boost)
         search_args = {
             "embedding": embed_text(topic),
-            "user_id_filter": user_id,
+            "user_id_filter": None,
             "file_name_filter": "%minute%",
             "match_count": 20,
             "user_prompt": topic,

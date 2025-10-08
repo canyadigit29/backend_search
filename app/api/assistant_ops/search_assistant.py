@@ -22,7 +22,6 @@ client = OpenAI()
 SEARCH_ASSISTANT_ID = os.getenv("SEARCH_ASSISTANT_ID", "asst_JmzUgai6rV2Hc6HTSCJFZQsD")
 
 class AssistantMessageRequest(BaseModel):
-    user_id: str
     message: str
     thread_id: Optional[str] = None  # If provided, continue existing conversation
 
@@ -45,10 +44,7 @@ ASSISTANT_FUNCTIONS = [
                         "type": "string",
                         "description": "The search query - can be a question, keywords, or specific terms to search for"
                     },
-                    "user_id": {
-                        "type": "string", 
-                        "description": "User ID to filter results for"
-                    },
+                    # user_id removed from function schema: searches are global
                     "match_count": {
                         "type": "integer",
                         "description": "Maximum number of results to return (default 20)",
@@ -84,17 +80,13 @@ ASSISTANT_FUNCTIONS = [
                 "parameters": {
                 "type": "object",
                 "properties": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "User ID to filter files for"
-                    },
                     "limit": {
                         "type": "integer",
                         "description": "Maximum number of files to return (default 50)",
                         "default": 50
                     }
                 },
-                "required": ["user_id"]
+                "required": []
             }
         }
     },
@@ -110,12 +102,8 @@ ASSISTANT_FUNCTIONS = [
                         "type": "string",
                         "description": "The ID of the file to get summary for"
                     },
-                    "user_id": {
-                        "type": "string",
-                        "description": "User ID for access control"
-                    }
                 },
-                "required": ["file_id", "user_id"]
+                "required": ["file_id"]
             }
         }
     }
@@ -125,16 +113,15 @@ def handle_search_documents(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Handle the search_documents function call from the assistant"""
     try:
         query = arguments.get("query")
-        user_id = arguments.get("user_id")
-        # Accept any non-empty string as user_id; pass through as user_id_filter
-        user_id_filter = user_id if user_id and isinstance(user_id, str) else None
+        # user_id no longer accepted; searches are global
+        user_id_filter = None
         match_count = arguments.get("match_count", 20)
         match_threshold = arguments.get("match_threshold", 0.5)
         
         # Build search parameters. perform_search expects user_id_filter and may read search_query/user_prompt
         search_args = {
             "query": query,
-            "user_id_filter": user_id_filter,
+            "user_id_filter": None,
             "match_count": match_count,
             "match_threshold": match_threshold,
             "user_prompt": query,
@@ -191,16 +178,13 @@ def handle_search_documents(arguments: Dict[str, Any]) -> Dict[str, Any]:
 def handle_get_file_list(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Handle the get_file_list function call from the assistant"""
     try:
-        user_id = arguments.get("user_id")
         # file_type intentionally ignored (DB doesn't have this column)
         limit = arguments.get("limit", 50)
 
         # Query files table - select columns that exist
         query = supabase.table("files").select("id, name, description, file_extension, created_at, status")
 
-        # If a user_id string is provided, apply it as a filter
-        if user_id and isinstance(user_id, str):
-            query = query.eq("user_id", user_id)
+        # No user_id filtering: return global file list
 
         query = query.limit(limit).order("created_at", desc=True)
 
@@ -219,13 +203,9 @@ def handle_get_document_summary(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Handle the get_document_summary function call from the assistant"""
     try:
         file_id = arguments.get("file_id")
-        user_id = arguments.get("user_id")
-        
-        # Get file info
-        # Require a user_id string for access control when requesting a specific file
-        if not user_id or not isinstance(user_id, str):
-            return {"error": "user_id is required to fetch a document"}
-        file_response = supabase.table("files").select("*").eq("id", file_id).eq("user_id", user_id).execute()
+
+        # Get file info (global lookup by file_id)
+        file_response = supabase.table("files").select("*").eq("id", file_id).execute()
         
         if not file_response.data:
             return {"error": "File not found or access denied"}
@@ -268,7 +248,6 @@ async def chat_with_search_assistant(request: AssistantMessageRequest):
     Chat with the search assistant. The assistant can search documents and access file information.
     """
     try:
-        user_id = request.user_id
         user_message = request.message
         thread_id = request.thread_id
         
@@ -352,10 +331,9 @@ async def chat_with_search_assistant(request: AssistantMessageRequest):
         else:
             reply = "I apologize, but I couldn't generate a response. Please try again."
         
-        # Log the conversation
+        # Log the conversation (no user_id stored to avoid user-scoped filtering)
         try:
             supabase.table("assistant_conversations").insert({
-                "user_id": user_id,
                 "thread_id": thread_id,
                 "user_message": user_message,
                 "assistant_reply": reply,

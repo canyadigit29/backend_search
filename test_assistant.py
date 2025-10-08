@@ -16,7 +16,6 @@ def test_assistant_chat():
     
     # Test payload
     payload = {
-        "user_id": "test-user-123",  # Replace with actual user ID
         "message": "Search for information about ARPA funding and how the money was used"
     }
     
@@ -45,7 +44,7 @@ def test_search_function():
     
     payload = {
         "query": "ARPA funding",
-        "user_id": "test-user-123"
+        
     }
     
     try:

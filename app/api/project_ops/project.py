@@ -21,11 +21,10 @@ class ProjectRequest(BaseModel):
 # ✅ NEW: Internal function so chat.py can import directly
 async def get_projects(user_id: str, request: Request):
     try:
-        print(f"📦 [Internal] Fetching projects for user_id: {user_id}")
+        print(f"📦 [Internal] Fetching projects (no user_id filtering)")
         response = (
             supabase.table("projects")
             .select("id, name, description, created_at")
-            .eq("user_id", user_id)
             .order("created_at", desc=True)
             .execute()
         )
@@ -40,20 +39,13 @@ async def get_projects(user_id: str, request: Request):
 
 
 @router.post("/project")
-async def create_new_project(request: ProjectRequest, user_id: str = None):
+async def create_new_project(request: ProjectRequest):
     try:
-        # prefer explicit user_id, otherwise fall back to DEFAULT_USER_ID
-        if not user_id:
-            user_id = DEFAULT_USER_ID
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id is required")
-
         print("➡️ Step 1: Checking for existing project...")
         existing_project = (
             supabase.table("projects")
             .select("id")
             .eq("name", request.project_name)
-            .eq("user_id", user_id)
             .maybe_single()
             .execute()
         )
@@ -75,7 +67,6 @@ async def create_new_project(request: ProjectRequest, user_id: str = None):
                     "name": request.project_name,
                     "description": request.description,
                     "created_at": created_at,
-                    "user_id": user_id,
                 }
             )
             .execute()
@@ -87,9 +78,9 @@ async def create_new_project(request: ProjectRequest, user_id: str = None):
             raise Exception(f"Database error: {msg}")
 
         print("📁 Step 3: Checking existing storage folders...")
-        folder_path = f"{user_id}/{request.project_name}/"
+        folder_path = f"{request.project_name}/"
         list_response = supabase.storage.from_("maxgptstorage").list(
-            path=f"{user_id}/", options={"limit": 100}
+            path=f"{request.project_name}/", options={"limit": 100}
         )
         print(f"📂 Folder list response: {list_response}")
 
@@ -128,18 +119,12 @@ async def create_new_project(request: ProjectRequest, user_id: str = None):
 
 
 @router.get("/projects")
-async def list_projects(name: str = Query(None), description: str = Query(None), user_id: str = None):
+async def list_projects(name: str = Query(None), description: str = Query(None)):
     try:
-        # use provided user_id or DEFAULT_USER_ID
-        if not user_id:
-            user_id = DEFAULT_USER_ID
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id is required to list projects")
-        print(f"📦 Fetching projects for user_id: {user_id}")
+        print("📦 Fetching projects (no user_id filtering)")
         query = (
             supabase.table("projects")
             .select("id, name, description, created_at")
-            .eq("user_id", user_id)
         )
 
         if name:
@@ -162,19 +147,14 @@ async def list_projects(name: str = Query(None), description: str = Query(None),
 
 
 @router.delete("/project")
-async def delete_project(project_name: str = Query(...), user_id: str = None):
+async def delete_project(project_name: str = Query(...)):
     try:
         print(f"🗑️ Deleting project: {project_name}")
 
         # Step 1: Lookup project
-        if not user_id:
-            user_id = DEFAULT_USER_ID
-        if not user_id:
-            raise HTTPException(status_code=400, detail="user_id is required to delete a project")
         project_lookup = (
             supabase.table("projects")
             .select("id")
-            .eq("user_id", user_id)
             .eq("name", project_name)
             .maybe_single()
             .execute()
@@ -229,10 +209,9 @@ async def delete_project_by_name(project_name: str, user_id: str = None) -> dict
 
         # Debug: determine which user to operate on
         debug_user = user_id or DEFAULT_USER_ID
-        if not debug_user:
-            return {"success": False, "error": "user_id is required for internal delete_project_by_name"}
+        print("📦 (Internal) Listing projects without user filter")
         debug_projects = (
-            supabase.table("projects").select("name").eq("user_id", debug_user).execute()
+            supabase.table("projects").select("name").execute()
         )
         all_names = [p["name"] for p in debug_projects.data or []]
         print(f"📋 Available project names: {all_names}")
@@ -241,7 +220,6 @@ async def delete_project_by_name(project_name: str, user_id: str = None) -> dict
         project_lookup = (
             supabase.table("projects")
             .select("id")
-            .eq("user_id", debug_user)
             .ilike("name", project_name)
             .maybe_single()
             .execute()

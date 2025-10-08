@@ -4,7 +4,7 @@ import os
 from pdfdocument.document import PDFDocument
 from app.core.supabase_client import supabase
 
-def generate_pdf_report(title: str, content: str, user_id: str) -> str:
+def generate_pdf_report(title: str, content: str, user_id: str = None) -> str:
     """
     Generates a PDF in-memory and uploads it to Supabase storage.
 
@@ -27,7 +27,10 @@ def generate_pdf_report(title: str, content: str, user_id: str) -> str:
     # Generate filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"{title.replace(' ', '_')}_{timestamp}.pdf"
-    upload_path = f"{user_id}/Uploads/{filename}"
+    if user_id:
+        upload_path = f"{user_id}/Uploads/{filename}"
+    else:
+        upload_path = f"Uploads/{filename}"
 
     # Upload to Supabase using raw bytes
     buffer.seek(0)

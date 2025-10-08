@@ -18,7 +18,6 @@ NERDGPT_ID = os.getenv("NERDGPT_ID", "asst_Yr6XMC7i92tCpHJNVykekJ9N")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 class CodeChatRequest(BaseModel):
-    user_id: str
     message: str
     github_repo: str  # e.g. "username/repo"
     file_path: str = None  # Optional file to pull context from
@@ -38,7 +37,6 @@ def fetch_file_from_github(repo: str, file_path: str) -> str:
 
 @router.post("/codechat")
 def code_chat(request: CodeChatRequest):
-    user_id = request.user_id
     user_message = request.message
     repo = request.github_repo
     file_path = request.file_path
@@ -53,7 +51,6 @@ def code_chat(request: CodeChatRequest):
     prior_messages = (
         supabase.table("code_session_logs")
         .select("speaker_role, content")
-        .eq("user_id", user_id)
         .order("message_index", desc=False)
         .limit(10)
         .execute()
@@ -111,14 +108,12 @@ def code_chat(request: CodeChatRequest):
     base_index = len(thread_messages) - 1
     supabase.table("code_session_logs").insert([
         {
-            "user_id": user_id,
             "message_index": base_index,
             "speaker_role": "user",
             "content": user_message,
             "created_at": datetime.utcnow().isoformat()
         },
         {
-            "user_id": user_id,
             "message_index": base_index + 1,
             "speaker_role": "assistant",
             "content": reply,

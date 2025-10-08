@@ -22,17 +22,16 @@ def retry_embed_text(text, retries=3, delay=1.5):
                 raise
 
 def save_message(user_id, project_id, content, session_id=None, speaker_role=None, message_index=None):
-    # Accept plain string identifiers for user_id and project_id (no UUID enforcement)
-    if not user_id or not project_id:
-        logging.error("Missing user_id or project_id")
-        return {"error": "Missing user_id or project_id"}
+    # project_id is required; user_id is optional under global policy
+    if not project_id:
+        logging.error("Missing project_id")
+        return {"error": "Missing project_id"}
 
     try:
         embedding = retry_embed_text(content)
         timestamp = datetime.utcnow().isoformat()
 
         data = {
-            "user_id": user_id,
             "project_id": project_id,
             "content": content,
             "embedding": embedding,
@@ -51,7 +50,7 @@ def save_message(user_id, project_id, content, session_id=None, speaker_role=Non
             logging.error(f"Supabase insert failed: {result.error.message}")
             return {"error": result.error.message}
 
-        logging.info(f"✅ Saved message to memory_log for user {user_id}")
+        logging.info(f"✅ Saved message to memory_log for project {project_id}")
         return {"success": True}
 
     except Exception as e:
@@ -63,8 +62,8 @@ def retrieve_memory(tool_args):
     user_id = tool_args.get("user_id")
     session_id = tool_args.get("session_id")
 
-    if not query or not user_id:
-        return {"error": "Missing query or user_id"}
+    if not query:
+        return {"error": "Missing query"}
 
     try:
         query_embedding = retry_embed_text(query)
@@ -73,7 +72,7 @@ def retrieve_memory(tool_args):
             "query_embedding": query_embedding,
             "match_threshold": 0.3,
             "match_count": 100,
-            "user_id_filter": user_id,
+            "user_id_filter": user_id if user_id else None,
             "session_id_filter": session_id or None
         }
 

@@ -6,7 +6,6 @@
       "type": "object",
       "properties": {
         "query": { "type": "string", "description": "Natural-language query to search for." },
-  "user_id": { "type": "string", "description": "Tenant/user scope (caller user_id)." },
         "file_name_filter": { "type": "string", "description": "Optional filter by file name." },
         "description_filter": { "type": "string", "description": "Optional filter by file description/notes." },
         "project_filter": { "type": "string", "description": "Optional project key/name." },
@@ -16,7 +15,7 @@
         "match_threshold": { "type": "number", "minimum": 0, "maximum": 1, "description": "Min similarity (0–1)." },
         "match_count": { "type": "integer", "minimum": 1, "maximum": 20, "description": "How many passages to return." }
       },
-  "required": ["query", "user_id"],
+  "required": ["query"],
       "additionalProperties": false
     }
   },
@@ -26,11 +25,9 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "user_id": { "type": "string", "description": "User ID to filter files for" },
-        "file_type": { "type": "string", "description": "Filter by file type (e.g., 'pdf', 'docx')" },
         "limit": { "type": "integer", "minimum": 1, "maximum": 200, "description": "Maximum number of files to return" }
       },
-      "required": ["user_id"],
+      "required": [],
       "additionalProperties": false
     }
   },
@@ -40,10 +37,9 @@
     "parameters": {
       "type": "object",
       "properties": {
-        "file_id": { "type": "string", "description": "The ID of the file to get summary for" },
-        "user_id": { "type": "string", "description": "User ID for access control" }
+        "file_id": { "type": "string", "description": "The ID of the file to get summary for" }
       },
-      "required": ["file_id", "user_id"],
+      "required": ["file_id"],
       "additionalProperties": false
     }
   }
