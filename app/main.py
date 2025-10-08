@@ -17,7 +17,6 @@ from app.core.config import settings
 from app.api.file_ops.enrich_agenda import router as enrich_agenda_router
 from app.api.file_ops import extract_text_api  # New import for extract_text_api
 from app.api.file_ops import item_history  # <-- Add this import
-from app.api.assistant_ops import search_assistant  # OpenAI Assistant integration
 
 # 🔍 Optional: Print env variables for debugging
 print("🔍 Environment Variable Check:")
@@ -60,4 +59,3 @@ app.include_router(search_docs.router, prefix=settings.API_PREFIX)
 app.include_router(enrich_agenda_router, prefix=settings.API_PREFIX)
 app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)  # New route for PDF text extraction
 app.include_router(item_history.router, prefix=f"{settings.API_PREFIX}/file_ops")  # Mount item_history endpoint at /api/file_ops
-app.include_router(search_assistant.router, prefix=settings.API_PREFIX)  # OpenAI Search Assistant
