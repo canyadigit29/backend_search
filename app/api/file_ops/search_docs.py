@@ -605,7 +605,41 @@ async def assistant_search_docs(request: Request):
     except Exception:
         summary = None
 
-    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+    # Compact response support for connectors/function callers
+    # Default to compact=True to avoid very large JSON responses (helps connectors/importers)
+    compact = data.get("compact") if isinstance(data, dict) else None
+    # If caller didn't send explicit compact, default True for assistant/webhook usage
+    if compact is None:
+        compact = True
+
+    if compact:
+        try:
+            max_chunks = int(data.get("max_chunks", 3)) if isinstance(data, dict) and data.get("max_chunks") is not None else 3
+        except Exception:
+            max_chunks = 3
+        try:
+            excerpt_length = int(data.get("excerpt_length", 300)) if isinstance(data, dict) and data.get("excerpt_length") is not None else 300
+        except Exception:
+            excerpt_length = 300
+
+        # Build compact sources list from filtered_chunks sorted by final_score
+        sorted_filtered = sorted(filtered_chunks, key=lambda x: x.get("final_score", 0), reverse=True)
+        sources = []
+        for c in sorted_filtered[:max_chunks]:
+            content = (c.get("content") or "")
+            excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+            src = {
+                "id": c.get("id"),
+                "file_name": c.get("file_name"),
+                "page_number": c.get("page_number"),
+                "final_score": c.get("final_score"),
+                "excerpt": excerpt
+            }
+            sources.append(src)
+
+        return JSONResponse({"summary": summary, "sources": sources})
+    else:
+        return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
 
 
 # Legacy endpoint maintained for backward compatibility
