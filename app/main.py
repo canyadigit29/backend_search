@@ -21,8 +21,8 @@ from app.api.assistant_ops import search_assistant  # OpenAI Assistant integrati
 
 # 🔍 Optional: Print env variables for debugging
 print("🔍 Environment Variable Check:")
-print("OPENAI_API_KEY set:", bool(os.getenv("OPENAI_API_KEY")))
-print("SUPABASE_URL set:", bool(os.getenv("SUPABASE_URL")))
+print("OPENAI_API_KEY =", os.getenv("OPENAI_API_KEY"))
+print("SUPABASE_URL =", os.getenv("SUPABASE_URL"))
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
