@@ -88,7 +88,7 @@ def fixed_size_chunk(text, max_tokens=1500, overlap_tokens=300):
         start += max_tokens - overlap_tokens
     return list(zip(chunks, chunk_meta))
 
-def chunk_file(file_id: str):
+def chunk_file(file_id: str, user_id: str = None):
     print(f"🔍 Starting chunking for file_id: {file_id}")
     try:
         file_entry = None
@@ -104,7 +104,7 @@ def chunk_file(file_id: str):
 
         file_path = file_entry["file_path"]
         file_name = file_entry.get("file_name") or file_entry.get("name") or file_path
-    # Do not attach user_id to chunks; chunks are global
+        actual_user_id = user_id or file_entry.get("user_id", None)
         bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
         print(f"📄 Filepath: {file_path}")
 
@@ -141,7 +141,8 @@ def chunk_file(file_id: str):
                 "chunk_index": i,
                 **chunk_metadata,
             }
-            # no user_id added
+            if actual_user_id:
+                chunk["user_id"] = actual_user_id
             db_chunks.append(chunk)
 
         print(f"🧹 Got {len(db_chunks)} fixed-size chunks from {file_path}")

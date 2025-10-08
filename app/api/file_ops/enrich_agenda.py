@@ -85,8 +85,14 @@ def extract_sections(text):
 @router.post("/file_ops/enrich_agenda")
 async def enrich_agenda(
     file: UploadFile = File(...),
-    instructions: str = Form("")
+    instructions: str = Form(""),
+    user_id: str = Form(...)
 ):
+    # Validate user_id
+    import uuid
+    # Accept any non-empty string for user_id (may come from assistant) or allow None if not provided
+    if not user_id or not isinstance(user_id, str):
+        raise HTTPException(status_code=400, detail="user_id is required for enrichment and must be a string.")
 
     # Save uploaded file to temp
     suffix = os.path.splitext(file.filename)[1].lower()
@@ -145,7 +151,7 @@ async def enrich_agenda(
             # Use the topic title as the semantic search query
             try:
                 embedding = embed_text(topic_title)
-                search_args = {"embedding": embedding, "user_id_filter": None}
+                search_args = {"embedding": embedding, "user_id_filter": user_id}
                 history = perform_search(search_args)
                 # Compose retrieved_chunks with full metadata as in search_docs.py
                 matches = history.get('retrieved_chunks', [])
@@ -154,6 +160,7 @@ async def enrich_agenda(
                     top_chunks.append({
                         "id": m.get("id"),
                         "file_id": m.get("file_id"),
+                        "user_id": m.get("user_id"),
                         "created_at": m.get("created_at"),
                         "updated_at": m.get("updated_at"),
                         "sharing": m.get("sharing"),

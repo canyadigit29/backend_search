@@ -23,6 +23,7 @@ client = OpenAI(api_key=openai_api_key)
 
 class ChatRequest(BaseModel):
     user_prompt: str
+    user_id: str
     session_id: str
     previous_chunks: list = None  # Optional, for follow-up queries
 
@@ -64,7 +65,7 @@ async def chat_with_context(request: Request):
                 for query in sample_queries:
                     tool_args = {
                         "embedding": None,
-                        "user_id_filter": None,
+                        "user_id_filter": data.get("user_id", ""),
                         "user_prompt": query,
                         "search_query": query,
                         "match_threshold": params["threshold"],
@@ -191,7 +192,8 @@ async def chat_with_context(request: Request):
         payload = ChatRequest(**data)
         prompt = payload.user_prompt.strip()
 
-        # user_id removed from requests: searches are global
+        if not payload.user_id or not isinstance(payload.user_id, str):
+            raise HTTPException(status_code=400, detail="Missing or invalid user_id.")
 
         # If previous_chunks are provided, this is a follow-up query. Use all previous chunks for LLM answer extraction.
         if payload.previous_chunks:
@@ -223,7 +225,7 @@ async def chat_with_context(request: Request):
             return {"error": f"Failed to generate embedding: {e}"}
         tool_args = {
             "embedding": embedding,
-            "user_id_filter": None,
+            "user_id_filter": payload.user_id,
             "file_name_filter": search_filters.get("file_name"),
             "description_filter": search_filters.get("description"),
             "start_date": None,

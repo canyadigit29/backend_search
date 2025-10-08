@@ -17,7 +17,7 @@ If you want to track assistant conversations, create this table in your Supabase
 ```sql
 CREATE TABLE assistant_conversations (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id TEXT,
+    user_id TEXT NOT NULL,
     thread_id TEXT NOT NULL,
     user_message TEXT NOT NULL,
     assistant_reply TEXT NOT NULL,
@@ -41,6 +41,7 @@ Start a conversation or continue an existing one with the search assistant.
 **Request Body:**
 ```json
 {
+    "user_id": "your-user-id",
     "message": "Search for information about ARPA funding",
     "thread_id": "optional-existing-thread-id"
 }
@@ -54,7 +55,7 @@ Start a conversation or continue an existing one with the search assistant.
     "function_calls": [
         {
             "function": "search_documents",
-            "arguments": {"query": "ARPA funding"},
+            "arguments": {"query": "ARPA funding", "user_id": "your-user-id"},
             "result": {"results": [...], "total_found": 5}
         }
     ]
@@ -97,6 +98,7 @@ const response = await fetch('/api/assistant/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+        user_id: 'user123',
         message: 'What did the council discuss about road repairs in 2024?'
     })
 });
@@ -110,6 +112,7 @@ const followUp = await fetch('/api/assistant/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+        user_id: 'user123',
         message: 'Can you find the specific budget amounts?',
         thread_id: result.thread_id // Use existing thread
     })
@@ -120,9 +123,10 @@ const followUp = await fetch('/api/assistant/chat', {
 ```python
 import requests
 
-def chat_with_assistant(message, thread_id=None):
+def chat_with_assistant(message, user_id, thread_id=None):
     url = "http://your-backend.com/api/assistant/chat"
     payload = {
+        "user_id": user_id,
         "message": message
     }
     if thread_id:

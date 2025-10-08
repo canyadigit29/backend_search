@@ -15,12 +15,13 @@ if not SUPABASE_STORAGE_BUCKET:
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
+    user_id: str = Form(...),
     name: str = Form(...),
     file_id: str = Form(None)  # Accept it but ignore it
 ):
     try:
         # 🔍 Lookup file_id and file_path based on name and user_id
-        result = supabase.table("files").select("id", "file_path").eq("name", name).single().execute()
+        result = supabase.table("files").select("id", "file_path").eq("name", name).eq("user_id", user_id).single().execute()
         if not result.data:
             raise HTTPException(status_code=404, detail="No matching file entry found in files table")
 
