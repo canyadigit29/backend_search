@@ -410,8 +410,8 @@ async def api_search_docs(request: Request):
         print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary (token-based, max 64,000 tokens).", flush=True)
 
         # Limit to top 20 sources for frontend
-        filtered_chunks = filtered_chunks[:20]
-        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 20) actually used in summary.", flush=True)
+        filtered_chunks = filtered_chunks[:50]
+        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 50) actually used in summary.", flush=True)
 
         if top_text.strip():
             from app.core.openai_client import chat_completion
