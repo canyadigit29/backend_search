@@ -293,6 +293,36 @@ def get_neighbor_chunks(chunk, all_chunks_by_file):
             next_chunk = c
     return prev_chunk, next_chunk
 
+# Moved to module-level so both endpoints can reuse it (fix NameError).
+def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
+    if deduplicate:
+        seen = set()
+        unique_chunks = []
+        for c in chunks:
+            content = c.get("content", "")
+            if content not in seen:
+                seen.add(content)
+                unique_chunks.append(c)
+        chunks = unique_chunks
+    if expand_neighbors:
+        expanded = []
+        for c in chunks:
+            expanded.append(c)
+            if c.get("prev_chunk"):
+                prev = c["prev_chunk"]
+                prev_copy = prev.copy()
+                prev_copy["content"] = f"[PREV] {prev_copy.get('content','')}"
+                expanded.append(prev_copy)
+            if c.get("next_chunk"):
+                nxt = c["next_chunk"]
+                nxt_copy = nxt.copy()
+                nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
+                expanded.append(nxt_copy)
+        chunks = expanded
+    if custom_filter:
+        chunks = [c for c in chunks if custom_filter(c)]
+    return chunks
+
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request, background_tasks: BackgroundTasks):
     start_time = time.monotonic()
@@ -343,35 +373,7 @@ async def api_search_docs(request: Request, background_tasks: BackgroundTasks):
         if next_chunk:
             chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
 
-    def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
-        if deduplicate:
-            seen = set()
-            unique_chunks = []
-            for c in chunks:
-                content = c.get("content", "")
-                if content not in seen:
-                    seen.add(content)
-                    unique_chunks.append(c)
-            chunks = unique_chunks
-        if expand_neighbors:
-            expanded = []
-            for c in chunks:
-                expanded.append(c)
-                if c.get("prev_chunk"):
-                    prev = c["prev_chunk"]
-                    prev_copy = prev.copy()
-                    prev_copy["content"] = f"[PREV] {prev_copy.get('content','')}"
-                    expanded.append(prev_copy)
-                if c.get("next_chunk"):
-                    nxt = c["next_chunk"]
-                    nxt_copy = nxt.copy()
-                    nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
-                    expanded.append(nxt_copy)
-            chunks = expanded
-        if custom_filter:
-            chunks = [c for c in chunks if custom_filter(c)]
-        return chunks
-
+    # reuse module-level postprocess_chunks
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
 
     # Decide sync vs async: if close to timeout, enqueue
@@ -598,24 +600,32 @@ async def assistant_search_docs(request: Request):
             top_text = "\n\n".join(top_texts)
             return top_text, used_chunk_ids
 
-            sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
-            top_text, used_chunk_ids = build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5")
-            filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-            filtered_chunks = filtered_chunks[:20]
-            if top_text.strip():
-                from app.core.openai_client import chat_completion
-                summary_prompt = [
-                    {"role": "system", "content": system_prompt_text},
-                    {"role": "user", "content": f"{user_wrapper_text}{top_text}"}
-                ]
-                try:
-                    summary = chat_completion(summary_prompt, model="gpt-5")
-                    if isinstance(summary, str):
-                        summary = summary.strip()
-                except TypeError:
-                    summary = chat_completion(summary_prompt)
-                    if isinstance(summary, str):
-                        summary = summary.strip()
+        sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
+        top_text, used_chunk_ids = build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5")
+
+        # Filter matches to only those used in the summary
+        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
+        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary (token-budgeted).", flush=True)
+
+        # Limit to top 50 sources for frontend
+        filtered_chunks = filtered_chunks[:50]
+        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 50) actually used in summary.", flush=True)
+
+        if top_text.strip():
+            from app.core.openai_client import chat_completion
+            summary_prompt = [
+                {"role": "system", "content": system_prompt_text},
+                {"role": "user", "content": f"{user_wrapper_text}{top_text}"}
+            ]
+            # Use configured reserve via SUMMARY_RESPONSE_RESERVE when calling the model if chat_completion supports max_tokens.
+            try:
+                summary = chat_completion(summary_prompt, model="gpt-5")
+                if isinstance(summary, str):
+                    summary = summary.strip()
+            except TypeError:
+                summary = chat_completion(summary_prompt)
+                if isinstance(summary, str):
+                    summary = summary.strip()
     except Exception:
         summary = None
 
