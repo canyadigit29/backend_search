@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -46,7 +47,6 @@ def perform_search(tool_args):
             "start_date": start_date,
             "end_date": end_date,
             "match_threshold": tool_args.get("match_threshold", 0.5),
-            # Updated default and upper limit
             "match_count": min(tool_args.get("match_count", 100), 200),
         }
 
@@ -80,6 +80,7 @@ def get_neighbor_chunks(chunk, all_chunks_by_file):
 async def assistant_search_docs(request: Request):
     """
     Simplified assistant endpoint — returns raw excerpts for GPT summarization.
+    Automatically trims excerpt length for large result sets and guards payload size.
     """
     try:
         data = await request.json()
@@ -139,11 +140,22 @@ async def assistant_search_docs(request: Request):
         if next_chunk:
             chunk["next_chunk"] = {"content": f"[NEXT] {next_chunk.get('content', '')}"}
 
-    # Build lightweight response
+    # Build lightweight response with dynamic excerpt trimming
     max_chunks = min(int(data.get("max_chunks", 100)), 200)
-    excerpt_length = int(data.get("excerpt_length", 1000))
-    documents = []
+    base_excerpt_length = int(data.get("excerpt_length", 1000))
+    match_count = len(matches)
 
+    # Dynamically shorten excerpt length for large result sets
+    if match_count > 150:
+        excerpt_length = 400
+    elif match_count > 100:
+        excerpt_length = 600
+    elif match_count > 75:
+        excerpt_length = 800
+    else:
+        excerpt_length = base_excerpt_length
+
+    documents = []
     for chunk in matches[:max_chunks]:
         text = (chunk.get("content") or "").replace("\n", " ").strip()
         if text:
@@ -152,6 +164,15 @@ async def assistant_search_docs(request: Request):
                 "page_number": chunk.get("page_number"),
                 "excerpt": text[:excerpt_length],
             })
+
+    # Payload size guard (keeps response under ~5MB)
+    MAX_PAYLOAD_SIZE = 5_000_000
+    encoded = json.dumps({"documents": documents})
+    if sys.getsizeof(encoded) > MAX_PAYLOAD_SIZE:
+        while sys.getsizeof(encoded) > MAX_PAYLOAD_SIZE and len(documents) > 10:
+            documents = documents[:-10]
+            encoded = json.dumps({"documents": documents})
+        print(f"[WARN] Payload trimmed to {len(documents)} docs to stay under 5MB limit.")
 
     return JSONResponse({"documents": documents})
 
