@@ -4,6 +4,7 @@ from collections import defaultdict
 import sys
 import statistics
 import httpx
+import time
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -299,6 +300,7 @@ def get_neighbor_chunks(chunk, all_chunks_by_file):
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
     print("[DEBUG] /file_ops/search_docs endpoint called", flush=True)
+    request_start_ts = time.time()
     data = await request.json()
     user_prompt = data.get("query") or data.get("user_prompt")
     user_id = data.get("user_id")
@@ -385,8 +387,10 @@ async def api_search_docs(request: Request):
     # --- LLM-based summary of top search results ---
     summary = None
     filtered_chunks = []
+    filtered_chunks = []
+    pending_chunks = []
     try:
-    # GPT-5 supports a large context window; include as many top chunks as fit in ~60,000 chars
+        # GPT-5 supports a large context window; include as many top chunks as fit in ~60,000 chars
         encoding = tiktoken.get_encoding("cl100k_base")
         MAX_SUMMARY_TOKENS = 64000
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
@@ -413,8 +417,13 @@ async def api_search_docs(request: Request):
         filtered_chunks = filtered_chunks[:20]
         print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 20) actually used in summary.", flush=True)
 
+        # Also compute chunks not yet summarized so caller can continue client-side
+        pending_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") not in used_chunk_ids]
+        pending_chunks = pending_chunks[:20]
+
         if top_text.strip():
-            from app.core.openai_client import chat_completion
+            # Timeboxed streaming summary so partial text is returned before client 60s limit
+            from app.core.openai_client import stream_chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
                     "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
@@ -429,14 +438,23 @@ async def api_search_docs(request: Request):
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-5")
-        else:
-            pass
-    except Exception as e:
-        pass
-        summary = None
+            # Compute time budget with overall cap to fit within 60s HTTP limit
+            try:
+                requested_budget = float(data.get("summary_time_budget", 50))
+            except Exception:
+                requested_budget = 50.0
+            try:
+                overall_budget = float(data.get("overall_time_budget", 58))
+            except Exception:
+                overall_budget = 58.0
+            elapsed = time.time() - request_start_ts
+            remaining = max(1.0, overall_budget - elapsed - 2.0)  # leave 2s buffer
+            time_budget = max(1.0, min(requested_budget, remaining))
+            summary, _ = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=time_budget)
+    except Exception:
+        summary = summary or None
 
-    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary_chunks": filtered_chunks, "pending_chunks": pending_chunks, "summary": summary})
 
 
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
@@ -454,6 +472,7 @@ async def assistant_search_docs(request: Request):
         "user": { "id": "uuid-or-empty" }  # optional
     }
     """
+    request_start_ts = time.time()
     try:
         data = await request.json()
     except Exception as e:
@@ -565,6 +584,7 @@ async def assistant_search_docs(request: Request):
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
 
     summary = None
+    pending_chunks = []
     try:
         encoding = tiktoken.get_encoding("cl100k_base")
         MAX_SUMMARY_TOKENS = 64000
@@ -583,10 +603,13 @@ async def assistant_search_docs(request: Request):
             total_tokens += chunk_tokens
             used_chunk_ids.add(chunk.get("id"))
         top_text = "\n\n".join(top_texts)
+
         filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
         filtered_chunks = filtered_chunks[:20]
+        pending_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") not in used_chunk_ids][:20]
+
         if top_text.strip():
-            from app.core.openai_client import chat_completion
+            from app.core.openai_client import stream_chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
                     "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
@@ -601,9 +624,20 @@ async def assistant_search_docs(request: Request):
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-5")
+            try:
+                requested_budget = float(data.get("summary_time_budget", 50))
+            except Exception:
+                requested_budget = 50.0
+            try:
+                overall_budget = float(data.get("overall_time_budget", 58))
+            except Exception:
+                overall_budget = 58.0
+            elapsed = time.time() - request_start_ts
+            remaining = max(1.0, overall_budget - elapsed - 2.0)
+            time_budget = max(1.0, min(requested_budget, remaining))
+            summary, _ = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=time_budget)
     except Exception:
-        summary = None
+        summary = summary or None
 
     # Compact response support for connectors/function callers
     # Default to compact=True to avoid very large JSON responses (helps connectors/importers)
@@ -637,9 +671,9 @@ async def assistant_search_docs(request: Request):
             }
             sources.append(src)
 
-        return JSONResponse({"summary": summary, "sources": sources})
+        return JSONResponse({"summary": summary, "sources": sources, "summary_chunks": filtered_chunks, "pending_chunks": pending_chunks})
     else:
-        return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+        return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary, "summary_chunks": filtered_chunks, "pending_chunks": pending_chunks})
 
 
 # Legacy endpoint maintained for backward compatibility
