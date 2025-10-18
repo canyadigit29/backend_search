@@ -4,7 +4,6 @@ from collections import defaultdict
 import sys
 import statistics
 import httpx
-import time
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -300,7 +299,6 @@ def get_neighbor_chunks(chunk, all_chunks_by_file):
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
     print("[DEBUG] /file_ops/search_docs endpoint called", flush=True)
-    request_start_ts = time.time()
     data = await request.json()
     user_prompt = data.get("query") or data.get("user_prompt")
     user_id = data.get("user_id")
@@ -387,10 +385,8 @@ async def api_search_docs(request: Request):
     # --- LLM-based summary of top search results ---
     summary = None
     filtered_chunks = []
-    filtered_chunks = []
-    pending_chunks = []
     try:
-        # GPT-5 supports a large context window; include as many top chunks as fit in ~60,000 chars
+        # GPT-4o supports a large context window; include as many top chunks as fit in ~60,000 chars
         encoding = tiktoken.get_encoding("cl100k_base")
         MAX_SUMMARY_TOKENS = 64000
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
@@ -417,13 +413,8 @@ async def api_search_docs(request: Request):
         filtered_chunks = filtered_chunks[:20]
         print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 20) actually used in summary.", flush=True)
 
-        # Also compute chunks not yet summarized so caller can continue client-side
-        pending_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") not in used_chunk_ids]
-        pending_chunks = pending_chunks[:20]
-
         if top_text.strip():
-            # Timeboxed streaming summary so partial text is returned before client 60s limit
-            from app.core.openai_client import stream_chat_completion
+            from app.core.openai_client import chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
                     "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
@@ -438,92 +429,14 @@ async def api_search_docs(request: Request):
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            # Compute time budget with overall cap to fit within 60s HTTP limit
-            try:
-                requested_budget = float(data.get("summary_time_budget", 50))
-            except Exception:
-                requested_budget = 50.0
-            try:
-                overall_budget = float(data.get("overall_time_budget", 58))
-            except Exception:
-                overall_budget = 58.0
-            elapsed = time.time() - request_start_ts
-            remaining = max(1.0, overall_budget - elapsed - 2.0)  # leave 2s buffer
-            time_budget = max(1.0, min(requested_budget, remaining))
-            summary, _ = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=time_budget)
-    except Exception:
-        summary = summary or None
+            summary = chat_completion(summary_prompt, model="gpt-4o")
+        else:
+            pass
+    except Exception as e:
+        pass
+        summary = None
 
-    # Response shaping to avoid large payloads
-    include_summary_chunks = bool(data.get("include_summary_chunks", False))
-    include_pending_chunks = bool(data.get("include_pending_chunks", False))
-    include_summary_chunks_content = bool(data.get("include_summary_chunks_content", False))
-    pending_policy = (data.get("pending_chunks_content_policy") or "excerpt").lower()  # full|excerpt|none
-    try:
-        max_pending = int(data.get("max_pending_chunks", 5))
-    except Exception:
-        max_pending = 5
-    try:
-        excerpt_length = int(data.get("excerpt_length", 300))
-    except Exception:
-        excerpt_length = 300
-    try:
-        response_budget_bytes = int(
-            data.get(
-                "response_budget_bytes",
-                os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"),
-            )
-        )
-    except Exception:
-        response_budget_bytes = int(os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"))
-
-    def shape_chunk(c, include_content=True, policy="full"):
-        shaped = {k: v for k, v in c.items() if k != "content"}
-        content = c.get("content")
-        if include_content:
-            shaped["content"] = content
-        elif policy == "excerpt" and content:
-            shaped["content"] = (content or "").strip().replace("\n", " ")[:excerpt_length]
-        return shaped
-
-    envelope = {"summary": summary}
-    # Always include a minimal set of sources via retrieved_chunks for UI parity
-    envelope["retrieved_chunks"] = [shape_chunk(c, include_content=False, policy="excerpt") for c in filtered_chunks]
-
-    # Include summary_chunks only when requested
-    if include_summary_chunks:
-        summary_chunks_out = []
-        for c in filtered_chunks:
-            if include_summary_chunks_content:
-                summary_chunks_out.append(shape_chunk(c, include_content=True))
-            else:
-                summary_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
-        envelope["summary_chunks"] = summary_chunks_out
-
-    # Include pending_chunks only when requested
-    if include_pending_chunks:
-        pending_chunks_out = []
-        for c in pending_chunks[:max_pending]:
-            if pending_policy == "full":
-                pending_chunks_out.append(shape_chunk(c, include_content=True))
-            elif pending_policy == "excerpt":
-                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="excerpt"))
-            else:
-                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
-        envelope["pending_chunks"] = pending_chunks_out
-
-    # Coarse budget enforcement: trim pending chunks until under budget
-    try:
-        import json as _json
-        # Budget enforcement only if optional heavy fields included
-        if "pending_chunks" in envelope:
-            while len(_json.dumps(envelope)) > response_budget_bytes and envelope["pending_chunks"]:
-                envelope["pending_chunks"].pop()
-            if len(_json.dumps(envelope)) > response_budget_bytes and envelope.get("pending_chunks"):
-                envelope["pending_chunks"] = [shape_chunk(c, include_content=False, policy="none") for c in envelope["pending_chunks"]]
-        return JSONResponse(envelope)
-    except Exception:
-        return JSONResponse(envelope)
+    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
 
 
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
@@ -541,7 +454,6 @@ async def assistant_search_docs(request: Request):
         "user": { "id": "uuid-or-empty" }  # optional
     }
     """
-    request_start_ts = time.time()
     try:
         data = await request.json()
     except Exception as e:
@@ -653,7 +565,6 @@ async def assistant_search_docs(request: Request):
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
 
     summary = None
-    pending_chunks = []
     try:
         encoding = tiktoken.get_encoding("cl100k_base")
         MAX_SUMMARY_TOKENS = 64000
@@ -672,13 +583,10 @@ async def assistant_search_docs(request: Request):
             total_tokens += chunk_tokens
             used_chunk_ids.add(chunk.get("id"))
         top_text = "\n\n".join(top_texts)
-
         filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
         filtered_chunks = filtered_chunks[:20]
-        pending_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") not in used_chunk_ids][:20]
-
         if top_text.strip():
-            from app.core.openai_client import stream_chat_completion
+            from app.core.openai_client import chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
                     "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
@@ -693,20 +601,9 @@ async def assistant_search_docs(request: Request):
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            try:
-                requested_budget = float(data.get("summary_time_budget", 50))
-            except Exception:
-                requested_budget = 50.0
-            try:
-                overall_budget = float(data.get("overall_time_budget", 58))
-            except Exception:
-                overall_budget = 58.0
-            elapsed = time.time() - request_start_ts
-            remaining = max(1.0, overall_budget - elapsed - 2.0)
-            time_budget = max(1.0, min(requested_budget, remaining))
-            summary, _ = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=time_budget)
+            summary = chat_completion(summary_prompt, model="gpt-4o")
     except Exception:
-        summary = summary or None
+        summary = None
 
     # Compact response support for connectors/function callers
     # Default to compact=True to avoid very large JSON responses (helps connectors/importers)
@@ -740,124 +637,9 @@ async def assistant_search_docs(request: Request):
             }
             sources.append(src)
 
-        # Shape response to avoid overly large payloads
-        include_summary_chunks_content = bool(data.get("include_summary_chunks_content", False))
-        pending_policy = (data.get("pending_chunks_content_policy") or "full").lower()
-        try:
-            response_budget_bytes = int(
-                data.get(
-                    "response_budget_bytes",
-                    os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"),
-                )
-            )
-        except Exception:
-            response_budget_bytes = int(os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"))
-        try:
-            excerpt_length = int(data.get("excerpt_length", 300))
-        except Exception:
-            excerpt_length = 300
-
-        def shape_chunk(c, include_content=True, policy="full"):
-            shaped = {k: v for k, v in c.items() if k != "content"}
-            content = c.get("content")
-            if include_content:
-                shaped["content"] = content
-            elif policy == "excerpt" and content:
-                shaped["content"] = (content or "").strip().replace("\n", " ")[:excerpt_length]
-            return shaped
-
-        summary_chunks_out = []
-        for c in filtered_chunks:
-            if include_summary_chunks_content:
-                summary_chunks_out.append(shape_chunk(c, include_content=True))
-            else:
-                summary_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
-
-        pending_chunks_out = []
-        for c in pending_chunks:
-            if pending_policy == "full":
-                pending_chunks_out.append(shape_chunk(c, include_content=True))
-            elif pending_policy == "excerpt":
-                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="excerpt"))
-            else:
-                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
-
-        # Build minimal envelope by default to match previous behavior
-        include_summary_chunks = bool(data.get("include_summary_chunks", False))
-        include_pending_chunks = bool(data.get("include_pending_chunks", False))
-        try:
-            import json as _json
-            envelope = {"summary": summary, "sources": sources}
-            if include_summary_chunks:
-                envelope["summary_chunks"] = summary_chunks_out
-            if include_pending_chunks:
-                envelope["pending_chunks"] = pending_chunks_out
-                # Enforce budget only when optional heavy fields present
-                while len(_json.dumps(envelope)) > response_budget_bytes and envelope["pending_chunks"]:
-                    envelope["pending_chunks"].pop()
-                if len(_json.dumps(envelope)) > response_budget_bytes and envelope.get("pending_chunks"):
-                    envelope["pending_chunks"] = [shape_chunk(c, include_content=False, policy="none") for c in envelope["pending_chunks"]]
-            return JSONResponse(envelope)
-        except Exception:
-            return JSONResponse({"summary": summary, "sources": sources})
+        return JSONResponse({"summary": summary, "sources": sources})
     else:
-        include_summary_chunks_content = bool(data.get("include_summary_chunks_content", False))
-        pending_policy = (data.get("pending_chunks_content_policy") or "full").lower()
-        try:
-            response_budget_bytes = int(
-                data.get(
-                    "response_budget_bytes",
-                    os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"),
-                )
-            )
-        except Exception:
-            response_budget_bytes = int(os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"))
-        try:
-            excerpt_length = int(data.get("excerpt_length", 300))
-        except Exception:
-            excerpt_length = 300
-
-        def shape_chunk(c, include_content=True, policy="full"):
-            shaped = {k: v for k, v in c.items() if k != "content"}
-            content = c.get("content")
-            if include_content:
-                shaped["content"] = content
-            elif policy == "excerpt" and content:
-                shaped["content"] = (content or "").strip().replace("\n", " ")[:excerpt_length]
-            return shaped
-
-        summary_chunks_out = []
-        for c in filtered_chunks:
-            if include_summary_chunks_content:
-                summary_chunks_out.append(shape_chunk(c, include_content=True))
-            else:
-                summary_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
-
-        pending_chunks_out = []
-        for c in pending_chunks:
-            if pending_policy == "full":
-                pending_chunks_out.append(shape_chunk(c, include_content=True))
-            elif pending_policy == "excerpt":
-                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="excerpt"))
-            else:
-                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
-
-        include_summary_chunks = bool(data.get("include_summary_chunks", False))
-        include_pending_chunks = bool(data.get("include_pending_chunks", False))
-        try:
-            import json as _json
-            envelope = {"retrieved_chunks": summary_chunks_out, "summary": summary}
-            if include_summary_chunks:
-                envelope["summary_chunks"] = summary_chunks_out
-            if include_pending_chunks:
-                envelope["pending_chunks"] = pending_chunks_out
-                while len(_json.dumps(envelope)) > response_budget_bytes and envelope["pending_chunks"]:
-                    envelope["pending_chunks"].pop()
-                if len(_json.dumps(envelope)) > response_budget_bytes and envelope.get("pending_chunks"):
-                    envelope["pending_chunks"] = [shape_chunk(c, include_content=False, policy="none") for c in envelope["pending_chunks"]]
-            return JSONResponse(envelope)
-        except Exception:
-            return JSONResponse({"retrieved_chunks": summary_chunks_out, "summary": summary})
+        return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
 
 
 # Legacy endpoint maintained for backward compatibility
