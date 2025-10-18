@@ -27,7 +27,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 # GPT-5 supports a much larger context window than earlier models; choose a large but bounded default to avoid runaway memory/time.
 MAX_SUMMARY_TOKENS = int(os.environ.get("MAX_SUMMARY_TOKENS", 150_000))  # tokens
 MAX_SUMMARY_SOURCES = int(os.environ.get("MAX_SUMMARY_SOURCES", 50))     # sources returned for frontend (non-compact)
-DEFAULT_COMPACT_MAX_CHUNKS = int(os.environ.get("DEFAULT_COMPACT_MAX_CHUNKS", 10))
+DEFAULT_COMPACT_MAX_CHUNKS = int(os.environ.get("DEFAULT_COMPACT_MAX_CHUNKS", 25))
 DEFAULT_EXCERPT_LENGTH = int(os.environ.get("DEFAULT_EXCERPT_LENGTH", 300))
 FINAL_SCORE_THRESHOLD = float(os.environ.get("FINAL_SCORE_THRESHOLD", 0.4))
 
@@ -271,7 +271,9 @@ def get_neighbor_chunks(chunk, all_chunks_by_file):
 async def api_search_docs(request: Request):
     """
     Main public search endpoint used by frontend.
-    Produces a detailed retrieved_chunks list and an LLM summary (if possible).
+    Performs retrieval, neighbor expansion, deduplication, scoring, and sorting.
+    Returns compact sources (chunks/excerpts) for client-side summarization.
+    No server-side LLM summarization is performed to avoid timeouts.
     """
     data = await request.json()
     user_prompt = data.get("query") or data.get("user_prompt")
@@ -364,62 +366,35 @@ async def api_search_docs(request: Request):
 
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
 
-    # --- LLM-based summary of top search results (token-budgeted) ---
-    summary = None
-    filtered_chunks = []
-
+    # --- Build compact sources for client-side summarization (no server-side LLM) ---
+    # Extract request parameters for compact mode
+    compact = data.get("compact", True)  # Default to compact mode
     try:
-        encoding = tiktoken.get_encoding("cl100k_base")
+        max_chunks = int(data.get("max_chunks", DEFAULT_COMPACT_MAX_CHUNKS))
     except Exception:
-        # Fallback: define a permissive estimation function if encoding unavailable
-        encoding = None
-
+        max_chunks = DEFAULT_COMPACT_MAX_CHUNKS
     try:
-        sorted_chunks = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
-        top_texts = []
-        total_tokens = 0
-        used_chunk_ids = set()
-
-        for chunk in sorted_chunks:
-            content = chunk.get("content", "")
-            if not content:
-                continue
-            if encoding:
-                chunk_tokens = len(encoding.encode(content))
-            else:
-                # crude fallback: estimate 4 characters per token
-                chunk_tokens = max(1, len(content) // 4)
-            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
-                break
-            top_texts.append(content)
-            total_tokens += chunk_tokens
-            used_chunk_ids.add(chunk.get("id"))
-
-        top_text = "\n\n".join(top_texts)
-        # Filter to only those included in the summary prompt (keeps consistency)
-        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-
-        # Keep a bounded number of sources for the frontend
-        filtered_chunks = filtered_chunks[:MAX_SUMMARY_SOURCES]
-
-        if top_text.strip():
-            summary_prompt = [
-                {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
-                    "- Focus on information directly relevant to the user's question. Do not invent facts not present in the results.\n"
-                    "- If there are patterns or notable points, highlight them and explain their significance.\n"
-                    "- Reference file names, dates, or section headers where possible.\n"
-                    "- Provide a short high-level summary first, then details or bullet points as needed."
-                )},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
-            ]
-            # Use GPT-5 explicitly if the underlying chat_completion supports it
-            summary = chat_completion(summary_prompt, model="gpt-5")
+        excerpt_length = int(data.get("excerpt_length", DEFAULT_EXCERPT_LENGTH))
     except Exception:
-        # If summarization fails, continue returning retrieved chunks
-        summary = None
+        excerpt_length = DEFAULT_EXCERPT_LENGTH
 
-    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+    # Sort by final_score and build compact sources
+    sorted_chunks = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
+    sources = []
+    for chunk in sorted_chunks[:max_chunks]:
+        content = (chunk.get("content") or "")
+        excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+        src = {
+            "id": chunk.get("id"),
+            "file_name": chunk.get("file_name"),
+            "page_number": chunk.get("page_number"),
+            "final_score": chunk.get("final_score"),
+            "excerpt": excerpt
+        }
+        sources.append(src)
+
+    # No server-side LLM summarization - return None for summary
+    return JSONResponse({"sources": sources, "summary": None})
 
 
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
@@ -427,7 +402,10 @@ async def api_search_docs(request: Request):
 async def assistant_search_docs(request: Request):
     """
     Accepts a payload from an OpenAI assistant (function call or webhook). Normalizes fields
-    and forwards to the existing perform_search flow. Provides a compact response for connectors by default.
+    and forwards to the existing perform_search flow. 
+    Performs retrieval, neighbor expansion, deduplication, scoring, and sorting.
+    Returns compact sources (chunks/excerpts) for assistant-side summarization.
+    No server-side LLM summarization is performed to avoid timeouts.
     """
     try:
         data = await request.json()
@@ -539,84 +517,36 @@ async def assistant_search_docs(request: Request):
 
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
 
-    # Build summary (token-budgeted) similar to /file_ops/search_docs
-    summary = None
-    filtered_chunks = []
-
+    # --- Build compact sources for assistant-side summarization (no server-side LLM) ---
+    # Extract request parameters for compact mode (default True)
+    compact = data.get("compact", True)
     try:
-        encoding = tiktoken.get_encoding("cl100k_base")
+        max_chunks = int(data.get("max_chunks", DEFAULT_COMPACT_MAX_CHUNKS))
     except Exception:
-        encoding = None
-
+        max_chunks = DEFAULT_COMPACT_MAX_CHUNKS
     try:
-        sorted_chunks = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
-        top_texts = []
-        total_tokens = 0
-        used_chunk_ids = set()
-        for chunk in sorted_chunks:
-            content = chunk.get("content", "")
-            if not content:
-                continue
-            if encoding:
-                chunk_tokens = len(encoding.encode(content))
-            else:
-                chunk_tokens = max(1, len(content) // 4)
-            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
-                break
-            top_texts.append(content)
-            total_tokens += chunk_tokens
-            used_chunk_ids.add(chunk.get("id"))
-
-        top_text = "\n\n".join(top_texts)
-        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-        filtered_chunks = filtered_chunks[:MAX_SUMMARY_SOURCES]
-
-        if top_text.strip():
-            summary_prompt = [
-                {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
-                    "- Focus on information directly relevant to the user's question. Do not invent facts not present in the results.\n"
-                    "- Provide a short high-level summary first, then details or bullet points as needed."
-                )},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
-            ]
-            summary = chat_completion(summary_prompt, model="gpt-5")
+        excerpt_length = int(data.get("excerpt_length", DEFAULT_EXCERPT_LENGTH))
     except Exception:
-        summary = None
+        excerpt_length = DEFAULT_EXCERPT_LENGTH
 
-    # Compact response support for connectors/function callers (default True)
-    compact = data.get("compact") if isinstance(data, dict) else None
-    if compact is None:
-        compact = True
+    # Sort by final_score and build compact sources
+    sorted_chunks = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
+    sources = []
+    for chunk in sorted_chunks[:max_chunks]:
+        content = (chunk.get("content") or "")
+        excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+        src = {
+            "id": chunk.get("id"),
+            "file_name": chunk.get("file_name"),
+            "page_number": chunk.get("page_number"),
+            "final_score": chunk.get("final_score"),
+            "excerpt": excerpt
+        }
+        sources.append(src)
 
-    if compact:
-        try:
-            max_chunks = int(data.get("max_chunks", DEFAULT_COMPACT_MAX_CHUNKS)) if isinstance(data, dict) and data.get("max_chunks") is not None else DEFAULT_COMPACT_MAX_CHUNKS
-        except Exception:
-            max_chunks = DEFAULT_COMPACT_MAX_CHUNKS
-        try:
-            excerpt_length = int(data.get("excerpt_length", DEFAULT_EXCERPT_LENGTH)) if isinstance(data, dict) and data.get("excerpt_length") is not None else DEFAULT_EXCERPT_LENGTH
-        except Exception:
-            excerpt_length = DEFAULT_EXCERPT_LENGTH
-
-        # Build compact sources list from filtered_chunks sorted by final_score
-        sorted_filtered = sorted(filtered_chunks, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
-        sources = []
-        for c in sorted_filtered[:max_chunks]:
-            content = (c.get("content") or "")
-            excerpt = content.strip().replace("\n", " ")[:excerpt_length]
-            src = {
-                "id": c.get("id"),
-                "file_name": c.get("file_name"),
-                "page_number": c.get("page_number"),
-                "final_score": c.get("final_score"),
-                "excerpt": excerpt
-            }
-            sources.append(src)
-
-        return JSONResponse({"summary": summary, "sources": sources})
-    else:
-        return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+    # No server-side LLM summarization - return None for summary
+    # Always return compact sources for assistants (ignoring compact flag for consistency)
+    return JSONResponse({"sources": sources, "summary": None})
 
 
 # Legacy endpoint maintained for backward compatibility
