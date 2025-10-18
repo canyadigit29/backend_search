@@ -388,7 +388,7 @@ async def api_search_docs(request: Request):
     try:
         # gpt-5 supports a large context window; include as many top chunks as fit in ~60,000 chars
         encoding = tiktoken.get_encoding("cl100k_base")
-        MAX_SUMMARY_TOKENS = 200000
+        MAX_SUMMARY_TOKENS = 150000
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
         top_texts = []
         total_tokens = 0
@@ -567,7 +567,7 @@ async def assistant_search_docs(request: Request):
     summary = None
     try:
         encoding = tiktoken.get_encoding("cl100k_base")
-        MAX_SUMMARY_TOKENS = 200000
+        MAX_SUMMARY_TOKENS = 150000
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
         top_texts = []
         total_tokens = 0
