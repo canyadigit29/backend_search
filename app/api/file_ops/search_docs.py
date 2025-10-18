@@ -269,7 +269,7 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
         "Content-Type": "application/json"
     }
     try:
-        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=90)
+        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
         response.raise_for_status()
         results = response.json() or []
         # Attach the ts_rank as keyword_score for downstream use
@@ -411,7 +411,7 @@ async def api_search_docs(request: Request):
 
         # Limit to top 20 sources for frontend
         filtered_chunks = filtered_chunks[:50]
-        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 100) actually used in summary.", flush=True)
+        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 50) actually used in summary.", flush=True)
 
         if top_text.strip():
             from app.core.openai_client import chat_completion
