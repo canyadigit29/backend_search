@@ -19,13 +19,13 @@ PGVECTOR_CONN_STR = os.environ.get("PGVECTOR_CONN_STR")  # e.g. postgresql://use
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # --- LlamaIndex Setup ---
-llm = OpenAI(api_key=OPENAI_API_KEY, model="gpt-4o")
+llm = OpenAI(api_key=OPENAI_API_KEY, model="gpt-5")
 service_context = ServiceContext.from_defaults(llm=llm)
 
 vector_store = PGVectorStore.from_params(
     database_url=PGVECTOR_CONN_STR,
     table_name="document_chunks",  # match your table
-    embedding_dim=1536  # or 3072 for OpenAI/gpt-4o
+    embedding_dim=1536  # or 3072 for OpenAI/gpt-5
 )
 
 index = VectorStoreIndex.from_vector_store(vector_store, service_context=service_context)

@@ -386,7 +386,7 @@ async def api_search_docs(request: Request):
     summary = None
     filtered_chunks = []
     try:
-        # gpt-4o supports a large context window; include as many top chunks as fit in ~60,000 chars
+        # gpt-5 supports a large context window; include as many top chunks as fit in ~60,000 chars
         encoding = tiktoken.get_encoding("cl100k_base")
         MAX_SUMMARY_TOKENS = 64000
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
@@ -429,7 +429,7 @@ async def api_search_docs(request: Request):
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-4o")
+            summary = chat_completion(summary_prompt, model="gpt-5")
         else:
             pass
     except Exception as e:
@@ -601,7 +601,7 @@ async def assistant_search_docs(request: Request):
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-4o")
+            summary = chat_completion(summary_prompt, model="gpt-5")
     except Exception:
         summary = None
 
