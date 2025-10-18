@@ -4,6 +4,8 @@ from collections import defaultdict
 import sys
 import statistics
 import httpx
+import time
+import uuid
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -11,13 +13,21 @@ from app.core.openai_client import chat_completion
 from app.core.query_understanding import extract_search_filters
 from app.core.llama_query_transform import llama_query_transform
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 import tiktoken
+
+import redis
+from rq import Queue
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
+
+# Redis / RQ config
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.from_url(REDIS_URL)
+rq_queue = Queue("search", connection=redis_client)
 
 # Configurable model/token settings (can be overridden via env)
 MODEL_MAX_TOKENS = int(os.environ.get("MODEL_MAX_TOKENS", "400000"))
@@ -25,6 +35,9 @@ SUMMARY_RESPONSE_RESERVE = int(os.environ.get("SUMMARY_RESPONSE_RESERVE", "8192"
 CHUNK_TOKEN_SAFETY_MARGIN = int(os.environ.get("CHUNK_TOKEN_SAFETY_MARGIN", "512"))
 # Cap how many chunk tokens we will consider (optional safety)
 CHUNK_TOKEN_CAP = int(os.environ.get("CHUNK_TOKEN_CAP", str(300_000)))  # large default, still bounded by model limits
+# Request timeout we need to respect from caller (59s typical)
+REQUEST_TIMEOUT_SECONDS = int(os.environ.get("REQUEST_TIMEOUT_SECONDS", "59"))
+INTERNAL_TIMEOUT_BUFFER = int(os.environ.get("INTERNAL_TIMEOUT_BUFFER", "4"))
 
 def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
@@ -75,36 +88,24 @@ def perform_search(tool_args):
         if getattr(response, "error", None):
             return {"error": f"Supabase RPC failed: {response.error.message}"}
         semantic_matches = response.data or []
-        if semantic_matches:
-            pass
-        else:
-            pass
         semantic_matches.sort(key=lambda x: x.get("score", 0), reverse=True)
 
-        # Debug: print top 5 semantic matches before any boosting
-        for i, m in enumerate(semantic_matches[:5]):
-            preview = (m.get("content", "") or "")[:200].replace("\n", " ")
-            # Removed debug print: [DEBUG] SEMANTIC ...
-            pass
-
-        # Hybrid/boosted merging and debug output
+        # Hybrid/boosted merging
         import re
         stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
-        # Use search_query from user_prompt if available
         if not search_query and user_prompt:
             search_query = user_prompt
-        keywords = [w for w in re.split(r"\W+", search_query or "") if w and w.lower() not in stopwords]
+        keywords = [w for w in re.split(r"\\W+", search_query or "") if w and w.lower() not in stopwords]
         from app.api.file_ops.search_docs import keyword_search
         keyword_results = keyword_search(keywords, user_id_filter=user_id_filter)
         all_matches = {m["id"]: m for m in semantic_matches}
-        # Remove all additive boosting for phrase/keyword matches
         for k in keyword_results:
             if k["id"] not in all_matches:
                 all_matches[k["id"]] = k
         matches = list(all_matches.values())
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
 
-        # --- Filter matches by metadata fields after merging ---
+        # Filter matches by metadata
         metadata_fields = [
             ("meeting_year", "meeting_year"),
             ("meeting_month", "meeting_month"),
@@ -118,7 +119,7 @@ def perform_search(tool_args):
             if filter_value is not None:
                 matches = [m for m in matches if m.get(match_key) == filter_value]
 
-        # [DEBUG SCORES] Begin score analysis
+        # Scoring and normalization (unchanged)
         def avg(lst):
             return sum(lst) / len(lst) if lst else 0
         def med(lst):
@@ -142,32 +143,11 @@ def perform_search(tool_args):
         all_stats = score_stats(matches)
         top20_stats = score_stats(matches[:20])
         top10_stats = score_stats(matches[:10])
-        # [DEBUG SCORES] End score analysis
-        # New debug: print top 5 results with score and content preview, and boosting info
-        for i, m in enumerate(matches[:5]):
-            preview = (m.get("content", "") or "")[:200].replace("\n", " ")
-            boost_info = ""
-            if m.get("boosted_reason") == "exact_phrase":
-                boost_info = f" [BOOSTED: exact phrase, orig_score={m.get('original_score', 'n/a')}]"
-            elif m.get("boosted_reason") == "keyword_overlap":
-                boost_info = f" [BOOSTED: keyword overlap, orig_score={m.get('original_score', 'n/a')}]"
-            sim_score = m.get("score", 0)
-            orig_score = m.get("original_score", sim_score)
-            # Removed debug print: [DEBUG] #... | sim_score: ...
-        # After boosting, print all boosted results
-        boosted_results = [m for m in matches if m.get("boosted_reason")]
-        if boosted_results:
-            # Removed debug print: [DEBUG] Boosted results found: ...
-            pass
-        else:
-            # Removed debug print: [DEBUG] No boosted results found.
-            pass
-        # Removed debug print: [DEBUG] matches for response: ...
-        # Limit to top 100 results for all semantic/hybrid searches
+
+        # Limit to top 100
         matches = matches[:100]
-        # Removed debug print: [DEBUG] Returning ... matches (max 100) in perform_search.
-        # --- Add keyword_score to each match ---
-        # Count keyword hits for each match
+
+        # Keyword scores
         def count_keyword_hits(text, keywords):
             text_lower = text.lower()
             return sum(1 for kw in keywords if kw.lower() in text_lower)
@@ -177,11 +157,10 @@ def perform_search(tool_args):
             m["keyword_score"] = hits
             if hits > max_keyword_hits:
                 max_keyword_hits = hits
-        # Normalize keyword_score to [0, 1]
         for m in all_matches.values():
             m["keyword_score"] = m["keyword_score"] / max_keyword_hits if max_keyword_hits > 0 else 0
 
-        # --- Normalize semantic score to [0, 1] ---
+        # Normalize semantic score
         semantic_scores = [m.get("score", 0) for m in all_matches.values()]
         min_sem = min(semantic_scores) if semantic_scores else 0
         max_sem = max(semantic_scores) if semantic_scores else 1
@@ -189,28 +168,22 @@ def perform_search(tool_args):
             raw = m.get("score", 0)
             m["semantic_score"] = (raw - min_sem) / (max_sem - min_sem) if max_sem > min_sem else 0
 
-        # --- Weighted sum for final score ---
-        alpha = 0.6  # weight for semantic (from LLM suggestion)
-        beta = 0.4   # weight for keyword (from LLM suggestion)
+        # Weighted sum
+        alpha = 0.6
+        beta = 0.4
         for m in all_matches.values():
             m["final_score"] = alpha * m["semantic_score"] + beta * m["keyword_score"]
 
         matches = list(all_matches.values())
-        # Apply threshold to filter out weak matches
-        threshold = 0.4  # from LLM suggestion
+        threshold = 0.4
         matches = [m for m in matches if m["final_score"] >= threshold]
         matches.sort(key=lambda x: x.get("final_score", 0), reverse=True)
         return {"retrieved_chunks": matches}
     except Exception as e:
-        # Removed debug print: [DEBUG] perform_search exception: ...
         return {"error": f"Error during search: {str(e)}"}
 
 
 def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
-    """
-    Use OpenAI to extract the most effective search phrase or keywords for semantic document retrieval from the user's request.
-    If agent_mode is True, use enhanced instructions for extraction.
-    """
     if agent_mode:
         system_prompt = (
             "You are a search assistant. Given a user's request, extract only the most relevant keywords or noun phrases that would best match the content of documents in a search system.\n"
@@ -242,20 +215,13 @@ def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
     result = chat_completion(messages)
     return result.strip()
 
-
 async def semantic_search(request, payload):
     return perform_search(payload)
-
 
 router = APIRouter()
 
 
 def keyword_search(keywords, user_id_filter=None, file_name_filter=None, description_filter=None, start_date=None, end_date=None, match_count=300):
-    """
-    Keyword search over document_chunks table using Postgres FTS (ts_rank/BM25).
-    Returns chunks containing any of the keywords, with a ts_rank score.
-    """
-    # Join keywords for query
     keyword_query = " ".join(keywords)
     rpc_args = {
         "keyword_query": keyword_query,
@@ -264,7 +230,6 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
         "description_filter": description_filter,
         "match_count": match_count
     }
-    # Manual HTTPX call to Supabase RPC endpoint with required headers
     supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
     service_role = os.environ["SUPABASE_SERVICE_ROLE"]
     endpoint = f"{supabase_url}/rest/v1/rpc/match_documents_fts"
@@ -274,15 +239,13 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
         "Content-Type": "application/json"
     }
     try:
-        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=120)
+        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=10)
         response.raise_for_status()
         results = response.json() or []
-        # Attach the ts_rank as keyword_score for downstream use
         for r in results:
             r["keyword_score"] = r.get("ts_rank", 0)
         return results
-    except Exception as e:
-        # Optionally log the error
+    except Exception:
         return []
 
 
@@ -300,10 +263,9 @@ def get_neighbor_chunks(chunk, all_chunks_by_file):
             next_chunk = c
     return prev_chunk, next_chunk
 
-
 @router.post("/file_ops/search_docs")
-async def api_search_docs(request: Request):
-    print("[DEBUG] /file_ops/search_docs endpoint called", flush=True)
+async def api_search_docs(request: Request, background_tasks: BackgroundTasks):
+    start_time = time.monotonic()
     data = await request.json()
     user_prompt = data.get("query") or data.get("user_prompt")
     user_id = data.get("user_id")
@@ -311,7 +273,6 @@ async def api_search_docs(request: Request):
         return JSONResponse({"error": "Missing query"}, status_code=400)
     if not user_id:
         return JSONResponse({"error": "Missing user_id"}, status_code=400)
-    # --- LlamaIndex-style query transform ---
     query_obj = llama_query_transform(user_prompt)
     search_query = query_obj.get("query") or user_prompt
     search_filters = query_obj.get("filters") or {}
@@ -334,27 +295,25 @@ async def api_search_docs(request: Request):
     ]:
         if search_filters.get(meta_field) is not None:
             tool_args[meta_field] = search_filters[meta_field]
-    # --- Semantic search only (no hybrid) ---
+
     semantic_result = perform_search(tool_args)
     matches = semantic_result.get("retrieved_chunks", [])
-    # --- Neighbor chunk retrieval ---
-    # Group all returned chunks by file_id for neighbor lookup
+
+    # attach neighbors
     all_chunks_by_file = {}
     for chunk in matches:
         file_id = chunk.get("file_id")
         if file_id not in all_chunks_by_file:
             all_chunks_by_file[file_id] = []
         all_chunks_by_file[file_id].append(chunk)
-    # For each chunk, attach prev/next chunk if available
     for chunk in matches:
         prev_chunk, next_chunk = get_neighbor_chunks(chunk, all_chunks_by_file)
         if prev_chunk:
             chunk["prev_chunk"] = {k: prev_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in prev_chunk}
         if next_chunk:
             chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
-    # --- Postprocessing: deduplication and neighbor expansion ---
+
     def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
-        # Deduplicate by content
         if deduplicate:
             seen = set()
             unique_chunks = []
@@ -364,7 +323,6 @@ async def api_search_docs(request: Request):
                     seen.add(content)
                     unique_chunks.append(c)
             chunks = unique_chunks
-        # Expand neighbors (add prev/next chunk content inline)
         if expand_neighbors:
             expanded = []
             for c in chunks:
@@ -380,18 +338,28 @@ async def api_search_docs(request: Request):
                     nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
                     expanded.append(nxt_copy)
             chunks = expanded
-        # Custom filter
         if custom_filter:
             chunks = [c for c in chunks if custom_filter(c)]
         return chunks
 
-    # After neighbor chunk attachment, before summary:
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
-    # --- LLM-based summary of top search results ---
+
+    # Decide sync vs async: if close to timeout, enqueue
+    elapsed = time.monotonic() - start_time
+    remaining = REQUEST_TIMEOUT_SECONDS - INTERNAL_TIMEOUT_BUFFER - elapsed
+    # allow caller to force async
+    force_async = data.get("async") or data.get("background")
+    if force_async or remaining < 3.0:
+        job_id = str(uuid.uuid4())
+        # enqueue worker (process_search_job defined in app.tasks.search_worker)
+        rq_queue.enqueue("app.tasks.search_worker.process_search_job", tool_args, job_id, data.get("callback_url"))
+        redis_client.set(f"search:results:{job_id}", json.dumps({"status": "queued"}))
+        return JSONResponse({"status": "queued", "job_id": job_id, "poll_url": f"/file_ops/jobs/{job_id}"}, status_code=202)
+
+    # else, perform summarization inline (existing behavior)
     summary = None
     filtered_chunks = []
     try:
-        # Build system and user prompt texts (kept concise but informative)
         system_prompt_text = (
             "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
             "- Focus on information directly relevant to the user's question. Synthesize and connect the dots only from the provided results.\n"
@@ -400,28 +368,18 @@ async def api_search_docs(request: Request):
             "- Do not add information not present in the results.\n"
         )
         user_wrapper_text = f"User query: {user_prompt}\n\nSearch results:\n"
-
-        # Use model-aware encoding if available
         try:
             encoding = tiktoken.encoding_for_model("gpt-5")
         except Exception:
             encoding = tiktoken.get_encoding("cl100k_base")
 
-        # Centralized helper: select as many top chunks as fit within model budget
         def build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5"):
-            """
-            Returns (top_text, used_chunk_ids).
-            Accounts for system+user overhead, reserve for model output, and safety margin.
-            """
             model_max = MODEL_MAX_TOKENS
             reserve = SUMMARY_RESPONSE_RESERVE
             safety = CHUNK_TOKEN_SAFETY_MARGIN
-
             overhead_tokens = len(encoding.encode(system_prompt_text or "")) + len(encoding.encode(user_wrapper_text or ""))
             available_for_chunks = max(0, model_max - reserve - overhead_tokens - safety)
-            # Also bound by CHUNK_TOKEN_CAP to avoid runaway selection
             available_for_chunks = min(available_for_chunks, CHUNK_TOKEN_CAP)
-
             top_texts = []
             total_tokens = 0
             used_chunk_ids = set()
@@ -473,34 +431,28 @@ async def api_search_docs(request: Request):
 
     return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
 
+@router.get("/file_ops/jobs/{job_id}")
+async def get_job_status(job_id: str):
+    key = f"search:results:{job_id}"
+    data = redis_client.get(key)
+    if not data:
+        return JSONResponse({"status": "not_found"}, status_code=404)
+    try:
+        payload = json.loads(data)
+    except Exception:
+        payload = {"status": "unknown", "raw": data.decode() if isinstance(data, bytes) else str(data)}
+    return JSONResponse(payload)
 
-# Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
 @router.post("/assistant/search_docs")
 async def assistant_search_docs(request: Request):
-    """
-    Accepts a payload from an OpenAI assistant (function call or webhook). Normalizes fields
-    and forwards to the existing perform_search flow. If the assistant does not provide a
-    user_id, the endpoint will use ASSISTANT_DEFAULT_USER_ID environment variable as a fallback.
-    Expected minimal payload shape (assistant):
-    {
-        "query": "user query text",
-        "conversation": { ... optional ... },
-        "metadata": { ... optional ... },
-        "user": { "id": "uuid-or-empty" }  # optional
-    }
-    """
     try:
         data = await request.json()
     except Exception as e:
         return JSONResponse({"error": f"Invalid JSON payload: {e}"}, status_code=400)
 
-    # Normalize assistant payload
-    # If the assistant provided a top-level 'query' or nested 'input' use it.
     user_prompt = data.get("query") or data.get("input") or data.get("user_prompt")
-    # Try a few conversation locations commonly used by assistant function calls
     if not user_prompt:
         conv = data.get("conversation") or data.get("messages") or {}
-        # If messages is a list, attempt to find the last user message
         if isinstance(conv, list):
             for msg in reversed(conv):
                 if msg.get("role") == "user" and msg.get("content"):
@@ -512,18 +464,13 @@ async def assistant_search_docs(request: Request):
     if not user_prompt:
         return JSONResponse({"error": "Missing query in assistant payload"}, status_code=400)
 
-    # Determine user id: prefer explicit user.id, then top-level user_id, then env fallback
     user_id = None
     if isinstance(data.get("user"), dict):
         user_id = data.get("user").get("id")
     user_id = user_id or data.get("user_id") or data.get("userId")
     if not user_id:
-        # Use hard-coded assistant key UUID as a fallback so the assistant can perform
-        # searches even when it doesn't have access to the real user's Supabase UUID.
-        # This acts as a stable 'assistant' service account.
         user_id = os.environ.get("ASSISTANT_DEFAULT_USER_ID") or "4a867500-7423-4eaa-bc79-94e368555e05"
 
-    # Apply query transform (llama-based) to extract filters if possible
     query_obj = llama_query_transform(user_prompt)
     search_query = query_obj.get("query") or user_prompt
     search_filters = query_obj.get("filters") or {}
@@ -549,11 +496,11 @@ async def assistant_search_docs(request: Request):
         if search_filters.get(meta_field) is not None:
             tool_args[meta_field] = search_filters[meta_field]
 
-    # Forward to existing perform_search logic
+    # forward to perform_search and reuse the same enqueue decision as above
+    start_time = time.monotonic()
     semantic_result = perform_search(tool_args)
     matches = semantic_result.get("retrieved_chunks", [])
-
-    # Keep neighbor chunk behavior consistent with /file_ops/search_docs
+    # attach neighbors
     all_chunks_by_file = {}
     for chunk in matches:
         file_id = chunk.get("file_id")
@@ -567,46 +514,24 @@ async def assistant_search_docs(request: Request):
         if next_chunk:
             chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
 
-    # Postprocess and summarize similar to existing endpoint
-    def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
-        if deduplicate:
-            seen = set()
-            unique_chunks = []
-            for c in chunks:
-                content = c.get("content", "")
-                if content not in seen:
-                    seen.add(content)
-                    unique_chunks.append(c)
-            chunks = unique_chunks
-        if expand_neighbors:
-            expanded = []
-            for c in chunks:
-                expanded.append(c)
-                if c.get("prev_chunk"):
-                    prev = c["prev_chunk"]
-                    prev_copy = prev.copy()
-                    prev_copy["content"] = f"[PREV] {prev_copy.get('content','')}"
-                    expanded.append(prev_copy)
-                if c.get("next_chunk"):
-                    nxt = c["next_chunk"]
-                    nxt_copy = nxt.copy()
-                    nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
-                    expanded.append(nxt_copy)
-            chunks = expanded
-        if custom_filter:
-            chunks = [c for c in chunks if custom_filter(c)]
-        return chunks
-
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
 
+    elapsed = time.monotonic() - start_time
+    remaining = REQUEST_TIMEOUT_SECONDS - INTERNAL_TIMEOUT_BUFFER - elapsed
+    force_async = data.get("async") or data.get("background")
+    if force_async or remaining < 3.0:
+        job_id = str(uuid.uuid4())
+        rq_queue.enqueue("app.tasks.search_worker.process_search_job", tool_args, job_id, data.get("callback_url"))
+        redis_client.set(f"search:results:{job_id}", json.dumps({"status": "queued"}))
+        return JSONResponse({"status": "queued", "job_id": job_id, "poll_url": f"/file_ops/jobs/{job_id}"}, status_code=202)
+
+    # otherwise reuse summarization flow (copied from above)
     summary = None
     try:
-        # Use model-aware encoding if available
         try:
             encoding = tiktoken.encoding_for_model("gpt-5")
         except Exception:
             encoding = tiktoken.get_encoding("cl100k_base")
-
         system_prompt_text = (
             "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
             "- Focus on information directly relevant to the user's question. Synthesize and connect the dots only from the provided results.\n"
@@ -616,16 +541,13 @@ async def assistant_search_docs(request: Request):
         )
         user_wrapper_text = f"User query: {user_prompt}\n\nSearch results:\n"
 
-        # Reuse helper defined above (local variant)
         def build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5"):
             model_max = MODEL_MAX_TOKENS
             reserve = SUMMARY_RESPONSE_RESERVE
             safety = CHUNK_TOKEN_SAFETY_MARGIN
-
             overhead_tokens = len(encoding.encode(system_prompt_text or "")) + len(encoding.encode(user_wrapper_text or ""))
             available_for_chunks = max(0, model_max - reserve - overhead_tokens - safety)
             available_for_chunks = min(available_for_chunks, CHUNK_TOKEN_CAP)
-
             top_texts = []
             total_tokens = 0
             used_chunk_ids = set()
@@ -642,34 +564,30 @@ async def assistant_search_docs(request: Request):
             top_text = "\n\n".join(top_texts)
             return top_text, used_chunk_ids
 
-        sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
-        top_text, used_chunk_ids = build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5")
-        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-        filtered_chunks = filtered_chunks[:20]
-        if top_text.strip():
-            from app.core.openai_client import chat_completion
-            summary_prompt = [
-                {"role": "system", "content": system_prompt_text},
-                {"role": "user", "content": f"{user_wrapper_text}{top_text}"}
-            ]
-            try:
-                summary = chat_completion(summary_prompt, model="gpt-5")
-                if isinstance(summary, str):
-                    summary = summary.strip()
-            except TypeError:
-                summary = chat_completion(summary_prompt)
-                if isinstance(summary, str):
-                    summary = summary.strip()
+            sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
+            top_text, used_chunk_ids = build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5")
+            filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
+            filtered_chunks = filtered_chunks[:20]
+            if top_text.strip():
+                from app.core.openai_client import chat_completion
+                summary_prompt = [
+                    {"role": "system", "content": system_prompt_text},
+                    {"role": "user", "content": f"{user_wrapper_text}{top_text}"}
+                ]
+                try:
+                    summary = chat_completion(summary_prompt, model="gpt-5")
+                    if isinstance(summary, str):
+                        summary = summary.strip()
+                except TypeError:
+                    summary = chat_completion(summary_prompt)
+                    if isinstance(summary, str):
+                        summary = summary.strip()
     except Exception:
         summary = None
 
-    # Compact response support for connectors/function callers
-    # Default to compact=True to avoid very large JSON responses (helps connectors/importers)
     compact = data.get("compact") if isinstance(data, dict) else None
-    # If caller didn't send explicit compact, default True for assistant/webhook usage
     if compact is None:
         compact = True
-
     if compact:
         try:
             max_chunks = int(data.get("max_chunks", 3)) if isinstance(data, dict) and data.get("max_chunks") is not None else 3
@@ -679,8 +597,6 @@ async def assistant_search_docs(request: Request):
             excerpt_length = int(data.get("excerpt_length", 300)) if isinstance(data, dict) and data.get("excerpt_length") is not None else 300
         except Exception:
             excerpt_length = 300
-
-        # Build compact sources list from filtered_chunks sorted by final_score
         sorted_filtered = sorted(filtered_chunks, key=lambda x: x.get("final_score", 0), reverse=True)
         sources = []
         for c in sorted_filtered[:max_chunks]:
@@ -694,13 +610,10 @@ async def assistant_search_docs(request: Request):
                 "excerpt": excerpt
             }
             sources.append(src)
-
         return JSONResponse({"summary": summary, "sources": sources})
     else:
         return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
 
-
-# Legacy endpoint maintained for backward compatibility
 @router.post("/search")
 async def api_search_documents(request: Request):
     tool_args = await request.json()
