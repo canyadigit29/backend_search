@@ -8,26 +8,21 @@ import re
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
-from app.core.openai_client import chat_completion
 from app.core.query_understanding import extract_search_filters
 from app.core.llama_query_transform import llama_query_transform
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-import tiktoken
-
 
 # Environment / clients
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
-# Constants tuned for GPT-5 (adjustable)
-# MAX_SUMMARY_TOKENS: number of tokens of retrieved content to include in the LLM prompt for summarization.
-# GPT-5 supports a much larger context window than earlier models; choose a large but bounded default to avoid runaway memory/time.
-MAX_SUMMARY_TOKENS = int(os.environ.get("MAX_SUMMARY_TOKENS", 150_000))  # tokens
+# Constants tuned for client-side summarization
+MAX_SUMMARY_TOKENS = int(os.environ.get("MAX_SUMMARY_TOKENS", 150_000))  # kept for compatibility but not used for server summarization
 MAX_SUMMARY_SOURCES = int(os.environ.get("MAX_SUMMARY_SOURCES", 50))     # sources returned for frontend (non-compact)
-DEFAULT_COMPACT_MAX_CHUNKS = int(os.environ.get("DEFAULT_COMPACT_MAX_CHUNKS", 10))
+DEFAULT_COMPACT_MAX_CHUNKS = int(os.environ.get("DEFAULT_COMPACT_MAX_CHUNKS", 25))
 DEFAULT_EXCERPT_LENGTH = int(os.environ.get("DEFAULT_EXCERPT_LENGTH", 300))
 FINAL_SCORE_THRESHOLD = float(os.environ.get("FINAL_SCORE_THRESHOLD", 0.4))
 
@@ -96,8 +91,7 @@ def perform_search(tool_args):
         # Sort descending by score (Supabase RPC may already return sorted)
         semantic_matches.sort(key=lambda x: x.get("score", 0), reverse=True)
 
-        # Hybid: combine with keyword/FTS results (no multiplicative boosting here, just union)
-        # Build keywords from search_query (fall back to user_prompt)
+        # Hybrid: combine with keyword/FTS results (no multiplicative boosting here, just union)
         if not search_query and user_prompt:
             search_query = user_prompt
         stopwords = {
@@ -106,7 +100,7 @@ def perform_search(tool_args):
         }
         keywords = [w for w in re.split(r"\W+", search_query or "") if w and w.lower() not in stopwords]
 
-        # Call local keyword_search (defined below). Avoid importing this module into itself.
+        # Call local keyword_search (defined below)
         keyword_results = keyword_search(keywords, user_id_filter=user_id_filter)
 
         # Merge semantic and keyword results (union by id)
@@ -125,7 +119,6 @@ def perform_search(tool_args):
         # Assign keyword_score raw values (number of hits or ts_rank from FTS)
         max_keyword_hits = 1
         for m in all_matches.values():
-            # If the keyword search already provided a ts_rank / keyword_score, prefer it.
             if m.get("keyword_score") is not None:
                 hits = m.get("keyword_score", 0)
             else:
@@ -147,7 +140,6 @@ def perform_search(tool_args):
             if max_sem > min_sem:
                 m["semantic_score"] = (raw - min_sem) / (max_sem - min_sem)
             else:
-                # If all semantic scores are equal (or single item), set semantic_score proportional
                 m["semantic_score"] = 1.0 if raw > 0 else 0.0
 
         # Weighted final_score (semantic vs keyword)
@@ -168,43 +160,6 @@ def perform_search(tool_args):
         return {"error": f"Error during search: {str(e)}"}
 
 
-def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
-    """
-    Use OpenAI to extract the most effective search phrase or keywords for semantic document retrieval from the user's request.
-    If agent_mode is True, use enhanced instructions for extraction.
-    """
-    if agent_mode:
-        system_prompt = (
-            "You are a search assistant. Given a user's request, extract only the most relevant keywords or noun phrases that would best match the content of documents in a search system.\n"
-            "- Do not include generic phrases like \"reference to,\" \"information about,\" \"how,\" or \"give me a rundown.\"\n"
-            "- Only return concise, specific terms or noun phrases likely to appear in documents.\n"
-            "- Use terminology that matches how topics are described in official documents.\n"
-            "- Do not include instructions, explanations, or conversational words.\n"
-            "- Separate each keyword or phrase with a comma.\n\n"
-            "Examples:\n"
-            "User: search for reference to arpa and give me a rundown of how the money was used\n"
-            "Extracted: ARPA funding usage, ARPA money allocation\n\n"
-            "User: find documents about covid relief funding\n"
-            "Extracted: covid relief funding\n\n"
-            "User: show me reports on infrastructure spending in 2022\n"
-            "Extracted: infrastructure spending 2022\n\n"
-            "User: what are the guidelines for grant applications\n"
-            "Extracted: grant application guidelines\n"
-        )
-    else:
-        system_prompt = (
-            "You are a helpful assistant. Given a user request, extract a search phrase or keywords that would best match the content of relevant documents in a semantic search system. "
-            "Be specific and use terminology likely to appear in the documents. "
-            "Return only the search phrase or keywords, not instructions or explanations."
-        )
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
-    result = chat_completion(messages)
-    return result.strip()
-
-
 async def semantic_search(request, payload):
     return perform_search(payload)
 
@@ -213,13 +168,10 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
     """
     Keyword search over document_chunks table using Postgres FTS (ts_rank/BM25).
     Returns chunks containing any of the keywords, with a ts_rank score.
-
-    This uses a direct HTTP POST to the Supabase RPC endpoint for FTS.
     """
     if not keywords:
         return []
 
-    # Join keywords for query (basic, Supabase RPC should handle parsing)
     keyword_query = " ".join(keywords)
     rpc_args = {
         "keyword_query": keyword_query,
@@ -240,7 +192,6 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
         response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=120)
         response.raise_for_status()
         results = response.json() or []
-        # Attach the ts_rank as keyword_score for downstream use if present
         for r in results:
             if "ts_rank" in r and r.get("ts_rank") is not None:
                 r["keyword_score"] = r.get("ts_rank", 0)
@@ -248,7 +199,6 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
                 r["keyword_score"] = 0
         return results
     except Exception:
-        # On any failure, return an empty list so semantic-only results are still returned
         return []
 
 
@@ -271,7 +221,8 @@ def get_neighbor_chunks(chunk, all_chunks_by_file):
 async def api_search_docs(request: Request):
     """
     Main public search endpoint used by frontend.
-    Produces a detailed retrieved_chunks list and an LLM summary (if possible).
+    Server no longer performs LLM summarization — it returns compact sources (excerpts)
+    and lets the assistant/client produce the summary. This avoids the 60s action timeout.
     """
     data = await request.json()
     user_prompt = data.get("query") or data.get("user_prompt")
@@ -281,7 +232,6 @@ async def api_search_docs(request: Request):
     if not user_id:
         return JSONResponse({"error": "Missing user_id"}, status_code=400)
 
-    # Transform query (extract filters + refined query)
     query_obj = llama_query_transform(user_prompt)
     search_query = query_obj.get("query") or user_prompt
     search_filters = query_obj.get("filters") or {}
@@ -300,7 +250,6 @@ async def api_search_docs(request: Request):
         "end_date": data.get("end_date"),
         "user_prompt": user_prompt,
         "search_query": search_query,
-        # tuning knobs (optional overrides)
         "semantic_weight": data.get("semantic_weight", 0.6),
         "keyword_weight": data.get("keyword_weight", 0.4),
         "final_threshold": data.get("final_threshold", FINAL_SCORE_THRESHOLD),
@@ -312,13 +261,12 @@ async def api_search_docs(request: Request):
         if search_filters.get(meta_field) is not None:
             tool_args[meta_field] = search_filters[meta_field]
 
-    # Semantic/hybrid search
     semantic_result = perform_search(tool_args)
     if semantic_result.get("error"):
         return JSONResponse(semantic_result, status_code=500)
     matches = semantic_result.get("retrieved_chunks", [])
 
-    # --- Neighbor chunk retrieval (grouped by file_id from returned matches) ---
+    # Neighbor chunk retrieval
     all_chunks_by_file = {}
     for chunk in matches:
         file_id = chunk.get("file_id")
@@ -332,7 +280,7 @@ async def api_search_docs(request: Request):
         if next_chunk:
             chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
 
-    # --- Postprocess: dedupe and expand neighbors ---
+    # Postprocess: dedupe and expand neighbors
     def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
         if deduplicate:
             seen = set()
@@ -364,70 +312,44 @@ async def api_search_docs(request: Request):
 
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
 
-    # --- LLM-based summary of top search results (token-budgeted) ---
-    summary = None
-    filtered_chunks = []
+    # Build compact sources for client-side summarization (no server LLM calls)
+    compact = data.get("compact") if isinstance(data, dict) else None
+    if compact is None:
+        compact = True
 
     try:
-        encoding = tiktoken.get_encoding("cl100k_base")
+        max_chunks = int(data.get("max_chunks", DEFAULT_COMPACT_MAX_CHUNKS)) if isinstance(data, dict) and data.get("max_chunks") is not None else DEFAULT_COMPACT_MAX_CHUNKS
     except Exception:
-        # Fallback: define a permissive estimation function if encoding unavailable
-        encoding = None
-
+        max_chunks = DEFAULT_COMPACT_MAX_CHUNKS
     try:
-        sorted_chunks = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
-        top_texts = []
-        total_tokens = 0
-        used_chunk_ids = set()
-
-        for chunk in sorted_chunks:
-            content = chunk.get("content", "")
-            if not content:
-                continue
-            if encoding:
-                chunk_tokens = len(encoding.encode(content))
-            else:
-                # crude fallback: estimate 4 characters per token
-                chunk_tokens = max(1, len(content) // 4)
-            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
-                break
-            top_texts.append(content)
-            total_tokens += chunk_tokens
-            used_chunk_ids.add(chunk.get("id"))
-
-        top_text = "\n\n".join(top_texts)
-        # Filter to only those included in the summary prompt (keeps consistency)
-        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-
-        # Keep a bounded number of sources for the frontend
-        filtered_chunks = filtered_chunks[:MAX_SUMMARY_SOURCES]
-
-        if top_text.strip():
-            summary_prompt = [
-                {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
-                    "- Focus on information directly relevant to the user's question. Do not invent facts not present in the results.\n"
-                    "- If there are patterns or notable points, highlight them and explain their significance.\n"
-                    "- Reference file names, dates, or section headers where possible.\n"
-                    "- Provide a short high-level summary first, then details or bullet points as needed."
-                )},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
-            ]
-            # Use GPT-5 explicitly if the underlying chat_completion supports it
-            summary = chat_completion(summary_prompt, model="gpt-5")
+        excerpt_length = int(data.get("excerpt_length", DEFAULT_EXCERPT_LENGTH)) if isinstance(data, dict) and data.get("excerpt_length") is not None else DEFAULT_EXCERPT_LENGTH
     except Exception:
-        # If summarization fails, continue returning retrieved chunks
-        summary = None
+        excerpt_length = DEFAULT_EXCERPT_LENGTH
 
-    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+    sorted_matches = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
+    # Sources consist of compact metadata + excerpt only (safe for sending to assistant)
+    sources = []
+    for c in sorted_matches[:max_chunks]:
+        content = (c.get("content") or "")
+        excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+        src = {
+            "id": c.get("id"),
+            "file_name": c.get("file_name"),
+            "page_number": c.get("page_number"),
+            "final_score": c.get("final_score"),
+            "excerpt": excerpt
+        }
+        sources.append(src)
+
+    # Return compact response: assistant/client will create the summary
+    return JSONResponse({"summary": None, "sources": sources})
 
 
-# Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
 @router.post("/assistant/search_docs")
 async def assistant_search_docs(request: Request):
     """
-    Accepts a payload from an OpenAI assistant (function call or webhook). Normalizes fields
-    and forwards to the existing perform_search flow. Provides a compact response for connectors by default.
+    Endpoint used by OpenAI assistant (function/webhook).
+    Server no longer performs LLM summarization — it returns compact sources for the assistant to summarize.
     """
     try:
         data = await request.json()
@@ -457,7 +379,6 @@ async def assistant_search_docs(request: Request):
     if not user_id:
         user_id = os.environ.get("ASSISTANT_DEFAULT_USER_ID") or "4a867500-7423-4eaa-bc79-94e368555e05"
 
-    # Transform query and generate embedding
     query_obj = llama_query_transform(user_prompt)
     search_query = query_obj.get("query") or user_prompt
     search_filters = query_obj.get("filters") or {}
@@ -487,13 +408,12 @@ async def assistant_search_docs(request: Request):
         if search_filters.get(meta_field) is not None:
             tool_args[meta_field] = search_filters[meta_field]
 
-    # Run the search
     semantic_result = perform_search(tool_args)
     if semantic_result.get("error"):
         return JSONResponse(semantic_result, status_code=500)
     matches = semantic_result.get("retrieved_chunks", [])
 
-    # Keep neighbor chunk behavior consistent with /file_ops/search_docs
+    # Neighbor chunk retrieval
     all_chunks_by_file = {}
     for chunk in matches:
         file_id = chunk.get("file_id")
@@ -507,7 +427,7 @@ async def assistant_search_docs(request: Request):
         if next_chunk:
             chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
 
-    # Postprocess and prepare summary similar to frontend endpoint
+    # Postprocess: dedupe and expand neighbors
     def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
         if deduplicate:
             seen = set()
@@ -539,84 +459,36 @@ async def assistant_search_docs(request: Request):
 
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
 
-    # Build summary (token-budgeted) similar to /file_ops/search_docs
-    summary = None
-    filtered_chunks = []
-
-    try:
-        encoding = tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        encoding = None
-
-    try:
-        sorted_chunks = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
-        top_texts = []
-        total_tokens = 0
-        used_chunk_ids = set()
-        for chunk in sorted_chunks:
-            content = chunk.get("content", "")
-            if not content:
-                continue
-            if encoding:
-                chunk_tokens = len(encoding.encode(content))
-            else:
-                chunk_tokens = max(1, len(content) // 4)
-            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
-                break
-            top_texts.append(content)
-            total_tokens += chunk_tokens
-            used_chunk_ids.add(chunk.get("id"))
-
-        top_text = "\n\n".join(top_texts)
-        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-        filtered_chunks = filtered_chunks[:MAX_SUMMARY_SOURCES]
-
-        if top_text.strip():
-            summary_prompt = [
-                {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
-                    "- Focus on information directly relevant to the user's question. Do not invent facts not present in the results.\n"
-                    "- Provide a short high-level summary first, then details or bullet points as needed."
-                )},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
-            ]
-            summary = chat_completion(summary_prompt, model="gpt-5")
-    except Exception:
-        summary = None
-
-    # Compact response support for connectors/function callers (default True)
+    # Build compact sources for assistant to summarize (server-side summarization disabled)
     compact = data.get("compact") if isinstance(data, dict) else None
     if compact is None:
         compact = True
 
-    if compact:
-        try:
-            max_chunks = int(data.get("max_chunks", DEFAULT_COMPACT_MAX_CHUNKS)) if isinstance(data, dict) and data.get("max_chunks") is not None else DEFAULT_COMPACT_MAX_CHUNKS
-        except Exception:
-            max_chunks = DEFAULT_COMPACT_MAX_CHUNKS
-        try:
-            excerpt_length = int(data.get("excerpt_length", DEFAULT_EXCERPT_LENGTH)) if isinstance(data, dict) and data.get("excerpt_length") is not None else DEFAULT_EXCERPT_LENGTH
-        except Exception:
-            excerpt_length = DEFAULT_EXCERPT_LENGTH
+    try:
+        max_chunks = int(data.get("max_chunks", DEFAULT_COMPACT_MAX_CHUNKS)) if isinstance(data, dict) and data.get("max_chunks") is not None else DEFAULT_COMPACT_MAX_CHUNKS
+    except Exception:
+        max_chunks = DEFAULT_COMPACT_MAX_CHUNKS
+    try:
+        excerpt_length = int(data.get("excerpt_length", DEFAULT_EXCERPT_LENGTH)) if isinstance(data, dict) and data.get("excerpt_length") is not None else DEFAULT_EXCERPT_LENGTH
+    except Exception:
+        excerpt_length = DEFAULT_EXCERPT_LENGTH
 
-        # Build compact sources list from filtered_chunks sorted by final_score
-        sorted_filtered = sorted(filtered_chunks, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
-        sources = []
-        for c in sorted_filtered[:max_chunks]:
-            content = (c.get("content") or "")
-            excerpt = content.strip().replace("\n", " ")[:excerpt_length]
-            src = {
-                "id": c.get("id"),
-                "file_name": c.get("file_name"),
-                "page_number": c.get("page_number"),
-                "final_score": c.get("final_score"),
-                "excerpt": excerpt
-            }
-            sources.append(src)
+    sorted_matches = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
+    sources = []
+    for c in sorted_matches[:max_chunks]:
+        content = (c.get("content") or "")
+        excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+        src = {
+            "id": c.get("id"),
+            "file_name": c.get("file_name"),
+            "page_number": c.get("page_number"),
+            "final_score": c.get("final_score"),
+            "excerpt": excerpt
+        }
+        sources.append(src)
 
-        return JSONResponse({"summary": summary, "sources": sources})
-    else:
-        return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+    # Summary is handled by the assistant/client — return None
+    return JSONResponse({"summary": None, "sources": sources})
 
 
 # Legacy endpoint maintained for backward compatibility
