@@ -31,6 +31,12 @@ def perform_search(tool_args):
     user_id_filter = tool_args.get("user_id_filter")
     user_prompt = tool_args.get("user_prompt")
     search_query = tool_args.get("search_query")
+    
+    # --- Dynamic Relevance Parameters ---
+    # Use provided weights/threshold or fall back to defaults
+    alpha = tool_args.get("semantic_weight", 0.6)  # weight for semantic
+    beta = tool_args.get("keyword_weight", 0.4)    # weight for keyword
+    threshold = tool_args.get("relevance_threshold", 0.4) # final score threshold
 
     # Patch: If embedding is missing, generate it from search_query or user_prompt
     if not query_embedding:
@@ -185,14 +191,11 @@ def perform_search(tool_args):
             m["semantic_score"] = (raw - min_sem) / (max_sem - min_sem) if max_sem > min_sem else 0
 
         # --- Weighted sum for final score ---
-        alpha = 0.6  # weight for semantic (from LLM suggestion)
-        beta = 0.4   # weight for keyword (from LLM suggestion)
         for m in all_matches.values():
             m["final_score"] = alpha * m["semantic_score"] + beta * m["keyword_score"]
 
         matches = list(all_matches.values())
         # Apply threshold to filter out weak matches
-        threshold = 0.4  # from LLM suggestion
         matches = [m for m in matches if m["final_score"] >= threshold]
         matches.sort(key=lambda x: x.get("final_score", 0), reverse=True)
         return {"retrieved_chunks": matches}
@@ -237,10 +240,8 @@ def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
     result = chat_completion(messages)
     return result.strip()
 
-
 async def semantic_search(request, payload):
     return perform_search(payload)
-
 
 router = APIRouter()
 
@@ -294,7 +295,6 @@ def get_neighbor_chunks(chunk, all_chunks_by_file):
         if c.get("chunk_index") == chunk_index + 1:
             next_chunk = c
     return prev_chunk, next_chunk
-
 
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
@@ -386,7 +386,7 @@ async def api_search_docs(request: Request):
     summary = None
     filtered_chunks = []
     try:
-        # GPT-4o supports a large context window; include as many top chunks as fit in ~60,000 chars
+        # GPT-5 supports a large context window; include as many top chunks as fit in ~60,000 chars
         encoding = tiktoken.get_encoding("cl100k_base")
         MAX_SUMMARY_TOKENS = 64000
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
@@ -417,7 +417,7 @@ async def api_search_docs(request: Request):
             from app.core.openai_client import chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
+                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't [...]\n"
                     "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
                     "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
                     "- Use a conversational, engaging tone.\n"
@@ -429,7 +429,7 @@ async def api_search_docs(request: Request):
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-4o")
+            summary = chat_completion(summary_prompt, model="gpt-5")
         else:
             pass
     except Exception as e:
@@ -506,7 +506,11 @@ async def assistant_search_docs(request: Request):
         "start_date": data.get("start_date"),
         "end_date": data.get("end_date"),
         "user_prompt": user_prompt,
-        "search_query": search_query
+        "search_query": search_query,
+        # Pass dynamic relevance parameters from the assistant payload
+        "semantic_weight": data.get("semantic_weight"),
+        "keyword_weight": data.get("keyword_weight"),
+        "relevance_threshold": data.get("relevance_threshold")
     }
     for meta_field in [
         "document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title", "file_extension", "section_header", "page_number"
@@ -558,8 +562,6 @@ async def assistant_search_docs(request: Request):
                     nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
                     expanded.append(nxt_copy)
             chunks = expanded
-        if custom_filter:
-            chunks = [c for c in chunks if custom_filter(c)]
         return chunks
 
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
@@ -589,7 +591,7 @@ async def assistant_search_docs(request: Request):
             from app.core.openai_client import chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
+                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't [...]\n"
                     "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
                     "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
                     "- Use a conversational, engaging tone.\n"
@@ -601,45 +603,11 @@ async def assistant_search_docs(request: Request):
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-4o")
+            summary = chat_completion(summary_prompt, model="gpt-5")
     except Exception:
         summary = None
 
-    # Compact response support for connectors/function callers
-    # Default to compact=True to avoid very large JSON responses (helps connectors/importers)
-    compact = data.get("compact") if isinstance(data, dict) else None
-    # If caller didn't send explicit compact, default True for assistant/webhook usage
-    if compact is None:
-        compact = True
-
-    if compact:
-        try:
-            max_chunks = int(data.get("max_chunks", 3)) if isinstance(data, dict) and data.get("max_chunks") is not None else 3
-        except Exception:
-            max_chunks = 3
-        try:
-            excerpt_length = int(data.get("excerpt_length", 300)) if isinstance(data, dict) and data.get("excerpt_length") is not None else 300
-        except Exception:
-            excerpt_length = 300
-
-        # Build compact sources list from filtered_chunks sorted by final_score
-        sorted_filtered = sorted(filtered_chunks, key=lambda x: x.get("final_score", 0), reverse=True)
-        sources = []
-        for c in sorted_filtered[:max_chunks]:
-            content = (c.get("content") or "")
-            excerpt = content.strip().replace("\n", " ")[:excerpt_length]
-            src = {
-                "id": c.get("id"),
-                "file_name": c.get("file_name"),
-                "page_number": c.get("page_number"),
-                "final_score": c.get("final_score"),
-                "excerpt": excerpt
-            }
-            sources.append(src)
-
-        return JSONResponse({"summary": summary, "sources": sources})
-    else:
-        return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
 
 
 # Legacy endpoint maintained for backward compatibility
