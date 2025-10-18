@@ -1,0 +1,350 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Search Documents Assistant API",
+    "version": "1.0.0",
+    "description": "Search endpoint for OpenAI Assistant function calls."
+  },
+  "servers": [
+    {
+      "url": "https://backendsearch-production.up.railway.app",
+      "description": "Railway production"
+    }
+  ],
+  "paths": {
+    "/api/assistant/search_docs": {
+      "post": {
+        "operationId": "search_documents_assistant",
+        "summary": "Search documents via assistant",
+        "description": "Search through document chunks using semantic and keyword search. Returns a summary and relevant document sources.",
+        "x-oai-meta": {
+          "name": "search_documents_assistant",
+          "isUserFacing": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              },
+              "examples": {
+                "basic": {
+                  "summary": "Basic search",
+                  "value": {
+                    "query": "budget allocation for infrastructure projects",
+                    "user": { "id": "4a867500-7423-4eaa-bc79-94e368555e05" },
+                    "compact": true,
+                    "max_chunks": 3,
+                    "excerpt_length": 300
+                  }
+                },
+                "withFilters": {
+                  "summary": "Search with date and type filters",
+                  "value": {
+                    "query": "meeting minutes on zoning",
+                    "user_id": "4a867500-7423-4eaa-bc79-94e368555e05",
+                    "start_date": "2023-01-01",
+                    "end_date": "2023-12-31",
+                    "document_type": "minutes",
+                    "compact": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results with summary and sources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                },
+                "examples": {
+                  "compact": {
+                    "summary": "Compact response",
+                    "value": {
+                      "summary": "Infrastructure spending in 2023 focused on road repairs and maintenance.",
+                      "sources": [
+                        {"id": "c1", "file_name": "Budget_2023.pdf", "page_number": 15, "final_score": 0.88, "excerpt": "Infrastructure projects allocated $2.5M..."},
+                        {"id": "c2", "file_name": "Council_Mar_2023.pdf", "page_number": 3, "final_score": 0.76, "excerpt": "Motion approved to increase..."}
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "unauthorized": { "value": { "error": "Unauthorized" } }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" },
+                "examples": {
+                  "forbidden": { "value": { "error": "Forbidden" } }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - missing required fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SearchRequest": {
+        "type": "object",
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The search query or question to find relevant documents",
+            "example": "What is the budget allocation for infrastructure projects?"
+          },
+          "input": {
+            "type": "string",
+            "description": "Alternate field accepted for the query (assistant payload)",
+            "example": "Find meeting minutes on zoning"
+          },
+          "user_prompt": {
+            "type": "string",
+            "description": "Alternate field accepted for the query (legacy payload)",
+            "example": "ordinances about parking"
+          },
+          "user": {
+            "type": "object",
+            "description": "User information (optional - will use default if not provided)",
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "User ID for document access control",
+                "example": "4a867500-7423-4eaa-bc79-94e368555e05"
+              }
+            }
+          },
+          "user_id": {
+            "type": "string",
+            "description": "Alternative way to specify user ID",
+            "example": "4a867500-7423-4eaa-bc79-94e368555e05"
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Filter documents from this date onwards (YYYY-MM-DD)",
+            "example": "2023-01-01"
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Filter documents up to this date (YYYY-MM-DD)",
+            "example": "2023-12-31"
+          },
+          "file_name_filter": {
+            "type": "string",
+            "description": "Filter by specific file name or pattern",
+            "example": "budget_report.pdf"
+          },
+          "description_filter": {
+            "type": "string",
+            "description": "Filter by document description",
+            "example": "city council meeting"
+          },
+          "document_type": {
+            "type": "string",
+            "description": "Filter by document type (e.g., ordinance, minutes, budget)",
+            "example": "ordinance"
+          },
+          "page_number": {
+            "type": "integer",
+            "description": "Filter by a specific page number",
+            "example": 3
+          },
+          "meeting_year": { "type": "integer", "description": "Filter by meeting year", "example": 2024 },
+          "meeting_month": { "type": "integer", "description": "Filter by meeting month", "example": 5 },
+          "meeting_month_name": { "type": "string", "description": "Filter by meeting month name", "example": "May" },
+          "meeting_day": { "type": "integer", "description": "Filter by meeting day", "example": 12 },
+          "ordinance_title": { "type": "string", "description": "Filter by ordinance title", "example": "Traffic Regulations" },
+          "file_extension": { "type": "string", "description": "Filter by file extension", "example": "pdf" },
+          "section_header": { "type": "string", "description": "Filter by section header", "example": "Infrastructure" },
+          "compact": {
+            "type": "boolean",
+            "description": "Return compact response format (default: true for assistants)",
+            "default": true
+          },
+          "max_chunks": {
+            "type": "integer",
+            "description": "Maximum number of source chunks to return in compact mode",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 20
+          },
+          "excerpt_length": {
+            "type": "integer",
+            "description": "Length of content excerpt in compact mode",
+            "default": 300,
+            "minimum": 100,
+            "maximum": 1000
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "summary": {
+            "type": ["string", "null"],
+            "description": "AI-generated summary of the search results answering the user's query"
+          },
+          "sources": {
+            "type": "array",
+            "description": "Relevant document sources (compact mode)",
+            "items": {
+              "$ref": "#/components/schemas/CompactSource"
+            }
+          },
+          "retrieved_chunks": {
+            "type": "array",
+            "description": "Full document chunks (non-compact mode)",
+            "items": {
+              "$ref": "#/components/schemas/DocumentChunk"
+            }
+          }
+        }
+      },
+      "CompactSource": {
+        "type": "object",
+        "description": "Compact source information for assistant responses",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique chunk identifier"
+          },
+          "file_name": {
+            "type": "string",
+            "description": "Name of the source document"
+          },
+          "page_number": {
+            "type": ["integer", "null"],
+            "description": "Page number in the document"
+          },
+          "final_score": {
+            "type": "number",
+            "description": "Relevance score (0.0 to 1.0)"
+          },
+          "excerpt": {
+            "type": "string",
+            "description": "Short excerpt from the document content"
+          }
+        }
+      },
+      "DocumentChunk": {
+        "type": "object",
+        "description": "Full document chunk with metadata",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique chunk identifier"
+          },
+          "file_id": {
+            "type": "string",
+            "description": "File identifier"
+          },
+          "content": {
+            "type": "string",
+            "description": "Full text content of the chunk"
+          },
+          "file_name": {
+            "type": "string",
+            "description": "Name of the source document"
+          },
+          "page_number": {
+            "type": ["integer", "null"],
+            "description": "Page number in the document"
+          },
+          "chunk_index": {
+            "type": "integer",
+            "description": "Index of this chunk within the document"
+          },
+          "score": {
+            "type": "number",
+            "description": "Semantic similarity score"
+          },
+          "final_score": {
+            "type": "number",
+            "description": "Combined relevance score"
+          },
+          "keyword_score": {
+            "type": "number",
+            "description": "Keyword match score"
+          },
+          "semantic_score": {
+            "type": "number",
+            "description": "Normalized semantic score"
+          },
+          "section_header": {
+            "type": ["string", "null"],
+            "description": "Section or chapter header"
+          },
+          "document_type": {
+            "type": ["string", "null"],
+            "description": "Type of document"
+          },
+          "meeting_year": {
+            "type": ["integer", "null"],
+            "description": "Year of meeting (if applicable)"
+          },
+          "meeting_month": {
+            "type": ["integer", "null"],
+            "description": "Month of meeting (if applicable)"
+          },
+          "meeting_day": {
+            "type": ["integer", "null"],
+            "description": "Day of meeting (if applicable)"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Error message describing what went wrong"
+          }
+        },
+        "required": ["error"]
+      }
+    }
+  }
+}

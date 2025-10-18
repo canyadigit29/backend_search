@@ -386,32 +386,73 @@ async def api_search_docs(request: Request):
     summary = None
     filtered_chunks = []
     try:
-        # GPT-4o supports a large context window; include as many top chunks as fit in ~60,000 chars
-        encoding = tiktoken.get_encoding("cl100k_base")
+        # Prefer model-specific encoding when available
+        try:
+            encoding = tiktoken.encoding_for_model("gpt-5")
+        except Exception:
+            encoding = tiktoken.get_encoding("cl100k_base")
         MAX_SUMMARY_TOKENS = 64000
-        sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
-        top_texts = []
+
+        # Use final_score when available to reflect hybrid ranking
+        sorted_chunks = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
+
+        # Deduplicate and enforce document diversity before packing
+        MAX_PER_DOCUMENT = 3
+        PER_CHUNK_TOKEN_CAP = 800
+        doc_counts = defaultdict(int)
+        seen_keys = set()  # (file_id, page_number) to avoid dup pages
+        top_snippets = []
         total_tokens = 0
         used_chunk_ids = set()
+
+        def trim_to_token_cap(txt: str, cap: int) -> str:
+            tokens = encoding.encode(txt)
+            if len(tokens) <= cap:
+                return txt
+            return encoding.decode(tokens[:cap])
+
         for chunk in sorted_chunks:
-            content = chunk.get("content", "")
+            content = (chunk.get("content", "") or "").strip()
             if not content:
                 continue
+            file_id = chunk.get("file_id")
+            page_number = chunk.get("page_number")
+            key = (file_id, page_number)
+            if key in seen_keys:
+                continue
+            if doc_counts[file_id] >= MAX_PER_DOCUMENT:
+                continue
+
+            # Per-chunk token trim for breadth
+            content = trim_to_token_cap(content, PER_CHUNK_TOKEN_CAP)
             chunk_tokens = len(encoding.encode(content))
             if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
                 break
-            top_texts.append(content)
+
+            # Build a rich metadata header for grounding/citation
+            meta = []
+            if chunk.get("file_name"):
+                meta.append(f"File: {chunk.get('file_name')}")
+            if chunk.get("page_number") is not None:
+                meta.append(f"Page: {chunk.get('page_number')}")
+            if chunk.get("section_header"):
+                meta.append(f"Section: {chunk.get('section_header')}")
+            if chunk.get("document_type"):
+                meta.append(f"Type: {chunk.get('document_type')}")
+            header = f"[{" | ".join(meta)}]\n" if meta else ""
+
+            top_snippets.append(header + content)
             total_tokens += chunk_tokens
             used_chunk_ids.add(chunk.get("id"))
-        top_text = "\n\n".join(top_texts)
+            doc_counts[file_id] += 1
+            seen_keys.add(key)
 
-        # Filter matches to only those used in the summary
-        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
+        # Separate snippets clearly to help the LLM reason by source
+        top_text = "\n\n---\n\n".join(top_snippets)
+
+        # Filter matches to only those used in the summary (cap to 20 for UI)
+        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids][:20]
         print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary (token-based, max 64,000 tokens).", flush=True)
-
-        # Limit to top 20 sources for frontend
-        filtered_chunks = filtered_chunks[:20]
-        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 20) actually used in summary.", flush=True)
 
         if top_text.strip():
             from app.core.openai_client import chat_completion
@@ -425,11 +466,13 @@ async def api_search_docs(request: Request):
                     "- Reference file names, dates, or section headers where possible.\n"
                     "- Do not add information that is not present in the results, but you may offer thoughtful analysis, context, or commentary based on what is present.\n"
                     "- If the results are lengthy, provide a high-level summary first, then details.\n"
+                    "- Start with a brief executive summary (3–5 bullets), then details grouped by theme or source.\n"
+                    "- For each claim, cite sources as [file_name p.page_number] where relevant.\n"
                     "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-4o")
+            summary = chat_completion(summary_prompt, model="gpt-5")
         else:
             pass
     except Exception as e:
@@ -566,25 +609,63 @@ async def assistant_search_docs(request: Request):
 
     summary = None
     try:
-        encoding = tiktoken.get_encoding("cl100k_base")
+        try:
+            encoding = tiktoken.encoding_for_model("gpt-5")
+        except Exception:
+            encoding = tiktoken.get_encoding("cl100k_base")
         MAX_SUMMARY_TOKENS = 64000
-        sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
-        top_texts = []
+        sorted_chunks = sorted(matches, key=lambda x: x.get("final_score", x.get("score", 0)), reverse=True)
+
+        MAX_PER_DOCUMENT = 3
+        PER_CHUNK_TOKEN_CAP = 800
+        doc_counts = defaultdict(int)
+        seen_keys = set()
+        top_snippets = []
         total_tokens = 0
         used_chunk_ids = set()
+
+        def trim_to_token_cap(txt: str, cap: int) -> str:
+            tokens = encoding.encode(txt)
+            if len(tokens) <= cap:
+                return txt
+            return encoding.decode(tokens[:cap])
+
         for chunk in sorted_chunks:
-            content = chunk.get("content", "")
+            content = (chunk.get("content", "") or "").strip()
             if not content:
                 continue
+            file_id = chunk.get("file_id")
+            page_number = chunk.get("page_number")
+            key = (file_id, page_number)
+            if key in seen_keys:
+                continue
+            if doc_counts[file_id] >= MAX_PER_DOCUMENT:
+                continue
+
+            content = trim_to_token_cap(content, PER_CHUNK_TOKEN_CAP)
             chunk_tokens = len(encoding.encode(content))
             if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
                 break
-            top_texts.append(content)
+
+            meta = []
+            if chunk.get("file_name"):
+                meta.append(f"File: {chunk.get('file_name')}")
+            if chunk.get("page_number") is not None:
+                meta.append(f"Page: {chunk.get('page_number')}")
+            if chunk.get("section_header"):
+                meta.append(f"Section: {chunk.get('section_header')}")
+            if chunk.get("document_type"):
+                meta.append(f"Type: {chunk.get('document_type')}")
+            header = f"[{" | ".join(meta)}]\n" if meta else ""
+
+            top_snippets.append(header + content)
             total_tokens += chunk_tokens
             used_chunk_ids.add(chunk.get("id"))
-        top_text = "\n\n".join(top_texts)
-        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-        filtered_chunks = filtered_chunks[:20]
+            doc_counts[file_id] += 1
+            seen_keys.add(key)
+
+        top_text = "\n\n---\n\n".join(top_snippets)
+        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids][:20]
         if top_text.strip():
             from app.core.openai_client import chat_completion
             summary_prompt = [
@@ -597,11 +678,13 @@ async def assistant_search_docs(request: Request):
                     "- Reference file names, dates, or section headers where possible.\n"
                     "- Do not add information that is not present in the results, but you may offer thoughtful analysis, context, or commentary based on what is present.\n"
                     "- If the results are lengthy, provide a high-level summary first, then details.\n"
+                    "- Start with a brief executive summary (3–5 bullets), then details grouped by theme or source.\n"
+                    "- For each claim, cite sources as [file_name p.page_number] where relevant.\n"
                     "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
                 )},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-4o")
+            summary = chat_completion(summary_prompt, model="gpt-5")
     except Exception:
         summary = None
 
