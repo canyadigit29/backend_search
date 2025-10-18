@@ -15,11 +15,16 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import tiktoken
 
-
-
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
+
+# Configurable model/token settings (can be overridden via env)
+MODEL_MAX_TOKENS = int(os.environ.get("MODEL_MAX_TOKENS", "400000"))
+SUMMARY_RESPONSE_RESERVE = int(os.environ.get("SUMMARY_RESPONSE_RESERVE", "8192"))
+CHUNK_TOKEN_SAFETY_MARGIN = int(os.environ.get("CHUNK_TOKEN_SAFETY_MARGIN", "512"))
+# Cap how many chunk tokens we will consider (optional safety)
+CHUNK_TOKEN_CAP = int(os.environ.get("CHUNK_TOKEN_CAP", str(300_000)))  # large default, still bounded by model limits
 
 def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
@@ -386,50 +391,80 @@ async def api_search_docs(request: Request):
     summary = None
     filtered_chunks = []
     try:
-        # gpt-5 supports a large context window; include as many top chunks as fit in ~60,000 chars
-        encoding = tiktoken.get_encoding("cl100k_base")
-        MAX_SUMMARY_TOKENS = 150000
+        # Build system and user prompt texts (kept concise but informative)
+        system_prompt_text = (
+            "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
+            "- Focus on information directly relevant to the user's question. Synthesize and connect the dots only from the provided results.\n"
+            "- Use bullet points, sections, or narrative as needed for clarity.\n"
+            "- Reference file names, dates, or section headers where possible.\n"
+            "- Do not add information not present in the results.\n"
+        )
+        user_wrapper_text = f"User query: {user_prompt}\n\nSearch results:\n"
+
+        # Use model-aware encoding if available
+        try:
+            encoding = tiktoken.encoding_for_model("gpt-5")
+        except Exception:
+            encoding = tiktoken.get_encoding("cl100k_base")
+
+        # Centralized helper: select as many top chunks as fit within model budget
+        def build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5"):
+            """
+            Returns (top_text, used_chunk_ids).
+            Accounts for system+user overhead, reserve for model output, and safety margin.
+            """
+            model_max = MODEL_MAX_TOKENS
+            reserve = SUMMARY_RESPONSE_RESERVE
+            safety = CHUNK_TOKEN_SAFETY_MARGIN
+
+            overhead_tokens = len(encoding.encode(system_prompt_text or "")) + len(encoding.encode(user_wrapper_text or ""))
+            available_for_chunks = max(0, model_max - reserve - overhead_tokens - safety)
+            # Also bound by CHUNK_TOKEN_CAP to avoid runaway selection
+            available_for_chunks = min(available_for_chunks, CHUNK_TOKEN_CAP)
+
+            top_texts = []
+            total_tokens = 0
+            used_chunk_ids = set()
+            for chunk in sorted_chunks:
+                content = chunk.get("content", "")
+                if not content:
+                    continue
+                chunk_tokens = len(encoding.encode(content))
+                if total_tokens + chunk_tokens > available_for_chunks:
+                    break
+                top_texts.append(content)
+                total_tokens += chunk_tokens
+                used_chunk_ids.add(chunk.get("id"))
+            top_text = "\n\n".join(top_texts)
+            return top_text, used_chunk_ids
+
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
-        top_texts = []
-        total_tokens = 0
-        used_chunk_ids = set()
-        for chunk in sorted_chunks:
-            content = chunk.get("content", "")
-            if not content:
-                continue
-            chunk_tokens = len(encoding.encode(content))
-            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
-                break
-            top_texts.append(content)
-            total_tokens += chunk_tokens
-            used_chunk_ids.add(chunk.get("id"))
-        top_text = "\n\n".join(top_texts)
+        top_text, used_chunk_ids = build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5")
 
         # Filter matches to only those used in the summary
         filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary (token-based, max 64,000 tokens).", flush=True)
+        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary (token-budgeted).", flush=True)
 
-        # Limit to top 20 sources for frontend
+        # Limit to top 50 sources for frontend
         filtered_chunks = filtered_chunks[:50]
         print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 50) actually used in summary.", flush=True)
 
         if top_text.strip():
             from app.core.openai_client import chat_completion
             summary_prompt = [
-                {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
-                    "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
-                    "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
-                    "- Use a conversational, engaging tone.\n"
-                    "- Use bullet points, sections, or narrative as you see fit for clarity and impact.\n"
-                    "- Reference file names, dates, or section headers where possible.\n"
-                    "- Do not add information that is not present in the results, but you may offer thoughtful analysis, context, or commentary based on what is present.\n"
-                    "- If the results are lengthy, provide a high-level summary first, then details.\n"
-                    "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
-                )},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
+                {"role": "system", "content": system_prompt_text},
+                {"role": "user", "content": f"{user_wrapper_text}{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-5")
+            # Use configured reserve via SUMMARY_RESPONSE_RESERVE when calling the model if chat_completion supports max_tokens.
+            try:
+                summary = chat_completion(summary_prompt, model="gpt-5")
+                if isinstance(summary, str):
+                    summary = summary.strip()
+            except TypeError:
+                # Fallback in case chat_completion signature differs
+                summary = chat_completion(summary_prompt)
+                if isinstance(summary, str):
+                    summary = summary.strip()
         else:
             pass
     except Exception as e:
@@ -566,42 +601,65 @@ async def assistant_search_docs(request: Request):
 
     summary = None
     try:
-        encoding = tiktoken.get_encoding("cl100k_base")
-        MAX_SUMMARY_TOKENS = 150000
+        # Use model-aware encoding if available
+        try:
+            encoding = tiktoken.encoding_for_model("gpt-5")
+        except Exception:
+            encoding = tiktoken.get_encoding("cl100k_base")
+
+        system_prompt_text = (
+            "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible.\n"
+            "- Focus on information directly relevant to the user's question. Synthesize and connect the dots only from the provided results.\n"
+            "- Use bullet points, sections, or narrative as needed for clarity.\n"
+            "- Reference file names, dates, or section headers where possible.\n"
+            "- Do not add information not present in the results.\n"
+        )
+        user_wrapper_text = f"User query: {user_prompt}\n\nSearch results:\n"
+
+        # Reuse helper defined above (local variant)
+        def build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5"):
+            model_max = MODEL_MAX_TOKENS
+            reserve = SUMMARY_RESPONSE_RESERVE
+            safety = CHUNK_TOKEN_SAFETY_MARGIN
+
+            overhead_tokens = len(encoding.encode(system_prompt_text or "")) + len(encoding.encode(user_wrapper_text or ""))
+            available_for_chunks = max(0, model_max - reserve - overhead_tokens - safety)
+            available_for_chunks = min(available_for_chunks, CHUNK_TOKEN_CAP)
+
+            top_texts = []
+            total_tokens = 0
+            used_chunk_ids = set()
+            for chunk in sorted_chunks:
+                content = chunk.get("content", "")
+                if not content:
+                    continue
+                chunk_tokens = len(encoding.encode(content))
+                if total_tokens + chunk_tokens > available_for_chunks:
+                    break
+                top_texts.append(content)
+                total_tokens += chunk_tokens
+                used_chunk_ids.add(chunk.get("id"))
+            top_text = "\n\n".join(top_texts)
+            return top_text, used_chunk_ids
+
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
-        top_texts = []
-        total_tokens = 0
-        used_chunk_ids = set()
-        for chunk in sorted_chunks:
-            content = chunk.get("content", "")
-            if not content:
-                continue
-            chunk_tokens = len(encoding.encode(content))
-            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
-                break
-            top_texts.append(content)
-            total_tokens += chunk_tokens
-            used_chunk_ids.add(chunk.get("id"))
-        top_text = "\n\n".join(top_texts)
+        top_text, used_chunk_ids = build_summary_text_from_chunks(sorted_chunks, system_prompt_text, user_wrapper_text, model="gpt-5")
         filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
         filtered_chunks = filtered_chunks[:20]
         if top_text.strip():
             from app.core.openai_client import chat_completion
             summary_prompt = [
-                {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't be afraid to show some personality and offer your own analysis or perspective.\n"
-                    "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
-                    "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
-                    "- Use a conversational, engaging tone.\n"
-                    "- Use bullet points, sections, or narrative as you see fit for clarity and impact.\n"
-                    "- Reference file names, dates, or section headers where possible.\n"
-                    "- Do not add information that is not present in the results, but you may offer thoughtful analysis, context, or commentary based on what is present.\n"
-                    "- If the results are lengthy, provide a high-level summary first, then details.\n"
-                    "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
-                )},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
+                {"role": "system", "content": system_prompt_text},
+                {"role": "user", "content": f"{user_wrapper_text}{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-5")
+            try:
+                summary = chat_completion(summary_prompt, model="gpt-5")
+                if isinstance(summary, str):
+                    summary = summary.strip()
+            except TypeError:
+                summary = chat_completion(summary_prompt)
+                if isinstance(summary, str):
+                    summary = summary.strip()
     except Exception:
         summary = None
 
