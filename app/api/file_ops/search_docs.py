@@ -17,17 +17,47 @@ from fastapi import APIRouter, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 import tiktoken
 
-import redis
-from rq import Queue
+# Redis / RQ are optional. If unavailable, async job flow is disabled and we fallback to sync.
+REDIS_URL = os.environ.get("REDIS_URL", "")
+async_enabled = False
+redis_client = None
+rq_queue = None
+
+try:
+    import redis
+    from rq import Queue
+
+    if REDIS_URL:
+        try:
+            redis_client = redis.from_url(REDIS_URL)
+            # Quick ping to ensure it's reachable
+            try:
+                redis_client.ping()
+                rq_queue = Queue("search", connection=redis_client)
+                async_enabled = True
+            except Exception:
+                # Redis is present but not reachable; disable async
+                redis_client = None
+                rq_queue = None
+                async_enabled = False
+        except Exception:
+            redis_client = None
+            rq_queue = None
+            async_enabled = False
+    else:
+        # No REDIS_URL configured, leave async disabled
+        redis_client = None
+        rq_queue = None
+        async_enabled = False
+except Exception:
+    # redis or rq import failed; continue with async disabled
+    redis_client = None
+    rq_queue = None
+    async_enabled = False
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
-
-# Redis / RQ config
-REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-redis_client = redis.from_url(REDIS_URL)
-rq_queue = Queue("search", connection=redis_client)
 
 # Configurable model/token settings (can be overridden via env)
 MODEL_MAX_TOKENS = int(os.environ.get("MODEL_MAX_TOKENS", "400000"))
@@ -95,7 +125,7 @@ def perform_search(tool_args):
         stopwords = {"the", "and", "of", "in", "to", "a", "for", "on", "at", "by", "with", "is", "as", "an", "be", "are", "was", "were", "it", "that", "from"}
         if not search_query and user_prompt:
             search_query = user_prompt
-        keywords = [w for w in re.split(r"\\W+", search_query or "") if w and w.lower() not in stopwords]
+        keywords = [w for w in re.split(r"\W+", search_query or "") if w and w.lower() not in stopwords]
         from app.api.file_ops.search_docs import keyword_search
         keyword_results = keyword_search(keywords, user_id_filter=user_id_filter)
         all_matches = {m["id"]: m for m in semantic_matches}
@@ -349,13 +379,15 @@ async def api_search_docs(request: Request, background_tasks: BackgroundTasks):
     remaining = REQUEST_TIMEOUT_SECONDS - INTERNAL_TIMEOUT_BUFFER - elapsed
     # allow caller to force async
     force_async = data.get("async") or data.get("background")
-    if force_async or remaining < 3.0:
+
+    if (force_async or remaining < 3.0) and async_enabled:
         job_id = str(uuid.uuid4())
         # enqueue worker (process_search_job defined in app.tasks.search_worker)
         rq_queue.enqueue("app.tasks.search_worker.process_search_job", tool_args, job_id, data.get("callback_url"))
         redis_client.set(f"search:results:{job_id}", json.dumps({"status": "queued"}))
         return JSONResponse({"status": "queued", "job_id": job_id, "poll_url": f"/file_ops/jobs/{job_id}"}, status_code=202)
 
+    # If async was requested but is unavailable, fall back to synchronous summarization.
     # else, perform summarization inline (existing behavior)
     summary = None
     filtered_chunks = []
@@ -433,6 +465,8 @@ async def api_search_docs(request: Request, background_tasks: BackgroundTasks):
 
 @router.get("/file_ops/jobs/{job_id}")
 async def get_job_status(job_id: str):
+    if not async_enabled:
+        return JSONResponse({"status": "not_configured", "error": "Async jobs are not configured on this instance"}, status_code=503)
     key = f"search:results:{job_id}"
     data = redis_client.get(key)
     if not data:
@@ -519,7 +553,7 @@ async def assistant_search_docs(request: Request):
     elapsed = time.monotonic() - start_time
     remaining = REQUEST_TIMEOUT_SECONDS - INTERNAL_TIMEOUT_BUFFER - elapsed
     force_async = data.get("async") or data.get("background")
-    if force_async or remaining < 3.0:
+    if (force_async or remaining < 3.0) and async_enabled:
         job_id = str(uuid.uuid4())
         rq_queue.enqueue("app.tasks.search_worker.process_search_job", tool_args, job_id, data.get("callback_url"))
         redis_client.set(f"search:results:{job_id}", json.dumps({"status": "queued"}))
