@@ -18,7 +18,7 @@ router = APIRouter()
 def perform_search(tool_args):
     """
     Perform vector-based search against Supabase.
-    Returns raw document chunks (no summarization).
+    Restored hybrid version: higher recall (150), metadata filtering, optional dates.
     """
     query_embedding = tool_args.get("embedding")
     search_query = tool_args.get("search_query")
@@ -44,7 +44,7 @@ def perform_search(tool_args):
             "file_name_filter": file_name_filter,
             "description_filter": description_filter,
             "match_threshold": tool_args.get("match_threshold", 0.5),
-            "match_count": min(tool_args.get("match_count", 50), 50),  # ✅ Hard cap at 50
+            "match_count": min(tool_args.get("match_count", 150), 200),  # ✅ Higher recall
         }
 
         # ✅ Only include date filters if explicitly provided
@@ -53,13 +53,26 @@ def perform_search(tool_args):
         if end_date and isinstance(end_date, str) and end_date.strip():
             rpc_args["end_date"] = end_date
 
+        # ✅ Metadata-aware filters (restored)
+        metadata_fields = [
+            ("meeting_year", "filter_meeting_year"),
+            ("meeting_month", "filter_meeting_month"),
+            ("meeting_month_name", "filter_meeting_month_name"),
+            ("meeting_day", "filter_meeting_day"),
+            ("document_type", "filter_document_type"),
+            ("ordinance_title", "filter_ordinance_title"),
+        ]
+        for tool_key, rpc_key in metadata_fields:
+            if tool_args.get(tool_key) is not None:
+                rpc_args[rpc_key] = tool_args[tool_key]
+
         response = supabase.rpc("match_documents", rpc_args).execute()
         if getattr(response, "error", None):
             return {"error": f"Supabase RPC failed: {response.error.message}"}
 
         matches = response.data or []
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
-        return {"retrieved_chunks": matches[:50]}  # ✅ Limit to 50 chunks
+        return {"retrieved_chunks": matches[:150]}  # ✅ Keep top 150 ranked
     except Exception as e:
         return {"error": f"Search failed: {str(e)}"}
 
@@ -68,7 +81,7 @@ def perform_search(tool_args):
 async def assistant_search_docs(request: Request):
     """
     Simplified assistant endpoint — returns raw excerpts for GPT summarization.
-    Capped at 50 chunks; no payload trimming logic.
+    Hybrid version: 150-match semantic search, 50-excerpt response.
     """
     try:
         data = await request.json()
@@ -105,13 +118,14 @@ async def assistant_search_docs(request: Request):
         "description_filter": search_filters.get("description"),
         "search_query": search_query,
         "user_prompt": user_prompt,
-        "match_count": 50,  # ✅ Fixed limit
+        "match_count": 150,  # ✅ Restore broader recall
     }
 
+    # Perform search
     results = perform_search(tool_args)
     matches = results.get("retrieved_chunks", [])
 
-    # Build lightweight response
+    # Build clean response (capped at 50 excerpts)
     excerpt_length = int(data.get("excerpt_length", 1000))
     documents = []
     for chunk in matches[:50]:
@@ -130,6 +144,7 @@ async def assistant_search_docs(request: Request):
 async def api_search_docs(request: Request):
     """
     Simplified search endpoint for direct backend use — no LLM summarization.
+    Uses the same hybrid recall logic as the assistant endpoint.
     """
     data = await request.json()
     user_prompt = data.get("query") or data.get("user_prompt")
@@ -149,7 +164,7 @@ async def api_search_docs(request: Request):
         "file_name_filter": search_filters.get("file_name"),
         "description_filter": search_filters.get("description"),
         "search_query": search_query,
-        "match_count": 50,  # ✅ Fixed limit
+        "match_count": 150,  # ✅ Same recall
     }
 
     results = perform_search(tool_args)
@@ -166,4 +181,3 @@ async def api_search_docs(request: Request):
             })
 
     return JSONResponse({"documents": documents})
-
