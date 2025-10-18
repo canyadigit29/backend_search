@@ -454,7 +454,64 @@ async def api_search_docs(request: Request):
     except Exception:
         summary = summary or None
 
-    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary_chunks": filtered_chunks, "pending_chunks": pending_chunks, "summary": summary})
+    # Response shaping to avoid large payloads
+    include_summary_chunks_content = bool(data.get("include_summary_chunks_content", False))
+    pending_policy = (data.get("pending_chunks_content_policy") or "full").lower()  # full|excerpt|none
+    try:
+        excerpt_length = int(data.get("excerpt_length", 300))
+    except Exception:
+        excerpt_length = 300
+    try:
+        response_budget_bytes = int(
+            data.get(
+                "response_budget_bytes",
+                os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"),
+            )
+        )
+    except Exception:
+        response_budget_bytes = int(os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"))
+
+    def shape_chunk(c, include_content=True, policy="full"):
+        shaped = {k: v for k, v in c.items() if k != "content"}
+        content = c.get("content")
+        if include_content:
+            shaped["content"] = content
+        elif policy == "excerpt" and content:
+            shaped["content"] = (content or "").strip().replace("\n", " ")[:excerpt_length]
+        return shaped
+
+    # For summary_chunks (already summarized), default to metadata only unless explicitly requested
+    summary_chunks_out = []
+    for c in filtered_chunks:
+        if include_summary_chunks_content:
+            summary_chunks_out.append(shape_chunk(c, include_content=True))
+        else:
+            summary_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
+
+    # For pending_chunks, default to full; allow callers to choose excerpt or none
+    pending_chunks_out = []
+    for c in pending_chunks:
+        if pending_policy == "full":
+            pending_chunks_out.append(shape_chunk(c, include_content=True))
+        elif pending_policy == "excerpt":
+            pending_chunks_out.append(shape_chunk(c, include_content=False, policy="excerpt"))
+        else:
+            pending_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
+
+    # Coarse budget enforcement: trim pending chunks until under budget
+    try:
+        import json as _json
+        envelope = {"retrieved_chunks": summary_chunks_out, "summary_chunks": summary_chunks_out, "pending_chunks": pending_chunks_out, "summary": summary}
+        while len(_json.dumps(envelope)) > response_budget_bytes and pending_chunks_out:
+            pending_chunks_out.pop()
+            envelope["pending_chunks"] = pending_chunks_out
+        # As a last resort, drop content from pending chunks if still too large
+        if len(_json.dumps(envelope)) > response_budget_bytes:
+            pending_chunks_out = [shape_chunk(c, include_content=False, policy="none") for c in pending_chunks_out]
+            envelope["pending_chunks"] = pending_chunks_out
+        return JSONResponse(envelope)
+    except Exception:
+        return JSONResponse({"retrieved_chunks": summary_chunks_out, "summary_chunks": summary_chunks_out, "pending_chunks": pending_chunks_out, "summary": summary})
 
 
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
@@ -671,9 +728,114 @@ async def assistant_search_docs(request: Request):
             }
             sources.append(src)
 
-        return JSONResponse({"summary": summary, "sources": sources, "summary_chunks": filtered_chunks, "pending_chunks": pending_chunks})
+        # Shape response to avoid overly large payloads
+        include_summary_chunks_content = bool(data.get("include_summary_chunks_content", False))
+        pending_policy = (data.get("pending_chunks_content_policy") or "full").lower()
+        try:
+            response_budget_bytes = int(
+                data.get(
+                    "response_budget_bytes",
+                    os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"),
+                )
+            )
+        except Exception:
+            response_budget_bytes = int(os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"))
+        try:
+            excerpt_length = int(data.get("excerpt_length", 300))
+        except Exception:
+            excerpt_length = 300
+
+        def shape_chunk(c, include_content=True, policy="full"):
+            shaped = {k: v for k, v in c.items() if k != "content"}
+            content = c.get("content")
+            if include_content:
+                shaped["content"] = content
+            elif policy == "excerpt" and content:
+                shaped["content"] = (content or "").strip().replace("\n", " ")[:excerpt_length]
+            return shaped
+
+        summary_chunks_out = []
+        for c in filtered_chunks:
+            if include_summary_chunks_content:
+                summary_chunks_out.append(shape_chunk(c, include_content=True))
+            else:
+                summary_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
+
+        pending_chunks_out = []
+        for c in pending_chunks:
+            if pending_policy == "full":
+                pending_chunks_out.append(shape_chunk(c, include_content=True))
+            elif pending_policy == "excerpt":
+                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="excerpt"))
+            else:
+                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
+
+        try:
+            import json as _json
+            envelope = {"summary": summary, "sources": sources, "summary_chunks": summary_chunks_out, "pending_chunks": pending_chunks_out}
+            while len(_json.dumps(envelope)) > response_budget_bytes and pending_chunks_out:
+                pending_chunks_out.pop()
+                envelope["pending_chunks"] = pending_chunks_out
+            if len(_json.dumps(envelope)) > response_budget_bytes:
+                pending_chunks_out = [shape_chunk(c, include_content=False, policy="none") for c in pending_chunks_out]
+                envelope["pending_chunks"] = pending_chunks_out
+            return JSONResponse(envelope)
+        except Exception:
+            return JSONResponse({"summary": summary, "sources": sources, "summary_chunks": summary_chunks_out, "pending_chunks": pending_chunks_out})
     else:
-        return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary, "summary_chunks": filtered_chunks, "pending_chunks": pending_chunks})
+        include_summary_chunks_content = bool(data.get("include_summary_chunks_content", False))
+        pending_policy = (data.get("pending_chunks_content_policy") or "full").lower()
+        try:
+            response_budget_bytes = int(
+                data.get(
+                    "response_budget_bytes",
+                    os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"),
+                )
+            )
+        except Exception:
+            response_budget_bytes = int(os.environ.get("ASSISTANT_RESPONSE_BUDGET_BYTES", "5500000"))
+        try:
+            excerpt_length = int(data.get("excerpt_length", 300))
+        except Exception:
+            excerpt_length = 300
+
+        def shape_chunk(c, include_content=True, policy="full"):
+            shaped = {k: v for k, v in c.items() if k != "content"}
+            content = c.get("content")
+            if include_content:
+                shaped["content"] = content
+            elif policy == "excerpt" and content:
+                shaped["content"] = (content or "").strip().replace("\n", " ")[:excerpt_length]
+            return shaped
+
+        summary_chunks_out = []
+        for c in filtered_chunks:
+            if include_summary_chunks_content:
+                summary_chunks_out.append(shape_chunk(c, include_content=True))
+            else:
+                summary_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
+
+        pending_chunks_out = []
+        for c in pending_chunks:
+            if pending_policy == "full":
+                pending_chunks_out.append(shape_chunk(c, include_content=True))
+            elif pending_policy == "excerpt":
+                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="excerpt"))
+            else:
+                pending_chunks_out.append(shape_chunk(c, include_content=False, policy="none"))
+
+        try:
+            import json as _json
+            envelope = {"retrieved_chunks": summary_chunks_out, "summary": summary, "summary_chunks": summary_chunks_out, "pending_chunks": pending_chunks_out}
+            while len(_json.dumps(envelope)) > response_budget_bytes and pending_chunks_out:
+                pending_chunks_out.pop()
+                envelope["pending_chunks"] = pending_chunks_out
+            if len(_json.dumps(envelope)) > response_budget_bytes:
+                pending_chunks_out = [shape_chunk(c, include_content=False, policy="none") for c in pending_chunks_out]
+                envelope["pending_chunks"] = pending_chunks_out
+            return JSONResponse(envelope)
+        except Exception:
+            return JSONResponse({"retrieved_chunks": summary_chunks_out, "summary": summary, "summary_chunks": summary_chunks_out, "pending_chunks": pending_chunks_out})
 
 
 # Legacy endpoint maintained for backward compatibility
