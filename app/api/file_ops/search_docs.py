@@ -21,6 +21,9 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
+# Default maximum number of chunks to return in compact mode for assistant endpoint
+DEFAULT_COMPACT_MAX_CHUNKS = int(os.environ.get("DEFAULT_COMPACT_MAX_CHUNKS", "25"))
+
 def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
     expected_phrase = tool_args.get("expected_phrase")
@@ -614,9 +617,9 @@ async def assistant_search_docs(request: Request):
 
     if compact:
         try:
-            max_chunks = int(data.get("max_chunks", 3)) if isinstance(data, dict) and data.get("max_chunks") is not None else 3
+            max_chunks = int(data.get("max_chunks", DEFAULT_COMPACT_MAX_CHUNKS)) if isinstance(data, dict) and data.get("max_chunks") is not None else DEFAULT_COMPACT_MAX_CHUNKS
         except Exception:
-            max_chunks = 3
+            max_chunks = DEFAULT_COMPACT_MAX_CHUNKS
         try:
             excerpt_length = int(data.get("excerpt_length", 300)) if isinstance(data, dict) and data.get("excerpt_length") is not None else 300
         except Exception:
