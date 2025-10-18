@@ -1,6 +1,5 @@
 import json
 import os
-import sys
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -45,10 +44,10 @@ def perform_search(tool_args):
             "file_name_filter": file_name_filter,
             "description_filter": description_filter,
             "match_threshold": tool_args.get("match_threshold", 0.5),
-            "match_count": min(tool_args.get("match_count", 100), 200),
+            "match_count": min(tool_args.get("match_count", 50), 50),  # ✅ Hard cap at 50
         }
 
-        # ✅ Only include date filters if they exist and are valid strings
+        # ✅ Only include date filters if explicitly provided
         if start_date and isinstance(start_date, str) and start_date.strip():
             rpc_args["start_date"] = start_date
         if end_date and isinstance(end_date, str) and end_date.strip():
@@ -60,31 +59,16 @@ def perform_search(tool_args):
 
         matches = response.data or []
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
-        return {"retrieved_chunks": matches[:200]}
+        return {"retrieved_chunks": matches[:50]}  # ✅ Limit to 50 chunks
     except Exception as e:
         return {"error": f"Search failed: {str(e)}"}
-
-
-def get_neighbor_chunks(chunk, all_chunks_by_file):
-    file_id = chunk.get("file_id")
-    chunk_index = chunk.get("chunk_index")
-    if file_id is None or chunk_index is None:
-        return None, None
-    file_chunks = all_chunks_by_file.get(file_id, [])
-    prev_chunk = next_chunk = None
-    for c in file_chunks:
-        if c.get("chunk_index") == chunk_index - 1:
-            prev_chunk = c
-        if c.get("chunk_index") == chunk_index + 1:
-            next_chunk = c
-    return prev_chunk, next_chunk
 
 
 @router.post("/assistant/search_docs")
 async def assistant_search_docs(request: Request):
     """
     Simplified assistant endpoint — returns raw excerpts for GPT summarization.
-    Automatically trims excerpt length for large result sets and guards payload size.
+    Capped at 50 chunks; no payload trimming logic.
     """
     try:
         data = await request.json()
@@ -104,7 +88,7 @@ async def assistant_search_docs(request: Request):
     if not user_id:
         return JSONResponse({"error": "Missing user_id"}, status_code=400)
 
-    # Transform the query and generate embedding
+    # Transform and embed query
     query_obj = llama_query_transform(user_prompt)
     search_query = query_obj.get("query") or user_prompt
     search_filters = query_obj.get("filters") or {}
@@ -119,48 +103,18 @@ async def assistant_search_docs(request: Request):
         "user_id_filter": user_id,
         "file_name_filter": search_filters.get("file_name"),
         "description_filter": search_filters.get("description"),
-        "start_date": data.get("start_date"),
-        "end_date": data.get("end_date"),
         "search_query": search_query,
         "user_prompt": user_prompt,
-        "match_count": min(data.get("match_count", 100), 200),
+        "match_count": 50,  # ✅ Fixed limit
     }
 
     results = perform_search(tool_args)
     matches = results.get("retrieved_chunks", [])
 
-    # Neighbor attachment (kept for continuity)
-    all_chunks_by_file = {}
-    for chunk in matches:
-        fid = chunk.get("file_id")
-        if fid not in all_chunks_by_file:
-            all_chunks_by_file[fid] = []
-        all_chunks_by_file[fid].append(chunk)
-
-    for chunk in matches:
-        prev_chunk, next_chunk = get_neighbor_chunks(chunk, all_chunks_by_file)
-        if prev_chunk:
-            chunk["prev_chunk"] = {"content": f"[PREV] {prev_chunk.get('content', '')}"}
-        if next_chunk:
-            chunk["next_chunk"] = {"content": f"[NEXT] {next_chunk.get('content', '')}"}
-
-    # Build lightweight response with dynamic excerpt trimming
-    max_chunks = min(int(data.get("max_chunks", 100)), 200)
-    base_excerpt_length = int(data.get("excerpt_length", 1000))
-    match_count = len(matches)
-
-    # Dynamically shorten excerpt length for large result sets
-    if match_count > 150:
-        excerpt_length = 400
-    elif match_count > 100:
-        excerpt_length = 600
-    elif match_count > 75:
-        excerpt_length = 800
-    else:
-        excerpt_length = base_excerpt_length
-
+    # Build lightweight response
+    excerpt_length = int(data.get("excerpt_length", 1000))
     documents = []
-    for chunk in matches[:max_chunks]:
+    for chunk in matches[:50]:
         text = (chunk.get("content") or "").replace("\n", " ").strip()
         if text:
             documents.append({
@@ -168,15 +122,6 @@ async def assistant_search_docs(request: Request):
                 "page_number": chunk.get("page_number"),
                 "excerpt": text[:excerpt_length],
             })
-
-    # Payload size guard (keeps response under ~5MB)
-    MAX_PAYLOAD_SIZE = 5_000_000
-    encoded = json.dumps({"documents": documents})
-    if sys.getsizeof(encoded) > MAX_PAYLOAD_SIZE:
-        while sys.getsizeof(encoded) > MAX_PAYLOAD_SIZE and len(documents) > 10:
-            documents = documents[:-10]
-            encoded = json.dumps({"documents": documents})
-        print(f"[WARN] Payload trimmed to {len(documents)} docs to stay under 5MB limit.")
 
     return JSONResponse({"documents": documents})
 
@@ -204,14 +149,14 @@ async def api_search_docs(request: Request):
         "file_name_filter": search_filters.get("file_name"),
         "description_filter": search_filters.get("description"),
         "search_query": search_query,
-        "match_count": min(data.get("match_count", 100), 200),
+        "match_count": 50,  # ✅ Fixed limit
     }
 
     results = perform_search(tool_args)
     matches = results.get("retrieved_chunks", [])
 
     documents = []
-    for chunk in matches[:100]:
+    for chunk in matches[:50]:
         text = (chunk.get("content") or "").replace("\n", " ").strip()
         if text:
             documents.append({
@@ -221,3 +166,4 @@ async def api_search_docs(request: Request):
             })
 
     return JSONResponse({"documents": documents})
+
