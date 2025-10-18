@@ -426,7 +426,7 @@ async def api_search_docs(request: Request):
             from app.core.openai_client import chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't [...]
+                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't feel constrained to a dry, robotic summary.\n"
                     "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
                     "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
                     "- Use a conversational, engaging tone.\n"
@@ -436,7 +436,8 @@ async def api_search_docs(request: Request):
                     "- If the results are lengthy, provide a high-level summary first, then details.\n"
                     "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
                 )},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
+                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"
+                }
             ]
             summary = chat_completion(summary_prompt, model="gpt-5")
         else:
@@ -603,7 +604,7 @@ async def assistant_search_docs(request: Request):
             from app.core.openai_client import chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't [...]
+                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't feel constrained to a dry, robotic summary.\n"
                     "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
                     "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
                     "- Use a conversational, engaging tone.\n"
@@ -613,7 +614,8 @@ async def assistant_search_docs(request: Request):
                     "- If the results are lengthy, provide a high-level summary first, then details.\n"
                     "- Your goal is to be genuinely helpful, insightful, and memorable—not just a calculator."
                 )},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
+                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"
+                }
             ]
             summary = chat_completion(summary_prompt, model="gpt-5")
     except Exception:
