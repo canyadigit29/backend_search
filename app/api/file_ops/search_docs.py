@@ -46,7 +46,8 @@ def perform_search(tool_args):
             "start_date": start_date,
             "end_date": end_date,
             "match_threshold": tool_args.get("match_threshold", 0.5),
-            match_count = min(tool_args.get("match_count", 100), 200)
+            # Updated default and upper limit
+            "match_count": min(tool_args.get("match_count", 100), 200),
         }
 
         response = supabase.rpc("match_documents", rpc_args).execute()
@@ -55,7 +56,7 @@ def perform_search(tool_args):
 
         matches = response.data or []
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
-        return {"retrieved_chunks": matches[:100]}
+        return {"retrieved_chunks": matches[:200]}
     except Exception as e:
         return {"error": f"Search failed: {str(e)}"}
 
@@ -117,6 +118,7 @@ async def assistant_search_docs(request: Request):
         "end_date": data.get("end_date"),
         "search_query": search_query,
         "user_prompt": user_prompt,
+        "match_count": min(data.get("match_count", 100), 200),
     }
 
     results = perform_search(tool_args)
@@ -138,7 +140,7 @@ async def assistant_search_docs(request: Request):
             chunk["next_chunk"] = {"content": f"[NEXT] {next_chunk.get('content', '')}"}
 
     # Build lightweight response
-    max_chunks = int(data.get("max_chunks", 50))
+    max_chunks = min(int(data.get("max_chunks", 100)), 200)
     excerpt_length = int(data.get("excerpt_length", 1000))
     documents = []
 
@@ -177,13 +179,14 @@ async def api_search_docs(request: Request):
         "file_name_filter": search_filters.get("file_name"),
         "description_filter": search_filters.get("description"),
         "search_query": search_query,
+        "match_count": min(data.get("match_count", 100), 200),
     }
 
     results = perform_search(tool_args)
     matches = results.get("retrieved_chunks", [])
 
     documents = []
-    for chunk in matches[:50]:
+    for chunk in matches[:100]:
         text = (chunk.get("content") or "").replace("\n", " ").strip()
         if text:
             documents.append({
