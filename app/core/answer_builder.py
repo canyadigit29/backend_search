@@ -45,7 +45,7 @@ def build_structured_answer(
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
-    answer = chat_completion(messages, model="gpt-5")
+    answer = chat_completion(messages, model="gpt-4o")
     # Optionally extract citations from answer (e.g., [1], [2])
     import re
     cited = set(re.findall(r"\[(\d+)\]", answer))

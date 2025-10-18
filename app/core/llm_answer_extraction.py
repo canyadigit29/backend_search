@@ -16,7 +16,7 @@ def extract_answer_from_chunks(user_query: str, chunks: list, file_names: list =
         {"role": "user", "content": user_prompt}
     ]
     print(f"[DEBUG] LLM answer extraction prompt: {user_prompt[:500]}...", file=sys.stderr)
-    result = chat_completion(messages, model="gpt-5")
+    result = chat_completion(messages, model="gpt-4o")
     print(f"[DEBUG] LLM answer extraction result: {result[:500]}...", file=sys.stderr)
     print(f"[DEBUG] LLM answer extraction result (final output): {result[:500]}...", file=sys.stderr)
     return result

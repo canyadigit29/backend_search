@@ -40,7 +40,7 @@ async def chat_with_context(request: Request):
                 {"role": "system", "content": "You are an expert at writing search queries for a council meeting minutes search engine. Given the following real meeting minutes snippets, generate 10 realistic, diverse search queries that a typical user (including residents, journalists, and staff) might ask to find information in these minutes. Mix general, everyday, and practical questions with a few professional or technical ones, but avoid only highly specific or expert-level queries. Return only the queries as a numbered list."},
                 {"role": "user", "content": "\n\n".join(sample_contents[:10])}
             ]
-            queries_response = chat_completion(llm_query_prompt, model="gpt-5")
+            queries_response = chat_completion(llm_query_prompt, model="gpt-4o")
             import re
             sample_queries = re.findall(r"\d+\.\s*(.+)", queries_response)
             if not sample_queries:
@@ -97,7 +97,7 @@ async def chat_with_context(request: Request):
                     # Print LLM prompt and response to Railway log for debugging
                     print("[DEBUG] LLM prompt for run_score_test:\n" + llm_prompt[0]["content"][:1000] + "...", flush=True)
                     print("[DEBUG] LLM user message:\n" + llm_prompt[1]["content"][:1000] + "...", flush=True)
-                    llm_response = chat_completion(llm_prompt, model="gpt-5")
+                    llm_response = chat_completion(llm_prompt, model="gpt-4o")
                     # Fix: Strip code block markers if present
                     llm_response_clean = llm_response.strip()
                     if llm_response_clean.startswith('```json'):
@@ -294,7 +294,7 @@ async def chat_with_context(request: Request):
                     )},
                     {"role": "user", "content": f"User query: {prompt}\n\nSearch results:\n{top_text}"}
                 ]
-                summary = chat_completion(summary_prompt, model="gpt-5")
+                summary = chat_completion(summary_prompt, model="gpt-4o")
             else:
                 pass
         except Exception as e:
@@ -318,7 +318,7 @@ async def chat_with_context(request: Request):
             )},
             {"role": "user", "content": f"Query: {prompt}\n\nResults:\n{result_text}\n\nCurrent params: threshold=0.6, alpha=0.9, beta=0.1"}
         ]
-        llm_response = chat_completion(llm_prompt, model="gpt-5")
+        llm_response = chat_completion(llm_prompt, model="gpt-4o")
         llm_response_clean = llm_response.strip()
         if llm_response_clean.startswith('```json'):
             llm_response_clean = llm_response_clean[7:]
@@ -385,7 +385,7 @@ async def chat_with_context(request: Request):
             )},
             {"role": "user", "content": f"Query: {prompt}\n\nSearch results:\n{top_text}"}
         ]
-        alias_response = chat_completion(alias_extraction_prompt, model="gpt-5")
+        alias_response = chat_completion(alias_extraction_prompt, model="gpt-4o")
         try:
             alias_list = json.loads(alias_response)
         except Exception:
@@ -417,7 +417,7 @@ async def chat_with_context(request: Request):
                 {"role": "system", "content": "You are an expert search quality evaluator and parameter tuner. Given a user query and the top 50 search results, re-rank the results for best relevance, assign a new score (0-1) to each, and suggest new values for the similarity threshold and hybrid weights (alpha for semantic, beta for keyword) if you think results can be improved. Respond ONLY with a valid JSON object, no markdown, no code block, no explanation outside the JSON. Example: {\"reranked\": [{{\"index\": int, \"score\": float}}], \"suggested_threshold\": float, \"suggested_alpha\": float, \"suggested_beta\": float, \"feedback\": str}"},
                 {"role": "user", "content": f"Query: {prompt}\n\nResults:\n{result_text}\n\nCurrent params: threshold={params['threshold']}, alpha={params['alpha']}, beta={params['beta']}"}
             ]
-            llm_response = chat_completion(llm_prompt, model="gpt-5")
+            llm_response = chat_completion(llm_prompt, model="gpt-4o")
             llm_response_clean = llm_response.strip()
             if llm_response_clean.startswith('```json'):
                 llm_response_clean = llm_response_clean[7:]
