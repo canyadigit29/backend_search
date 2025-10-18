@@ -37,6 +37,7 @@ def perform_search(tool_args):
     alpha = tool_args.get("semantic_weight", 0.6)  # weight for semantic
     beta = tool_args.get("keyword_weight", 0.4)    # weight for keyword
     threshold = tool_args.get("relevance_threshold", 0.4) # final score threshold
+    max_results = tool_args.get("max_results", 100) # Max results to return
 
     # Patch: If embedding is missing, generate it from search_query or user_prompt
     if not query_embedding:
@@ -163,10 +164,10 @@ def perform_search(tool_args):
         else:
             # Removed debug print: [DEBUG] No boosted results found.
             pass
-        # Removed debug print: [DEBUG] matches for response: ...
-        # Limit to top 100 results for all semantic/hybrid searches
+        
+        # Limit to top 100 results for all semantic/hybrid searches (This is now a fallback)
         matches = matches[:100]
-        # Removed debug print: [DEBUG] Returning ... matches (max 100) in perform_search.
+
         # --- Add keyword_score to each match ---
         # Count keyword hits for each match
         def count_keyword_hits(text, keywords):
@@ -198,6 +199,10 @@ def perform_search(tool_args):
         # Apply threshold to filter out weak matches
         matches = [m for m in matches if m["final_score"] >= threshold]
         matches.sort(key=lambda x: x.get("final_score", 0), reverse=True)
+
+        # --- Apply max_results limit ---
+        matches = matches[:max_results]
+
         return {"retrieved_chunks": matches}
     except Exception as e:
         # Removed debug print: [DEBUG] perform_search exception: ...
@@ -240,8 +245,10 @@ def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
     result = chat_completion(messages)
     return result.strip()
 
+
 async def semantic_search(request, payload):
     return perform_search(payload)
+
 
 router = APIRouter()
 
@@ -296,6 +303,7 @@ def get_neighbor_chunks(chunk, all_chunks_by_file):
             next_chunk = c
     return prev_chunk, next_chunk
 
+
 @router.post("/file_ops/search_docs")
 async def api_search_docs(request: Request):
     print("[DEBUG] /file_ops/search_docs endpoint called", flush=True)
@@ -322,7 +330,8 @@ async def api_search_docs(request: Request):
         "start_date": data.get("start_date"),
         "end_date": data.get("end_date"),
         "user_prompt": user_prompt,
-        "search_query": search_query
+        "search_query": search_query,
+        "max_results": data.get("max_results")
     }
     for meta_field in [
         "document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title", "file_extension", "section_header", "page_number"
@@ -417,7 +426,7 @@ async def api_search_docs(request: Request):
             from app.core.openai_client import chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't [...]\n"
+                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't [...]
                     "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
                     "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
                     "- Use a conversational, engaging tone.\n"
@@ -510,7 +519,8 @@ async def assistant_search_docs(request: Request):
         # Pass dynamic relevance parameters from the assistant payload
         "semantic_weight": data.get("semantic_weight"),
         "keyword_weight": data.get("keyword_weight"),
-        "relevance_threshold": data.get("relevance_threshold")
+        "relevance_threshold": data.get("relevance_threshold"),
+        "max_results": data.get("max_results")
     }
     for meta_field in [
         "document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title", "file_extension", "section_header", "page_number"
@@ -562,6 +572,8 @@ async def assistant_search_docs(request: Request):
                     nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
                     expanded.append(nxt_copy)
             chunks = expanded
+        if custom_filter:
+            chunks = [c for c in chunks if custom_filter(c)]
         return chunks
 
     matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
@@ -591,7 +603,7 @@ async def assistant_search_docs(request: Request):
             from app.core.openai_client import chat_completion
             summary_prompt = [
                 {"role": "system", "content": (
-                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't [...]\n"
+                    "You are an insightful, engaging, and helpful assistant. Using only the following retrieved search results, answer the user's query as clearly and concisely as possible, but don't [...]
                     "- Focus on information directly relevant to the user's question, but feel free to synthesize, interpret, and connect the dots.\n"
                     "- If there are patterns, trends, or notable points, highlight them and explain their significance.\n"
                     "- Use a conversational, engaging tone.\n"
@@ -607,7 +619,41 @@ async def assistant_search_docs(request: Request):
     except Exception:
         summary = None
 
-    return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
+    # Compact response support for connectors/function callers
+    # Default to compact=True to avoid very large JSON responses (helps connectors/importers)
+    compact = data.get("compact") if isinstance(data, dict) else None
+    # If caller didn't send explicit compact, default True for assistant/webhook usage
+    if compact is None:
+        compact = True
+
+    if compact:
+        try:
+            max_chunks = int(data.get("max_chunks", 3)) if isinstance(data, dict) and data.get("max_chunks") is not None else 3
+        except Exception:
+            max_chunks = 3
+        try:
+            excerpt_length = int(data.get("excerpt_length", 300)) if isinstance(data, dict) and data.get("excerpt_length") is not None else 300
+        except Exception:
+            excerpt_length = 300
+
+        # Build compact sources list from filtered_chunks sorted by final_score
+        sorted_filtered = sorted(filtered_chunks, key=lambda x: x.get("final_score", 0), reverse=True)
+        sources = []
+        for c in sorted_filtered[:max_chunks]:
+            content = (c.get("content") or "")
+            excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+            src = {
+                "id": c.get("id"),
+                "file_name": c.get("file_name"),
+                "page_number": c.get("page_number"),
+                "final_score": c.get("final_score"),
+                "excerpt": excerpt
+            }
+            sources.append(src)
+
+        return JSONResponse({"summary": summary, "sources": sources})
+    else:
+        return JSONResponse({"retrieved_chunks": filtered_chunks, "summary": summary})
 
 
 # Legacy endpoint maintained for backward compatibility
