@@ -46,7 +46,7 @@ def perform_search(tool_args):
             "start_date": start_date,
             "end_date": end_date,
             "match_threshold": tool_args.get("match_threshold", 0.5),
-            "match_count": tool_args.get("match_count", 100),
+            match_count = min(tool_args.get("match_count", 100), 200)
         }
 
         response = supabase.rpc("match_documents", rpc_args).execute()
