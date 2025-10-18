@@ -269,7 +269,7 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
         "Content-Type": "application/json"
     }
     try:
-        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
+        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=90)
         response.raise_for_status()
         results = response.json() or []
         # Attach the ts_rank as keyword_score for downstream use
