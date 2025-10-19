@@ -243,7 +243,7 @@ async def assistant_search_docs(request: Request):
         
         if top_text.strip():
             summary_prompt = [
-                {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect th[...]
+                {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect the information. Prioritize accuracy, relevance, and clarity. If results are ambiguous, state your reasoning and cite the most relevant sources."},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
             summary = chat_completion(summary_prompt, model="gpt-5")
