@@ -59,7 +59,8 @@ def perform_search(tool_args):
             "start_date": start_date,
             "end_date": end_date,
             "match_threshold": tool_args.get("match_threshold", 0.5),  # Updated default threshold to 0.5 per latest score test
-            "match_count": tool_args.get("match_count", 300)
+            # --- OPTIMIZATION: Reduce initial fetch size ---
+            "match_count": tool_args.get("match_count", 150)
         }
         # Add metadata filters with filter_ prefix for SQL compatibility
         metadata_fields = [
@@ -209,7 +210,6 @@ def perform_search(tool_args):
         return {"error": f"Error during search: {str(e)}"}
 
 
-
 def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
     """
     Use OpenAI to extract the most effective search phrase or keywords for semantic document retrieval from the user's request.
@@ -254,7 +254,7 @@ async def semantic_search(request, payload):
 router = APIRouter()
 
 
-def keyword_search(keywords, user_id_filter=None, file_name_filter=None, description_filter=None, start_date=None, end_date=None, match_count=300):
+def keyword_search(keywords, user_id_filter=None, file_name_filter=None, description_filter=None, start_date=None, end_date=None, match_count=150):
     """
     Keyword search over document_chunks table using Postgres FTS (ts_rank/BM25).
     Returns chunks containing any of the keywords, with a ts_rank score.
@@ -266,6 +266,7 @@ def keyword_search(keywords, user_id_filter=None, file_name_filter=None, descrip
         "user_id_filter": user_id_filter,
         "file_name_filter": file_name_filter,
         "description_filter": description_filter,
+        # --- OPTIMIZATION: Reduce initial fetch size ---
         "match_count": match_count
     }
     # Manual HTTPX call to Supabase RPC endpoint with required headers
@@ -342,61 +343,38 @@ async def api_search_docs(request: Request):
     # --- Semantic search only (no hybrid) ---
     semantic_result = perform_search(tool_args)
     matches = semantic_result.get("retrieved_chunks", [])
-    # --- Neighbor chunk retrieval ---
-    # Group all returned chunks by file_id for neighbor lookup
-    all_chunks_by_file = {}
+    
+    # --- OPTIMIZATION: Efficient neighbor retrieval and post-processing ---
+    # 1. Build a fast lookup map for all chunks
+    chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}
+    
+    # 2. Add neighbor references directly
     for chunk in matches:
         file_id = chunk.get("file_id")
-        if file_id not in all_chunks_by_file:
-            all_chunks_by_file[file_id] = []
-        all_chunks_by_file[file_id].append(chunk)
-    # For each chunk, attach prev/next chunk if available
-    for chunk in matches:
-        prev_chunk, next_chunk = get_neighbor_chunks(chunk, all_chunks_by_file)
-        if prev_chunk:
-            chunk["prev_chunk"] = {k: prev_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in prev_chunk}
-        if next_chunk:
-            chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
-    # --- Postprocessing: deduplication and neighbor expansion ---
-    def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
-        # Deduplicate by content
-        if deduplicate:
-            seen = set()
-            unique_chunks = []
-            for c in chunks:
-                content = c.get("content", "")
-                if content not in seen:
-                    seen.add(content)
-                    unique_chunks.append(c)
-            chunks = unique_chunks
-        # Expand neighbors (add prev/next chunk content inline)
-        if expand_neighbors:
-            expanded = []
-            for c in chunks:
-                expanded.append(c)
-                if c.get("prev_chunk"):
-                    prev = c["prev_chunk"]
-                    prev_copy = prev.copy()
-                    prev_copy["content"] = f"[PREV] {prev_copy.get('content','')}"
-                    expanded.append(prev_copy)
-                if c.get("next_chunk"):
-                    nxt = c["next_chunk"]
-                    nxt_copy = nxt.copy()
-                    nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
-                    expanded.append(nxt_copy)
-            chunks = expanded
-        # Custom filter
-        if custom_filter:
-            chunks = [c for c in chunks if custom_filter(c)]
-        return chunks
+        chunk_index = chunk.get("chunk_index")
+        if file_id is not None and chunk_index is not None:
+            prev_chunk = chunk_map.get((file_id, chunk_index - 1))
+            next_chunk = chunk_map.get((file_id, chunk_index + 1))
+            if prev_chunk:
+                chunk["prev_chunk"] = {k: prev_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in prev_chunk}
+            if next_chunk:
+                chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
 
-    # After neighbor chunk attachment, before summary:
-    matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
+    # 3. Deduplicate by content
+    seen_content = set()
+    unique_matches = []
+    for c in matches:
+        content = c.get("content", "")
+        if content not in seen_content:
+            seen_content.add(content)
+            unique_matches.append(c)
+    matches = unique_matches
+    # --- END OPTIMIZATION ---
+
     # --- LLM-based summary of top search results ---
     summary = None
     filtered_chunks = []
     try:
-        # --- MODIFICATION START ---
         # Sort chunks by score and limit to the top 20 for summary generation.
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
         summary_chunks = sorted_chunks[:20]
@@ -407,7 +385,6 @@ async def api_search_docs(request: Request):
         # The chunks returned in the API response are the same ones used for the summary.
         filtered_chunks = summary_chunks
         print(f"[DEBUG] Using top {len(filtered_chunks)} chunks for summary and response.", flush=True)
-        # --- MODIFICATION END ---
 
         if top_text.strip():
             from app.core.openai_client import chat_completion
@@ -520,55 +497,35 @@ async def assistant_search_docs(request: Request):
     semantic_result = perform_search(tool_args)
     matches = semantic_result.get("retrieved_chunks", [])
 
-    # Keep neighbor chunk behavior consistent with /file_ops/search_docs
-    all_chunks_by_file = {}
+    # --- OPTIMIZATION: Efficient neighbor retrieval and post-processing ---
+    # 1. Build a fast lookup map for all chunks
+    chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}
+    
+    # 2. Add neighbor references directly
     for chunk in matches:
         file_id = chunk.get("file_id")
-        if file_id not in all_chunks_by_file:
-            all_chunks_by_file[file_id] = []
-        all_chunks_by_file[file_id].append(chunk)
-    for chunk in matches:
-        prev_chunk, next_chunk = get_neighbor_chunks(chunk, all_chunks_by_file)
-        if prev_chunk:
-            chunk["prev_chunk"] = {k: prev_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in prev_chunk}
-        if next_chunk:
-            chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
+        chunk_index = chunk.get("chunk_index")
+        if file_id is not None and chunk_index is not None:
+            prev_chunk = chunk_map.get((file_id, chunk_index - 1))
+            next_chunk = chunk_map.get((file_id, chunk_index + 1))
+            if prev_chunk:
+                chunk["prev_chunk"] = {k: prev_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in prev_chunk}
+            if next_chunk:
+                chunk["next_chunk"] = {k: next_chunk[k] for k in ("id", "chunk_index", "content", "section_header", "page_number") if k in next_chunk}
 
-    # Postprocess and summarize similar to existing endpoint
-    def postprocess_chunks(chunks, expand_neighbors=True, deduplicate=True, custom_filter=None):
-        if deduplicate:
-            seen = set()
-            unique_chunks = []
-            for c in chunks:
-                content = c.get("content", "")
-                if content not in seen:
-                    seen.add(content)
-                    unique_chunks.append(c)
-            chunks = unique_chunks
-        if expand_neighbors:
-            expanded = []
-            for c in chunks:
-                expanded.append(c)
-                if c.get("prev_chunk"):
-                    prev = c["prev_chunk"]
-                    prev_copy = prev.copy()
-                    prev_copy["content"] = f"[PREV] {prev_copy.get('content','')}"
-                    expanded.append(prev_copy)
-                if c.get("next_chunk"):
-                    nxt = c["next_chunk"]
-                    nxt_copy = nxt.copy()
-                    nxt_copy["content"] = f"[NEXT] {nxt_copy.get('content','')}"
-                    expanded.append(nxt_copy)
-            chunks = expanded
-        if custom_filter:
-            chunks = [c for c in chunks if custom_filter(c)]
-        return chunks
-
-    matches = postprocess_chunks(matches, expand_neighbors=True, deduplicate=True)
+    # 3. Deduplicate by content
+    seen_content = set()
+    unique_matches = []
+    for c in matches:
+        content = c.get("content", "")
+        if content not in seen_content:
+            seen_content.add(content)
+            unique_matches.append(c)
+    matches = unique_matches
+    # --- END OPTIMIZATION ---
 
     summary = None
     try:
-        # --- MODIFICATION START ---
         # Sort chunks by score and limit to the top 20 for summary generation.
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
         summary_chunks = sorted_chunks[:20]
@@ -579,7 +536,6 @@ async def assistant_search_docs(request: Request):
         # The chunks returned in the API response are the same ones used for the summary.
         filtered_chunks = summary_chunks
         print(f"[DEBUG] Using top {len(filtered_chunks)} chunks for summary and response.", flush=True)
-        # --- MODIFICATION END ---
         
         if top_text.strip():
             from app.core.openai_client import chat_completion
@@ -624,7 +580,7 @@ async def assistant_search_docs(request: Request):
         sources = []
         for c in sorted_filtered[:max_chunks]:
             content = (c.get("content") or "")
-            excerpt = content.strip().replace("\n", "")[:excerpt_length]
+            excerpt = content.strip().replace("\n", " ")[:excerpt_length]
             src = {
                 "id": c.get("id"),
                 "file_name": c.get("file_name"),
