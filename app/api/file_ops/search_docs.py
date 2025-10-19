@@ -18,7 +18,7 @@ import tiktoken
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
-SUPABASE_BUCKET_ID = os.environ.get("SUPABASE_BUCKET_ID", "documents") # Assumes bucket is named 'documents'
+SUPABASE_BUCKET_ID = "files"  # Hardcoded bucket name for consistency
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
 def perform_search(tool_args):
@@ -243,7 +243,7 @@ async def assistant_search_docs(request: Request):
         
         if top_text.strip():
             summary_prompt = [
-                {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect the dots. Use a conversational tone and reference file names or dates where possible. Do not add information not present in the results."},
+                {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect th[...]
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
             summary = chat_completion(summary_prompt, model="gpt-5")
