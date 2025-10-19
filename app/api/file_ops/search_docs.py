@@ -236,12 +236,10 @@ async def assistant_search_docs(request: Request):
 
     summary = None
     try:
-        # We now use a fixed number of chunks for the summary
+        # The chunks used for the summary are now the definitive list of sources.
         summary_chunks = matches[:50]
         top_texts = [chunk.get("content", "") for chunk in summary_chunks if chunk.get("content")]
         top_text = "\n\n".join(top_texts)
-        
-        filtered_chunks = summary_chunks
         
         if top_text.strip():
             summary_prompt = [
@@ -252,11 +250,11 @@ async def assistant_search_docs(request: Request):
     except Exception:
         summary = None
     
-    # --- ALIGNMENT: Always return the compact response format the assistant expects ---
-    max_chunks_for_sources = 3
+    # --- FINAL ALIGNMENT: The sources ARE the chunks used for the summary ---
     excerpt_length = 300
     sources = []
-    for c in filtered_chunks[:max_chunks_for_sources]:
+    # Iterate over the same 'summary_chunks' list to build the sources.
+    for c in summary_chunks:
         content = c.get("content") or ""
         excerpt = content.strip().replace("\n", " ")[:excerpt_length]
         sources.append({
