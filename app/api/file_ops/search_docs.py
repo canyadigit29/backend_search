@@ -209,6 +209,7 @@ def perform_search(tool_args):
         return {"error": f"Error during search: {str(e)}"}
 
 
+
 def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
     """
     Use OpenAI to extract the most effective search phrase or keywords for semantic document retrieval from the user's request.
@@ -395,32 +396,18 @@ async def api_search_docs(request: Request):
     summary = None
     filtered_chunks = []
     try:
-        # GPT-5 supports a large context window; include as many top chunks as fit in ~60,000 chars
-        encoding = tiktoken.get_encoding("cl100k_base")
-        MAX_SUMMARY_TOKENS = 64000
+        # --- MODIFICATION START ---
+        # Sort chunks by score and limit to the top 20 for summary generation.
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
-        top_texts = []
-        total_tokens = 0
-        used_chunk_ids = set()
-        for chunk in sorted_chunks:
-            content = chunk.get("content", "")
-            if not content:
-                continue
-            chunk_tokens = len(encoding.encode(content))
-            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
-                break
-            top_texts.append(content)
-            total_tokens += chunk_tokens
-            used_chunk_ids.add(chunk.get("id"))
+        summary_chunks = sorted_chunks[:20]
+        
+        top_texts = [chunk.get("content", "") for chunk in summary_chunks if chunk.get("content")]
         top_text = "\n\n".join(top_texts)
 
-        # Filter matches to only those used in the summary
-        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks actually used in summary (token-based, max 64,000 tokens).", flush=True)
-
-        # Limit to top 20 sources for frontend
-        filtered_chunks = filtered_chunks[:20]
-        print(f"[DEBUG] Returning {len(filtered_chunks)} chunks (max 20) actually used in summary.", flush=True)
+        # The chunks returned in the API response are the same ones used for the summary.
+        filtered_chunks = summary_chunks
+        print(f"[DEBUG] Using top {len(filtered_chunks)} chunks for summary and response.", flush=True)
+        # --- MODIFICATION END ---
 
         if top_text.strip():
             from app.core.openai_client import chat_completion
@@ -581,25 +568,19 @@ async def assistant_search_docs(request: Request):
 
     summary = None
     try:
-        encoding = tiktoken.get_encoding("cl100k_base")
-        MAX_SUMMARY_TOKENS = 64000
+        # --- MODIFICATION START ---
+        # Sort chunks by score and limit to the top 20 for summary generation.
         sorted_chunks = sorted(matches, key=lambda x: x.get("score", 0), reverse=True)
-        top_texts = []
-        total_tokens = 0
-        used_chunk_ids = set()
-        for chunk in sorted_chunks:
-            content = chunk.get("content", "")
-            if not content:
-                continue
-            chunk_tokens = len(encoding.encode(content))
-            if total_tokens + chunk_tokens > MAX_SUMMARY_TOKENS:
-                break
-            top_texts.append(content)
-            total_tokens += chunk_tokens
-            used_chunk_ids.add(chunk.get("id"))
+        summary_chunks = sorted_chunks[:20]
+        
+        top_texts = [chunk.get("content", "") for chunk in summary_chunks if chunk.get("content")]
         top_text = "\n\n".join(top_texts)
-        filtered_chunks = [chunk for chunk in sorted_chunks if chunk.get("id") in used_chunk_ids]
-        filtered_chunks = filtered_chunks[:20]
+
+        # The chunks returned in the API response are the same ones used for the summary.
+        filtered_chunks = summary_chunks
+        print(f"[DEBUG] Using top {len(filtered_chunks)} chunks for summary and response.", flush=True)
+        # --- MODIFICATION END ---
+        
         if top_text.strip():
             from app.core.openai_client import chat_completion
             summary_prompt = [
@@ -643,7 +624,7 @@ async def assistant_search_docs(request: Request):
         sources = []
         for c in sorted_filtered[:max_chunks]:
             content = (c.get("content") or "")
-            excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+            excerpt = content.strip().replace("\n", "")[:excerpt_length]
             src = {
                 "id": c.get("id"),
                 "file_name": c.get("file_name"),
