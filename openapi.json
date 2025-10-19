@@ -94,16 +94,10 @@
           }
         }
       },
-      "Chunk": {
+      "Source": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
-          },
-          "file_id": {
-            "type": "string"
-          },
-          "content": {
             "type": "string"
           },
           "file_name": {
@@ -111,23 +105,29 @@
           },
           "page_number": {
             "type": "integer"
+          },
+          "final_score": {
+            "type": "number"
+          },
+          "excerpt": {
+            "type": "string"
           }
         }
       },
       "SearchResponse": {
         "type": "object",
         "properties": {
-          "retrieved_chunks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Chunk"
-            }
-          },
           "summary": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            }
           },
           "error": {
             "type": "string"
