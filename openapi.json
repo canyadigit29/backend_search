@@ -93,6 +93,11 @@
           },
           "excerpt": {
             "type": "string"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "A temporary, signed URL to download the source file."
           }
         }
       },
