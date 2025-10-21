@@ -483,21 +483,12 @@ async def assistant_search_docs(request: Request):
         summary_was_partial = False
         # Keep pending/included as computed if any
     
-    # --- Generate signed URLs for each source ---
+    # --- Build sources without clickable links (no signed URLs) ---
     excerpt_length = 300
     sources = []
     # Iterate over the same 'included_chunks' list to build the sources we summarized.
     for c in included_chunks:
         file_name = c.get("file_name")
-        signed_url = None
-        if file_name:
-            try:
-                # Create a temporary, secure download link valid for 5 minutes.
-                res = supabase.storage.from_(SUPABASE_BUCKET_ID).create_signed_url(file_name, 300)
-                signed_url = res.get('signedURL')
-            except Exception:
-                signed_url = None # Fail gracefully if URL generation fails
-
         content = c.get("content") or ""
         excerpt = content.strip().replace("\n", " ")[:excerpt_length]
         sources.append({
@@ -505,8 +496,7 @@ async def assistant_search_docs(request: Request):
             "file_name": file_name,
             "page_number": c.get("page_number"),
             "score": c.get("score"),
-            "excerpt": excerpt,
-            "url": signed_url # Add the new URL field
+            "excerpt": excerpt
         })
 
     # Resume is offered when there are remainder chunks in the top-50 (batch 2)
