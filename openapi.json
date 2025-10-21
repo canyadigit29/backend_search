@@ -3,7 +3,7 @@
   "info": {
     "title": "Search Documents Assistant API",
     "version": "1.0.0",
-    "description": "Search endpoint for Custom GPT."
+    "description": "Asynchronous search endpoint for Custom GPT."
   },
   "servers": [
     {
@@ -142,6 +142,24 @@
             "type": "integer",
             "description": "The maximum number of chunks to process for the summary. Default is 100.",
             "default": 100
+          },
+          "file_name_filter": {
+            "type": "string",
+            "description": "Filter by a specific file name."
+          },
+          "description_filter": {
+            "type": "string",
+            "description": "Filter by text in the document's description."
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Filter for documents on or after this date (YYYY-MM-DD)."
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Filter for documents on or before this date (YYYY-MM-DD)."
           }
         }
       },
@@ -193,3 +211,4 @@
     }
   }
 }
+
