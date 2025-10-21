@@ -327,14 +327,21 @@ async def assistant_search_docs(request: Request):
 
             elapsed = time.monotonic() - start_time
             remaining = max(1.0, budget_seconds - elapsed)
+            pre_summary_seconds = elapsed
 
             # Use streaming completion with a time cap; return partial content if we hit the cap.
+            summary_start = time.monotonic()
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=remaining)
+            summary_elapsed_seconds = time.monotonic() - summary_start
+            summary_allocated_seconds = remaining
             summary = content if content else None
             summary_was_partial = bool(was_partial)
     except Exception:
         summary = None
         summary_was_partial = False
+        pre_summary_seconds = pre_summary_seconds if 'pre_summary_seconds' in locals() else time.monotonic() - start_time
+        summary_elapsed_seconds = 0.0
+        summary_allocated_seconds = max(0.0, 55.0 - pre_summary_seconds)
     
     # --- Generate signed URLs for each source ---
     excerpt_length = 300
@@ -364,13 +371,18 @@ async def assistant_search_docs(request: Request):
 
     # Only signal resume when the response was time-truncated AND there is remaining work
     can_resume = bool(summary_was_partial and pending_chunk_ids)
+    total_elapsed_seconds = time.monotonic() - start_time
     return JSONResponse({
         "summary": summary,
         "summary_was_partial": summary_was_partial,
         "sources": sources,
         "can_resume": can_resume,
         "pending_chunk_ids": pending_chunk_ids,
-        "included_chunk_ids": included_chunk_ids
+        "included_chunk_ids": included_chunk_ids,
+        "total_elapsed_seconds": total_elapsed_seconds,
+        "pre_summary_seconds": pre_summary_seconds if 'pre_summary_seconds' in locals() else None,
+        "summary_allocated_seconds": summary_allocated_seconds if 'summary_allocated_seconds' in locals() else None,
+        "summary_elapsed_seconds": summary_elapsed_seconds if 'summary_elapsed_seconds' in locals() else None
     })
 
 

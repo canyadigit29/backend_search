@@ -151,6 +151,22 @@
               "format": "uuid"
             }
           },
+          "total_elapsed_seconds": {
+            "type": "number",
+            "description": "Total time from request start to response."
+          },
+          "pre_summary_seconds": {
+            "type": ["number", "null"],
+            "description": "Time spent before starting the summary (embedding, search, prep)."
+          },
+          "summary_allocated_seconds": {
+            "type": ["number", "null"],
+            "description": "Time budget allocated to the summary step."
+          },
+          "summary_elapsed_seconds": {
+            "type": ["number", "null"],
+            "description": "Actual time spent in the summary step."
+          },
           "error": {
             "type": "string"
           }
