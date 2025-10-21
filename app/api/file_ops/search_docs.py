@@ -39,6 +39,46 @@ def _fetch_chunks_by_ids(ids: list[str]):
     except Exception:
         return []
 
+def _select_included_and_pending(matches: list[dict], included_limit: int = 25, per_file_cap: int = 2):
+    """
+    From a score-sorted list of matches, select up to `included_limit` items with a
+    per-file cap of `per_file_cap` to promote diversity. Operates over the top-50 only.
+    Returns (included_chunks, pending_chunk_ids) where pending are the remaining items
+    from the top-50 that were not included this pass, preserving order.
+    """
+    top50 = matches[:50]
+    included = []
+    included_ids = set()
+    per_file_counts = defaultdict(int)
+
+    # First pass: enforce per-file cap while filling included list
+    for c in top50:
+        if len(included) >= included_limit:
+            break
+        fid = c.get("file_id")
+        cid = c.get("id")
+        if not cid:
+            continue
+        if per_file_counts[fid] < per_file_cap:
+            included.append(c)
+            included_ids.add(cid)
+            per_file_counts[fid] += 1
+
+    # Second pass: if fewer than included_limit, fill from remaining without cap
+    if len(included) < included_limit:
+        for c in top50:
+            if len(included) >= included_limit:
+                break
+            cid = c.get("id")
+            if not cid or cid in included_ids:
+                continue
+            included.append(c)
+            included_ids.add(cid)
+
+    # Pending are the rest of top50 not included
+    pending_ids = [c.get("id") for c in top50 if c.get("id") and c.get("id") not in included_ids]
+    return included, pending_ids
+
 def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
     file_name_filter = tool_args.get("file_name_filter")
@@ -251,9 +291,37 @@ async def assistant_search_docs(request: Request):
         for meta_field in ["document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"]:
             if search_filters.get(meta_field) is not None:
                 tool_args[meta_field] = search_filters[meta_field]
-
-        search_result = perform_search(tool_args)
-        matches = search_result.get("retrieved_chunks", [])
+        
+        # Optional OR-terms merging: if provided, run per-term searches and merge by ID using max score
+        or_terms = data.get("or_terms") or []
+        if or_terms and isinstance(or_terms, list):
+            merged_by_id: dict[str, dict] = {}
+            for term in or_terms:
+                term = (term or "").strip()
+                if not term:
+                    continue
+                try:
+                    term_embedding = embed_text(term)
+                except Exception:
+                    # Skip a term if embedding fails
+                    continue
+                term_args = {**tool_args, "embedding": term_embedding, "search_query": term}
+                term_result = perform_search(term_args)
+                term_matches = term_result.get("retrieved_chunks", []) if isinstance(term_result, dict) else []
+                for m in term_matches:
+                    mid = m.get("id")
+                    if not mid:
+                        continue
+                    best = merged_by_id.get(mid)
+                    if best is None or (m.get("score", 0) or 0) > (best.get("score", 0) or 0):
+                        merged_by_id[mid] = m
+            matches = sorted(merged_by_id.values(), key=lambda x: x.get("score", 0), reverse=True)
+            # Apply max_results cap if provided
+            max_results = data.get("max_results") or 100
+            matches = matches[:max_results]
+        else:
+            search_result = perform_search(tool_args)
+            matches = search_result.get("retrieved_chunks", [])
     
     # --- OPTIMIZED: Neighbor retrieval and summary using the simplified results ---
     chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}
@@ -271,13 +339,9 @@ async def assistant_search_docs(request: Request):
     included_chunk_ids = []
     included_chunks = []
     try:
-        # Fixed batching: always take top 50, summarize first 25, and expose remaining 25 for resume.
-        top50_chunks = matches[:50]
-        chunk_limit = 25
-        included_chunks = top50_chunks[:chunk_limit]
+        # Fixed batching with diversification: select included with per-file cap, pending is the rest of top 50
+        included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=25, per_file_cap=2)
         included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
-        # Pending are the remainder of the top 50 that were not included this pass (up to 25)
-        pending_chunk_ids = [c.get("id") for c in top50_chunks[chunk_limit:50] if c.get("id")]
 
         # Guardrail: trim each chunk to avoid exceeding model context (hard-coded)
         per_chunk_char_limit = 2500
@@ -285,15 +349,39 @@ async def assistant_search_docs(request: Request):
             if not s:
                 return ""
             return s[:n]
-        top_texts = [_trim(chunk.get("content", ""), per_chunk_char_limit) for chunk in included_chunks if chunk.get("content")]
-        # Token-aware cap across all included texts (hard-coded): assume 200k token context, leave headroom
+        # Build structured search results block with metadata headers per chunk
+        annotated_texts = []
+        for idx, chunk in enumerate(included_chunks, start=1):
+            header = f"[#${idx} id={chunk.get('id')} file={chunk.get('file_name')} page={chunk.get('page_number')} score={round(chunk.get('score') or 0, 4)}]"
+            body = _trim(chunk.get("content", ""), per_chunk_char_limit)
+            if body:
+                annotated_texts.append(f"{header}\n{body}")
+        # Token-aware cap across all included texts (hard-coded): assume 200k+ token context, leave headroom
         MAX_INPUT_TOKENS = 260_000
-        top_text = trim_texts_to_token_limit(top_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
+        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
         
         if top_text.strip():
             summary_prompt = [
-                {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect the information. Prioritize accuracy, relevance, and clarity. If results are ambiguous, state your reasoning and cite the most relevant sources."},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an insightful research assistant. Read the provided document chunks and produce a concise, accurate synthesis that directly answers the user's query. "
+                        "Cite evidence using the chunk ids (id=...) when making claims. Prefer precision over verbosity. If multiple interpretations exist, explain them briefly."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"User query: {user_prompt}\n\n"
+                        "Search results (each chunk starts with a metadata header):\n"
+                        f"{top_text}\n\n"
+                        "Please respond with the following structure:\n"
+                        "1) Key findings (with inline citations like [id=...])\n"
+                        "2) Evidence by chunk (grouped by id, 1-3 bullets each)\n"
+                        "3) Important names/aliases/variants\n"
+                        "4) Suggested follow-up questions"
+                    ),
+                },
             ]
             # No time cap: complete the summary for this batch; constrain output tokens (hard-coded)
             MAX_OUTPUT_TOKENS = 100_000
