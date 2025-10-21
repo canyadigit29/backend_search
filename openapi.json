@@ -16,7 +16,7 @@
       "post": {
         "operationId": "searchDocumentsAssistant",
         "summary": "Search documents via assistant",
-        "description": "Performs a semantic search and returns a summary plus sources. Supports partial summaries when time runs short and resumable processing via resume_chunk_ids.",
+  "description": "Performs a semantic search and returns a summary plus sources. Uses fixed batching: summarizes the first 25 of the top-50 results and returns the remaining 25 as pending via resume_chunk_ids.",
         "x-oai-meta": {
           "name": "searchDocumentsAssistant",
           "isUserFacing": true
@@ -123,7 +123,7 @@
           },
           "summary_was_partial": {
             "type": "boolean",
-            "description": "True when the response contains a partial summary due to time constraints."
+            "description": "True if the model returned a partial response (rare). Timing is not used for batching."
           },
           "sources": {
             "type": "array",
@@ -133,11 +133,11 @@
           },
           "can_resume": {
             "type": "boolean",
-            "description": "True only when the summary was time-truncated and there are remaining top-50 chunks not yet summarized."
+            "description": "True when there are remaining top-50 chunks not yet summarized (fixed 25/25 batching)."
           },
           "pending_chunk_ids": {
             "type": "array",
-            "description": "The remainder of the top-50 chunk IDs that were not included in this summary pass. Send these back via resume_chunk_ids to continue.",
+            "description": "The remaining chunk IDs from the top-50 that were not included in this summary pass (typically the other 25). Send these back via resume_chunk_ids to continue.",
             "items": {
               "type": "string",
               "format": "uuid"
@@ -151,22 +151,7 @@
               "format": "uuid"
             }
           },
-          "total_elapsed_seconds": {
-            "type": "number",
-            "description": "Total time from request start to response."
-          },
-          "pre_summary_seconds": {
-            "type": ["number", "null"],
-            "description": "Time spent before starting the summary (embedding, search, prep)."
-          },
-          "summary_allocated_seconds": {
-            "type": ["number", "null"],
-            "description": "Time budget allocated to the summary step."
-          },
-          "summary_elapsed_seconds": {
-            "type": ["number", "null"],
-            "description": "Actual time spent in the summary step."
-          },
+          
           "error": {
             "type": "string"
           }

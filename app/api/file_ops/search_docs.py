@@ -200,8 +200,8 @@ async def assistant_search_docs(request: Request):
     Accepts a payload from an OpenAI assistant, normalizes fields, and forwards
     to the perform_search flow.
     """
-    # Stopwatch to enforce a total time budget for summary generation
-    sw = Stopwatch()
+    # Timer no longer controls batching; kept available if needed elsewhere
+    sw = None
 
     try:
         data = await request.json()
@@ -270,30 +270,13 @@ async def assistant_search_docs(request: Request):
     included_chunk_ids = []
     included_chunks = []
     try:
-        # Decide how many of the top 50 chunks to include in this pass based on remaining time.
-        # This ensures pending_chunk_ids only contains chunks not yet summarized.
-        budget_seconds = 55.0
-        pre_summary_seconds = sw.elapsed()
-        remaining = sw.remaining(budget_seconds)
-
-        # Heuristic: include more chunks when there's more time left.
-        # Goal is to avoid over-including and forcing a re-summarize of the same set on resume.
-        if remaining >= 40:
-            chunk_limit = 50
-        elif remaining >= 25:
-            chunk_limit = 35
-        elif remaining >= 15:
-            chunk_limit = 25
-        elif remaining >= 8:
-            chunk_limit = 15
-        else:
-            chunk_limit = 10
-
+        # Fixed batching: always take top 50, summarize first 25, and expose remaining 25 for resume.
         top50_chunks = matches[:50]
+        chunk_limit = 25
         included_chunks = top50_chunks[:chunk_limit]
         included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
-        # Pending are the remainder of the top 50 that were not included this pass
-        pending_chunk_ids = [c.get("id") for c in top50_chunks[chunk_limit:] if c.get("id")]
+        # Pending are the remainder of the top 50 that were not included this pass (up to 25)
+        pending_chunk_ids = [c.get("id") for c in top50_chunks[chunk_limit:50] if c.get("id")]
 
         top_texts = [chunk.get("content", "") for chunk in included_chunks if chunk.get("content")]
         top_text = "\n\n".join(top_texts)
@@ -303,23 +286,15 @@ async def assistant_search_docs(request: Request):
                 {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect the information. Prioritize accuracy, relevance, and clarity. If results are ambiguous, state your reasoning and cite the most relevant sources."},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-
-            # Use streaming completion with a time cap; return partial content if we hit the cap.
-            sw.reset_lap()
-            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=remaining)
-            summary_elapsed_seconds = sw.lap()
-            summary_allocated_seconds = remaining
+            # No time cap: complete the summary for this batch
+            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
-            # Only keep pending ids when the summary was time-truncated; otherwise don't signal resume
-            if not summary_was_partial:
-                pending_chunk_ids = []
+            # Even if partial occurs due to upstream issues, we still return pending based on batch remainder
     except Exception:
         summary = None
         summary_was_partial = False
-        pre_summary_seconds = pre_summary_seconds if 'pre_summary_seconds' in locals() else sw.elapsed()
-        summary_elapsed_seconds = 0.0
-        summary_allocated_seconds = max(0.0, 55.0 - pre_summary_seconds)
+        # Keep pending/included as computed if any
     
     # --- Generate signed URLs for each source ---
     excerpt_length = 300
@@ -348,8 +323,8 @@ async def assistant_search_docs(request: Request):
         })
 
     # Only signal resume when the response was time-truncated AND there is remaining work
-    can_resume = bool(summary_was_partial and pending_chunk_ids)
-    total_elapsed_seconds = sw.elapsed()
+    # Resume is offered when there are remainder chunks in the top-50 (batch 2)
+    can_resume = bool(pending_chunk_ids)
     return JSONResponse({
         "summary": summary,
         "summary_was_partial": summary_was_partial,
@@ -357,10 +332,7 @@ async def assistant_search_docs(request: Request):
         "can_resume": can_resume,
         "pending_chunk_ids": pending_chunk_ids,
         "included_chunk_ids": included_chunk_ids,
-        "total_elapsed_seconds": total_elapsed_seconds,
-        "pre_summary_seconds": pre_summary_seconds if 'pre_summary_seconds' in locals() else None,
-        "summary_allocated_seconds": summary_allocated_seconds if 'summary_allocated_seconds' in locals() else None,
-        "summary_elapsed_seconds": summary_elapsed_seconds if 'summary_elapsed_seconds' in locals() else None
+        # Timing metrics removed for batch-based flow
     })
 
 
