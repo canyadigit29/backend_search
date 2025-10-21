@@ -366,7 +366,8 @@ async def assistant_search_docs(request: Request):
             "url": signed_url # Add the new URL field
         })
 
-    can_resume = bool(pending_chunk_ids)
+    # Only signal resume when the response was time-truncated AND there is remaining work
+    can_resume = bool(summary_was_partial and pending_chunk_ids)
     return JSONResponse({
         "summary": summary,
         "summary_was_partial": summary_was_partial,
