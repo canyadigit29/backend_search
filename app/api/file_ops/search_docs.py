@@ -132,13 +132,13 @@ def perform_search(tool_args):
         for tool_key, rpc_key in metadata_fields:
             if tool_args.get(tool_key) is not None:
                 rpc_args[rpc_key] = tool_args[tool_key]
-        
-        response = supabase.rpc("match_documents", rpc_args).execute()
+
+        response = supabase.rpc("match_documents_v2", rpc_args).execute()
         if getattr(response, "error", None):
             return {"error": f"Supabase RPC failed: {response.error.message}"}
-        
+
         matches = response.data or []
-        
+
         # --- ALIGNMENT: Remove complex python-side scoring. Trust the DB score. ---
         # The database 'score' is the similarity score, which is what we want.
         matches.sort(key=lambda x: x.get("score", 0), reverse=True)
@@ -195,22 +195,58 @@ async def semantic_search(request, payload):
 router = APIRouter()
 
 
-def keyword_search(keywords, user_id_filter=None, file_name_filter=None, description_filter=None, start_date=None, end_date=None, match_count=150):
+def keyword_search(
+    keywords,
+    user_id_filter=None,
+    file_name_filter=None,
+    description_filter=None,
+    start_date=None,
+    end_date=None,
+    match_count=150,
+    document_type=None,
+    meeting_year=None,
+    meeting_month=None,
+    meeting_month_name=None,
+    meeting_day=None,
+    ordinance_title=None,
+):
     """
     Keyword search over document_chunks table using Postgres FTS (ts_rank/BM25).
     Returns chunks containing any of the keywords, with a ts_rank score.
     """
-    keyword_query = " ".join(keywords)
+    def _quote_term(t: str) -> str:
+        t = (t or "").strip()
+        if not t:
+            return ""
+        # Escape embedded quotes
+        t = t.replace('"', '\\"')
+        # Quote multi-word or non-alnum terms to preserve phrases
+        if any(ch.isspace() for ch in t) or not t.isalnum():
+            return f'"{t}"'
+        return t
+    # Use OR between terms so any term can match; avoid accidental AND
+    quoted_terms = [_quote_term(k) for k in keywords if k]
+    # For websearch_to_tsquery, use logical OR spelled out explicitly
+    keyword_query = " OR ".join([qt for qt in quoted_terms if qt])
     rpc_args = {
         "keyword_query": keyword_query,
         "user_id_filter": user_id_filter,
         "file_name_filter": file_name_filter,
         "description_filter": description_filter,
-        "match_count": match_count
+        "start_date": start_date,
+        "end_date": end_date,
+        "match_count": match_count,
+        # metadata filters (map to RPC arg names)
+        "filter_document_type": document_type,
+        "filter_meeting_year": meeting_year,
+        "filter_meeting_month": meeting_month,
+        "filter_meeting_month_name": meeting_month_name,
+        "filter_meeting_day": meeting_day,
+        "filter_ordinance_title": ordinance_title,
     }
     supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
     service_role = os.environ["SUPABASE_SERVICE_ROLE"]
-    endpoint = f"{supabase_url}/rest/v1/rpc/match_documents_fts"
+    endpoint = f"{supabase_url}/rest/v1/rpc/match_documents_fts_v3"
     headers = {
         "apikey": service_role,
         "Authorization": f"Bearer {service_role}",
@@ -322,6 +358,59 @@ async def assistant_search_docs(request: Request):
         else:
             search_result = perform_search(tool_args)
             matches = search_result.get("retrieved_chunks", [])
+
+        # Fallback: If semantic/OR-merged results are sparse, run a keyword FTS search and merge
+        try:
+            should_fallback = len(matches) < 5
+        except Exception:
+            should_fallback = True
+        if should_fallback:
+            # Build keyword list: prefer explicit or_terms, also include the full user_prompt as a phrase
+            keyword_terms = []
+            if isinstance(data.get("or_terms"), list):
+                keyword_terms.extend([str(t) for t in data.get("or_terms") if t])
+            if isinstance(user_prompt, str) and user_prompt.strip():
+                keyword_terms.append(user_prompt.strip())
+            # If still empty, don't attempt FTS
+            if keyword_terms:
+                fts_results = keyword_search(
+                    keywords=keyword_terms,
+                    user_id_filter=user_id,
+                    file_name_filter=tool_args.get("file_name_filter"),
+                    description_filter=tool_args.get("description_filter"),
+                    start_date=tool_args.get("start_date"),
+                    end_date=tool_args.get("end_date"),
+                    match_count=150,
+                    document_type=tool_args.get("document_type"),
+                    meeting_year=tool_args.get("meeting_year"),
+                    meeting_month=tool_args.get("meeting_month"),
+                    meeting_month_name=tool_args.get("meeting_month_name"),
+                    meeting_day=tool_args.get("meeting_day"),
+                    ordinance_title=tool_args.get("ordinance_title"),
+                ) or []
+                # Merge by id; preserve best score seen (semantic or keyword)
+                merged_by_id = {}
+                for m in matches:
+                    mid = m.get("id")
+                    if not mid:
+                        continue
+                    merged_by_id[mid] = m
+                for r in fts_results:
+                    rid = r.get("id")
+                    if not rid:
+                        continue
+                    if rid in merged_by_id:
+                        # Keep both scores; prefer max on final sort
+                        existing = merged_by_id[rid]
+                        # If FTS provided a higher keyword score, attach it
+                        if (r.get("keyword_score") or 0) > (existing.get("keyword_score") or 0):
+                            existing["keyword_score"] = r.get("keyword_score")
+                    else:
+                        merged_by_id[rid] = r
+                # Re-rank: prefer semantic score if present, otherwise keyword_score
+                def _rank_key(x):
+                    return max(x.get("score", 0) or 0, x.get("keyword_score", 0) or 0)
+                matches = sorted(merged_by_id.values(), key=_rank_key, reverse=True)
     
     # --- OPTIMIZED: Neighbor retrieval and summary using the simplified results ---
     chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}
@@ -352,7 +441,7 @@ async def assistant_search_docs(request: Request):
         # Build structured search results block with metadata headers per chunk
         annotated_texts = []
         for idx, chunk in enumerate(included_chunks, start=1):
-            header = f"[#${idx} id={chunk.get('id')} file={chunk.get('file_name')} page={chunk.get('page_number')} score={round(chunk.get('score') or 0, 4)}]"
+            header = f"[#{idx} id={chunk.get('id')} file={chunk.get('file_name')} page={chunk.get('page_number')} score={round(chunk.get('score') or 0, 4)}]"
             body = _trim(chunk.get("content", ""), per_chunk_char_limit)
             if body:
                 annotated_texts.append(f"{header}\n{body}")
