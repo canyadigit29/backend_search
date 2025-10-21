@@ -7,19 +7,72 @@ import httpx
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
-from app.core.openai_client import chat_completion
+from app.core.openai_client import chat_completion, stream_chat_completion
 from app.core.query_understanding import extract_search_filters
 from app.core.llama_query_transform import llama_query_transform
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import tiktoken
+import time
 
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 SUPABASE_BUCKET_ID = "files"  # Hardcoded bucket name for consistency
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
+
+def _get_token_counter():
+    try:
+        return tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        return None
+
+def _count_tokens(text: str, encoder=None) -> int:
+    if not text:
+        return 0
+    try:
+        if encoder is None:
+            encoder = _get_token_counter()
+        if encoder is None:
+            # Fallback rough estimate: ~4 chars per token
+            return max(1, len(text) // 4)
+        return len(encoder.encode(text))
+    except Exception:
+        return max(1, len(text) // 4)
+
+def _select_chunks_within_token_budget(chunks, max_tokens: int):
+    """Return (included_chunks, pending_chunks) based on cumulative token budget."""
+    included = []
+    pending = []
+    used = 0
+    enc = _get_token_counter()
+    for c in chunks:
+        content = c.get("content") or ""
+        # Count tokens for this chunk plus a small separator cost
+        t = _count_tokens(content, enc) + 2
+        if used + t <= max_tokens:
+            included.append(c)
+            used += t
+        else:
+            pending.append(c)
+    return included, pending
+
+def _fetch_chunks_by_ids(ids: list[str]):
+    if not ids:
+        return []
+    try:
+        # Fetch minimal fields needed to build sources and summary
+        res = (
+            supabase.table("document_chunks")
+            .select("id,file_id,file_name,page_number,chunk_index,content")
+            .in_("id", ids)
+            .execute()
+        )
+        data = getattr(res, "data", None) or []
+        return data
+    except Exception:
+        return []
 
 def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
@@ -183,6 +236,9 @@ async def assistant_search_docs(request: Request):
     Accepts a payload from an OpenAI assistant, normalizes fields, and forwards
     to the perform_search flow.
     """
+    # Start a monotonic timer to enforce a total time budget for summary generation
+    start_time = time.monotonic()
+
     try:
         data = await request.json()
     except Exception as e:
@@ -196,6 +252,9 @@ async def assistant_search_docs(request: Request):
                os.environ.get("ASSISTANT_DEFAULT_USER_ID") or 
                "4a867500-7423-4eaa-bc79-94e368555e05")
 
+    # Optional resume mode: summarize only specific chunk IDs provided by the caller
+    resume_chunk_ids = data.get("resume_chunk_ids")
+
     query_obj = llama_query_transform(user_prompt)
     search_query = query_obj.get("query") or user_prompt
     search_filters = query_obj.get("filters") or {}
@@ -205,24 +264,29 @@ async def assistant_search_docs(request: Request):
     except Exception as e:
         return JSONResponse({"error": f"Failed to generate embedding: {e}"}, status_code=500)
 
-    tool_args = {
-        "embedding": embedding,
-        "user_id_filter": user_id,
-        "file_name_filter": search_filters.get("file_name") or data.get("file_name_filter"),
-        "description_filter": search_filters.get("description") or data.get("description_filter"),
-        "start_date": data.get("start_date"),
-        "end_date": data.get("end_date"),
-        "user_prompt": user_prompt,
-        "search_query": search_query,
-        "relevance_threshold": data.get("relevance_threshold"),
-        "max_results": data.get("max_results")
-    }
-    for meta_field in ["document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"]:
-        if search_filters.get(meta_field) is not None:
-            tool_args[meta_field] = search_filters[meta_field]
+    matches = []
+    if resume_chunk_ids:
+        # Resume path: fetch only the requested chunk IDs
+        matches = _fetch_chunks_by_ids(resume_chunk_ids)
+    else:
+        tool_args = {
+            "embedding": embedding,
+            "user_id_filter": user_id,
+            "file_name_filter": search_filters.get("file_name") or data.get("file_name_filter"),
+            "description_filter": search_filters.get("description") or data.get("description_filter"),
+            "start_date": data.get("start_date"),
+            "end_date": data.get("end_date"),
+            "user_prompt": user_prompt,
+            "search_query": search_query,
+            "relevance_threshold": data.get("relevance_threshold"),
+            "max_results": data.get("max_results")
+        }
+        for meta_field in ["document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"]:
+            if search_filters.get(meta_field) is not None:
+                tool_args[meta_field] = search_filters[meta_field]
 
-    search_result = perform_search(tool_args)
-    matches = search_result.get("retrieved_chunks", [])
+        search_result = perform_search(tool_args)
+        matches = search_result.get("retrieved_chunks", [])
     
     # --- OPTIMIZED: Neighbor retrieval and summary using the simplified results ---
     chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}
@@ -235,10 +299,22 @@ async def assistant_search_docs(request: Request):
             if next_chunk: chunk["next_chunk"] = {k: next_chunk[k] for k in ("content", "page_number") if k in next_chunk}
 
     summary = None
+    summary_was_partial = False
+    pending_chunk_ids = []
+    included_chunk_ids = []
     try:
-        # The chunks used for the summary are now the definitive list of sources.
+        # Candidate chunks for the summary
         summary_chunks = matches[:50]
-        top_texts = [chunk.get("content", "") for chunk in summary_chunks if chunk.get("content")]
+        # Apply an input token budget so we can identify which chunks were included vs deferred
+        try:
+            max_input_tokens = int(os.environ.get("ASSISTANT_SUMMARY_INPUT_TOKENS", "8000"))
+        except Exception:
+            max_input_tokens = 8000
+        included_chunks, pending_chunks = _select_chunks_within_token_budget(summary_chunks, max_input_tokens)
+        included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
+        pending_chunk_ids = [c.get("id") for c in pending_chunks if c.get("id")]
+
+        top_texts = [chunk.get("content", "") for chunk in included_chunks if chunk.get("content")]
         top_text = "\n\n".join(top_texts)
         
         if top_text.strip():
@@ -246,15 +322,29 @@ async def assistant_search_docs(request: Request):
                 {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect the information. Prioritize accuracy, relevance, and clarity. If results are ambiguous, state your reasoning and cite the most relevant sources."},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            summary = chat_completion(summary_prompt, model="gpt-5")
+            # Enforce a summarization time budget to avoid total request timeouts.
+            # Default to 55s unless overridden by env ASSISTANT_SUMMARY_BUDGET_SECONDS.
+            try:
+                budget_seconds = float(os.environ.get("ASSISTANT_SUMMARY_BUDGET_SECONDS", "55"))
+            except Exception:
+                budget_seconds = 55.0
+
+            elapsed = time.monotonic() - start_time
+            remaining = max(1.0, budget_seconds - elapsed)
+
+            # Use streaming completion with a time cap; return partial content if we hit the cap.
+            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=remaining)
+            summary = content if content else None
+            summary_was_partial = bool(was_partial)
     except Exception:
         summary = None
+        summary_was_partial = False
     
     # --- Generate signed URLs for each source ---
     excerpt_length = 300
     sources = []
-    # Iterate over the same 'summary_chunks' list to build the sources.
-    for c in summary_chunks:
+    # Iterate over the same 'included_chunks' list to build the sources we summarized.
+    for c in included_chunks if 'included_chunks' in locals() else summary_chunks:
         file_name = c.get("file_name")
         signed_url = None
         if file_name:
@@ -276,7 +366,15 @@ async def assistant_search_docs(request: Request):
             "url": signed_url # Add the new URL field
         })
 
-    return JSONResponse({"summary": summary, "sources": sources})
+    can_resume = bool(pending_chunk_ids)
+    return JSONResponse({
+        "summary": summary,
+        "summary_was_partial": summary_was_partial,
+        "sources": sources,
+        "can_resume": can_resume,
+        "pending_chunk_ids": pending_chunk_ids,
+        "included_chunk_ids": included_chunk_ids
+    })
 
 
 # Legacy endpoint maintained for backward compatibility
