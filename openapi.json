@@ -16,6 +16,7 @@
       "post": {
         "operationId": "searchDocumentsAssistant",
         "summary": "Search documents via assistant",
+        "description": "Performs a semantic search and returns a summary plus sources. Supports partial summaries when time runs short and resumable processing via resume_chunk_ids.",
         "x-oai-meta": {
           "name": "searchDocumentsAssistant",
           "isUserFacing": true
@@ -62,7 +63,9 @@
               "id": {
                 "type": "string"
               }
-            }
+            },
+            "required": ["id"],
+            "description": "Static user identifier required by the backend."
           },
           "relevance_threshold": {
             "type": "number",
@@ -73,6 +76,14 @@
             "type": "integer",
             "description": "The maximum number of chunks to process for the summary. Default is 100.",
             "default": 100
+          },
+          "resume_chunk_ids": {
+            "type": "array",
+            "description": "Resume mode: specify chunk IDs returned as pending_chunk_ids from a previous response to continue summarization.",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         }
       },
@@ -110,10 +121,34 @@
               "null"
             ]
           },
+          "summary_was_partial": {
+            "type": "boolean",
+            "description": "True when the response contains a partial summary due to time constraints."
+          },
           "sources": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Source"
+            }
+          },
+          "can_resume": {
+            "type": "boolean",
+            "description": "True when there are remaining chunks to summarize."
+          },
+          "pending_chunk_ids": {
+            "type": "array",
+            "description": "Chunk IDs that were not summarized in this pass and can be sent back via resume_chunk_ids to continue.",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "included_chunk_ids": {
+            "type": "array",
+            "description": "Chunk IDs that were included in this summary pass.",
+            "items": {
+              "type": "string",
+              "format": "uuid"
             }
           },
           "error": {
