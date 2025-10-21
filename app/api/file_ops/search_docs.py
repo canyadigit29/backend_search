@@ -322,12 +322,8 @@ async def assistant_search_docs(request: Request):
                 {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect the information. Prioritize accuracy, relevance, and clarity. If results are ambiguous, state your reasoning and cite the most relevant sources."},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            # Enforce a summarization time budget to avoid total request timeouts.
-            # Default to 55s unless overridden by env ASSISTANT_SUMMARY_BUDGET_SECONDS.
-            try:
-                budget_seconds = float(os.environ.get("ASSISTANT_SUMMARY_BUDGET_SECONDS", "55"))
-            except Exception:
-                budget_seconds = 55.0
+            # Enforce a summarization time budget to avoid total request timeouts (hardcoded to 55s).
+            budget_seconds = 55.0
 
             elapsed = time.monotonic() - start_time
             remaining = max(1.0, budget_seconds - elapsed)
