@@ -296,7 +296,7 @@ async def assistant_search_docs(request: Request):
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
             # No time cap: complete the summary for this batch; constrain output tokens (hard-coded)
-            MAX_OUTPUT_TOKENS = 8_000
+            MAX_OUTPUT_TOKENS = 100_000
             content, was_partial = stream_chat_completion(summary_prompt, model=None, max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
