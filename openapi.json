@@ -12,14 +12,10 @@
     }
   ],
   "paths": {
-    "/api/assistant/search_docs": {
+    "/api/assistant/search/start": {
       "post": {
-        "operationId": "searchDocumentsAssistant",
-        "summary": "Search documents via assistant",
-        "x-oai-meta": {
-          "name": "searchDocumentsAssistant",
-          "isUserFacing": true
-        },
+        "summary": "Start an asynchronous document search",
+        "operationId": "start_async_search",
         "requestBody": {
           "required": true,
           "content": {
@@ -30,6 +26,79 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Search started successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/search/status/{job_id}": {
+      "get": {
+        "summary": "Check the status of a search job",
+        "operationId": "get_search_status",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "queued",
+                        "running",
+                        "finished",
+                        "failed",
+                        "not_found"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/assistant/search/results/{job_id}": {
+      "get": {
+        "summary": "Get the results of a completed search job",
+        "operationId": "get_search_results",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Search results",
