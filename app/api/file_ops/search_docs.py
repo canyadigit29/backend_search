@@ -10,6 +10,7 @@ from app.api.file_ops.embed import embed_text
 from app.core.openai_client import chat_completion, stream_chat_completion
 from app.core.query_understanding import extract_search_filters
 from app.core.llama_query_transform import llama_query_transform
+from app.core.token_utils import trim_texts_to_token_limit
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -278,16 +279,25 @@ async def assistant_search_docs(request: Request):
         # Pending are the remainder of the top 50 that were not included this pass (up to 25)
         pending_chunk_ids = [c.get("id") for c in top50_chunks[chunk_limit:50] if c.get("id")]
 
-        top_texts = [chunk.get("content", "") for chunk in included_chunks if chunk.get("content")]
-        top_text = "\n\n".join(top_texts)
+        # Guardrail: trim each chunk to avoid exceeding model context (hard-coded)
+        per_chunk_char_limit = 2500
+        def _trim(s: str, n: int) -> str:
+            if not s:
+                return ""
+            return s[:n]
+        top_texts = [_trim(chunk.get("content", ""), per_chunk_char_limit) for chunk in included_chunks if chunk.get("content")]
+        # Token-aware cap across all included texts (hard-coded): assume 200k token context, leave headroom
+        MAX_INPUT_TOKENS = 260_000
+        top_text = trim_texts_to_token_limit(top_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
         
         if top_text.strip():
             summary_prompt = [
                 {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect the information. Prioritize accuracy, relevance, and clarity. If results are ambiguous, state your reasoning and cite the most relevant sources."},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            # No time cap: complete the summary for this batch
-            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999)
+            # No time cap: complete the summary for this batch; constrain output tokens (hard-coded)
+            MAX_OUTPUT_TOKENS = 8_000
+            content, was_partial = stream_chat_completion(summary_prompt, model=None, max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
             # Even if partial occurs due to upstream issues, we still return pending based on batch remainder
@@ -322,7 +332,6 @@ async def assistant_search_docs(request: Request):
             "url": signed_url # Add the new URL field
         })
 
-    # Only signal resume when the response was time-truncated AND there is remaining work
     # Resume is offered when there are remainder chunks in the top-50 (batch 2)
     can_resume = bool(pending_chunk_ids)
     return JSONResponse({

@@ -4,24 +4,43 @@ import time
 client = OpenAI()
 
 
-def chat_completion(messages: list, model: str = "gpt-5") -> str:
+def _default_model() -> str:
+    # Hard-coded per user request
+    return "gpt-5"
+
+
+def chat_completion(messages: list, model: str | None = None, max_tokens: int | None = None) -> str:
     """Synchronous chat completion that returns the full message content or an error string."""
     try:
-        response = client.chat.completions.create(model=model, messages=messages)
+        use_model = model or _default_model()
+        kwargs = {"model": use_model, "messages": messages}
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        response = client.chat.completions.create(**kwargs)
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Error: {str(e)}"
 
 
-def stream_chat_completion(messages: list, model: str = "gpt-5", max_seconds: float = 50.0) -> tuple[str, bool]:
+def stream_chat_completion(messages: list, model: str | None = None, max_seconds: float = 50.0, max_tokens: int | None = None) -> tuple[str, bool]:
     """
     Stream chat completion and return accumulated text within a time budget.
     Returns (content, was_partial) where was_partial=True if we stopped due to timeout or error.
     """
     start = time.time()
     content_parts: list[str] = []
+    last_finish_reason = None
     try:
-        stream = client.chat.completions.create(model=model, messages=messages, stream=True)
+        use_model = model or _default_model()
+        # include_usage is supported by newer SDK versions; ignore if not available
+        kwargs = {"model": use_model, "messages": messages, "stream": True}
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        try:
+            kwargs["stream_options"] = {"include_usage": True}
+        except Exception:
+            pass
+        stream = client.chat.completions.create(**kwargs)
         # Iterate streamed chunks and accumulate text until time budget is exceeded
         for chunk in stream:
             try:
@@ -37,6 +56,10 @@ def stream_chat_completion(messages: list, model: str = "gpt-5", max_seconds: fl
                     piece = getattr(choice, "message", None)
                     if piece and getattr(piece, "content", None):
                         content_parts.append(piece.content)
+                # Capture finish_reason when present on streamed chunks
+                fr = getattr(choice, "finish_reason", None)
+                if fr:
+                    last_finish_reason = fr
             except Exception:
                 # Ignore malformed chunks but keep streaming
                 pass
@@ -48,10 +71,14 @@ def stream_chat_completion(messages: list, model: str = "gpt-5", max_seconds: fl
                         stream.close()
                 except Exception:
                     pass
+                # Timeout considered partial
                 return ("".join(content_parts).strip(), True)
 
-        # Completed naturally within time budget
-        return ("".join(content_parts).strip(), False)
+        # Completed naturally within time or without max_seconds guard
+        text = "".join(content_parts).strip()
+        # Consider partial if model stopped due to length or content filter
+        was_partial = last_finish_reason in ("length", "content_filter")
+        return (text, bool(was_partial))
     except Exception:
         # If we have partial content, return it as partial; else return error text marked partial
         text = "".join(content_parts).strip()
