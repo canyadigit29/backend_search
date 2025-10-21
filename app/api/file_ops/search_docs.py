@@ -13,7 +13,6 @@ from app.core.llama_query_transform import llama_query_transform
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-import tiktoken
 import time
 from app.core.stopwatch import Stopwatch
 
@@ -22,42 +21,6 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 SUPABASE_BUCKET_ID = "files"  # Hardcoded bucket name for consistency
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
-
-def _get_token_counter():
-    try:
-        return tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        return None
-
-def _count_tokens(text: str, encoder=None) -> int:
-    if not text:
-        return 0
-    try:
-        if encoder is None:
-            encoder = _get_token_counter()
-        if encoder is None:
-            # Fallback rough estimate: ~4 chars per token
-            return max(1, len(text) // 4)
-        return len(encoder.encode(text))
-    except Exception:
-        return max(1, len(text) // 4)
-
-def _select_chunks_within_token_budget(chunks, max_tokens: int):
-    """Return (included_chunks, pending_chunks) based on cumulative token budget."""
-    included = []
-    pending = []
-    used = 0
-    enc = _get_token_counter()
-    for c in chunks:
-        content = c.get("content") or ""
-        # Count tokens for this chunk plus a small separator cost
-        t = _count_tokens(content, enc) + 2
-        if used + t <= max_tokens:
-            included.append(c)
-            used += t
-        else:
-            pending.append(c)
-    return included, pending
 
 def _fetch_chunks_by_ids(ids: list[str]):
     if not ids:
@@ -267,8 +230,10 @@ async def assistant_search_docs(request: Request):
 
     matches = []
     if resume_chunk_ids:
-        # Resume path: fetch only the requested chunk IDs
-        matches = _fetch_chunks_by_ids(resume_chunk_ids)
+        # Resume path: fetch only the requested chunk IDs, preserving the caller-provided order
+        fetched = _fetch_chunks_by_ids(resume_chunk_ids)
+        by_id = {c.get("id"): c for c in fetched}
+        matches = [by_id[i] for i in resume_chunk_ids if by_id.get(i)]
     else:
         tool_args = {
             "embedding": embedding,
@@ -303,17 +268,32 @@ async def assistant_search_docs(request: Request):
     summary_was_partial = False
     pending_chunk_ids = []
     included_chunk_ids = []
+    included_chunks = []
     try:
-        # Candidate chunks for the summary
-        summary_chunks = matches[:50]
-        # Apply an input token budget so we can identify which chunks were included vs deferred
-        try:
-            max_input_tokens = int(os.environ.get("ASSISTANT_SUMMARY_INPUT_TOKENS", "8000"))
-        except Exception:
-            max_input_tokens = 8000
-        included_chunks, pending_chunks = _select_chunks_within_token_budget(summary_chunks, max_input_tokens)
+        # Decide how many of the top 50 chunks to include in this pass based on remaining time.
+        # This ensures pending_chunk_ids only contains chunks not yet summarized.
+        budget_seconds = 55.0
+        pre_summary_seconds = sw.elapsed()
+        remaining = sw.remaining(budget_seconds)
+
+        # Heuristic: include more chunks when there's more time left.
+        # Goal is to avoid over-including and forcing a re-summarize of the same set on resume.
+        if remaining >= 40:
+            chunk_limit = 50
+        elif remaining >= 25:
+            chunk_limit = 35
+        elif remaining >= 15:
+            chunk_limit = 25
+        elif remaining >= 8:
+            chunk_limit = 15
+        else:
+            chunk_limit = 10
+
+        top50_chunks = matches[:50]
+        included_chunks = top50_chunks[:chunk_limit]
         included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
-        pending_chunk_ids = [c.get("id") for c in pending_chunks if c.get("id")]
+        # Pending are the remainder of the top 50 that were not included this pass
+        pending_chunk_ids = [c.get("id") for c in top50_chunks[chunk_limit:] if c.get("id")]
 
         top_texts = [chunk.get("content", "") for chunk in included_chunks if chunk.get("content")]
         top_text = "\n\n".join(top_texts)
@@ -323,10 +303,6 @@ async def assistant_search_docs(request: Request):
                 {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect the information. Prioritize accuracy, relevance, and clarity. If results are ambiguous, state your reasoning and cite the most relevant sources."},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            # Enforce a summarization time budget to avoid total request timeouts (hardcoded to 55s total).
-            budget_seconds = 55.0
-            pre_summary_seconds = sw.elapsed()
-            remaining = sw.remaining(budget_seconds)
 
             # Use streaming completion with a time cap; return partial content if we hit the cap.
             sw.reset_lap()
@@ -335,6 +311,9 @@ async def assistant_search_docs(request: Request):
             summary_allocated_seconds = remaining
             summary = content if content else None
             summary_was_partial = bool(was_partial)
+            # Only keep pending ids when the summary was time-truncated; otherwise don't signal resume
+            if not summary_was_partial:
+                pending_chunk_ids = []
     except Exception:
         summary = None
         summary_was_partial = False
@@ -346,7 +325,7 @@ async def assistant_search_docs(request: Request):
     excerpt_length = 300
     sources = []
     # Iterate over the same 'included_chunks' list to build the sources we summarized.
-    for c in included_chunks if 'included_chunks' in locals() else summary_chunks:
+    for c in included_chunks:
         file_name = c.get("file_name")
         signed_url = None
         if file_name:

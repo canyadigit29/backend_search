@@ -133,11 +133,11 @@
           },
           "can_resume": {
             "type": "boolean",
-            "description": "True when there are remaining chunks to summarize."
+            "description": "True only when the summary was time-truncated and there are remaining top-50 chunks not yet summarized."
           },
           "pending_chunk_ids": {
             "type": "array",
-            "description": "Chunk IDs that were not summarized in this pass and can be sent back via resume_chunk_ids to continue.",
+            "description": "The remainder of the top-50 chunk IDs that were not included in this summary pass. Send these back via resume_chunk_ids to continue.",
             "items": {
               "type": "string",
               "format": "uuid"
