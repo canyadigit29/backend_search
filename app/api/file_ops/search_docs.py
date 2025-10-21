@@ -15,6 +15,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import tiktoken
 import time
+from app.core.stopwatch import Stopwatch
 
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -236,8 +237,8 @@ async def assistant_search_docs(request: Request):
     Accepts a payload from an OpenAI assistant, normalizes fields, and forwards
     to the perform_search flow.
     """
-    # Start a monotonic timer to enforce a total time budget for summary generation
-    start_time = time.monotonic()
+    # Stopwatch to enforce a total time budget for summary generation
+    sw = Stopwatch()
 
     try:
         data = await request.json()
@@ -322,24 +323,22 @@ async def assistant_search_docs(request: Request):
                 {"role": "system", "content": "You are an insightful assistant. Using the following search results, answer the user's query clearly and concisely. Synthesize, interpret, and connect the information. Prioritize accuracy, relevance, and clarity. If results are ambiguous, state your reasoning and cite the most relevant sources."},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}"}
             ]
-            # Enforce a summarization time budget to avoid total request timeouts (hardcoded to 55s).
+            # Enforce a summarization time budget to avoid total request timeouts (hardcoded to 55s total).
             budget_seconds = 55.0
-
-            elapsed = time.monotonic() - start_time
-            remaining = max(1.0, budget_seconds - elapsed)
-            pre_summary_seconds = elapsed
+            pre_summary_seconds = sw.elapsed()
+            remaining = sw.remaining(budget_seconds)
 
             # Use streaming completion with a time cap; return partial content if we hit the cap.
-            summary_start = time.monotonic()
+            sw.reset_lap()
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=remaining)
-            summary_elapsed_seconds = time.monotonic() - summary_start
+            summary_elapsed_seconds = sw.lap()
             summary_allocated_seconds = remaining
             summary = content if content else None
             summary_was_partial = bool(was_partial)
     except Exception:
         summary = None
         summary_was_partial = False
-        pre_summary_seconds = pre_summary_seconds if 'pre_summary_seconds' in locals() else time.monotonic() - start_time
+        pre_summary_seconds = pre_summary_seconds if 'pre_summary_seconds' in locals() else sw.elapsed()
         summary_elapsed_seconds = 0.0
         summary_allocated_seconds = max(0.0, 55.0 - pre_summary_seconds)
     
@@ -371,7 +370,7 @@ async def assistant_search_docs(request: Request):
 
     # Only signal resume when the response was time-truncated AND there is remaining work
     can_resume = bool(summary_was_partial and pending_chunk_ids)
-    total_elapsed_seconds = time.monotonic() - start_time
+    total_elapsed_seconds = sw.elapsed()
     return JSONResponse({
         "summary": summary,
         "summary_was_partial": summary_was_partial,
