@@ -3,7 +3,7 @@
   "info": {
     "title": "Search Documents Assistant API",
     "version": "1.0.0",
-    "description": "Asynchronous search endpoint for Custom GPT."
+    "description": "Search endpoint for Custom GPT."
   },
   "servers": [
     {
@@ -12,10 +12,14 @@
     }
   ],
   "paths": {
-    "/api/assistant/search/start": {
+    "/api/assistant/search_docs": {
       "post": {
-        "summary": "Start an asynchronous document search",
-        "operationId": "start_async_search",
+        "operationId": "searchDocumentsAssistant",
+        "summary": "Search documents via assistant",
+        "x-oai-meta": {
+          "name": "searchDocumentsAssistant",
+          "isUserFacing": true
+        },
         "requestBody": {
           "required": true,
           "content": {
@@ -26,79 +30,6 @@
             }
           }
         },
-        "responses": {
-          "200": {
-            "description": "Search started successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "job_id": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/assistant/search/status/{job_id}": {
-      "get": {
-        "summary": "Check the status of a search job",
-        "operationId": "get_search_status",
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Job status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "queued",
-                        "running",
-                        "finished",
-                        "failed",
-                        "not_found"
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/assistant/search/results/{job_id}": {
-      "get": {
-        "summary": "Get the results of a completed search job",
-        "operationId": "get_search_results",
-        "parameters": [
-          {
-            "name": "job_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "Search results",
@@ -142,24 +73,6 @@
             "type": "integer",
             "description": "The maximum number of chunks to process for the summary. Default is 100.",
             "default": 100
-          },
-          "file_name_filter": {
-            "type": "string",
-            "description": "Filter by a specific file name."
-          },
-          "description_filter": {
-            "type": "string",
-            "description": "Filter by text in the document's description."
-          },
-          "start_date": {
-            "type": "string",
-            "format": "date",
-            "description": "Filter for documents on or after this date (YYYY-MM-DD)."
-          },
-          "end_date": {
-            "type": "string",
-            "format": "date",
-            "description": "Filter for documents on or before this date (YYYY-MM-DD)."
           }
         }
       },
@@ -211,4 +124,3 @@
     }
   }
 }
-
