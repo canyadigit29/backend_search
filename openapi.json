@@ -44,6 +44,62 @@
           }
         }
       }
+    },
+    "/api/file_ops/upload_with_metadata": {
+      "post": {
+        "operationId": "uploadFileWithMetadata",
+        "summary": "Upload a file with its metadata",
+        "description": "Uploads a file and a JSON string of its metadata. The backend will process the file asynchronously to chunk and embed it. The metadata should be extracted by the GPT before calling this endpoint.",
+        "x-oai-meta": {
+          "name": "uploadFileWithMetadata",
+          "isUserFacing": true
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "The file to be uploaded."
+                  },
+                  "metadata_json": {
+                    "type": "string",
+                    "description": "A JSON string representing the file's metadata. Must include 'doc_type'. Can include 'meeting_date' (YYYY-MM-DD) and other key-value pairs."
+                  },
+                  "user_id": {
+                    "type": "string",
+                    "description": "The user's unique identifier."
+                  }
+                },
+                "required": ["file", "metadata_json", "user_id"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "File upload successful, processing started.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": { "type": "string" },
+                    "file_id": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request, e.g., missing file or metadata."
+          }
+        }
+      }
     }
   },
   "components": {
@@ -103,6 +159,20 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          "start_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Optional start date (YYYY-MM-DD) to filter documents by their meeting_date."
+          },
+          "end_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Optional end date (YYYY-MM-DD) to filter documents by their meeting_date."
+          },
+          "metadata_filter": {
+            "type": "object",
+            "description": "Optional JSON object to filter documents by their metadata. The filter performs a containment check (e.g., `{\"key\": \"value\"}` matches documents where metadata contains that key-value pair)."
           }
         }
       },

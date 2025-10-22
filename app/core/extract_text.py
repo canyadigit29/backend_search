@@ -2,6 +2,10 @@ import pdfplumber
 import fitz  # PyMuPDF
 import re
 
+import pdfplumber
+import fitz  # PyMuPDF
+import re
+
 def clean_text(text):
     # Remove page numbers like "Page 1", "1 of 10", etc.
     text = re.sub(r'Page \\d+|\\d+ of \\d+', '', text)

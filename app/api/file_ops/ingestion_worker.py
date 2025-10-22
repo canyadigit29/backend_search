@@ -6,7 +6,7 @@ import traceback
 
 from fastapi import APIRouter
 from app.core.supabase_client import supabase
-from app.api.file_ops.ingest import process_file
+from app.api.file_ops.ingest import process_and_embed_file
 
 logger = logging.getLogger("ingestion_worker")
 logger.setLevel(logging.INFO)
@@ -73,6 +73,38 @@ async def run_ingestion_once():
         logger.error(f"[ERROR] Exception in run_ingestion_once: {e}")
         print(f"[ERROR] Exception in run_ingestion_once: {e}")
         traceback.print_exc()
+
+
+async def process_file_with_metadata(file_id: str, file_path: str, user_id: str, metadata: dict):
+    """
+    The new entry point for the ingestion worker, designed to be called by the background task queue.
+    """
+    logger.info(f"🧾 Ingesting file with metadata: {file_path}")
+    try:
+        # The core logic is now in process_and_embed_file, which we pass the metadata to.
+        await process_and_embed_file(
+            file_path=file_path,
+            file_id=file_id,
+            user_id=user_id,
+            metadata=metadata
+        )
+
+        # Mark the file as ingested
+        supabase.table("files").update({
+            "ingested": True,
+            "ingested_at": datetime.utcnow().isoformat()
+        }).eq("id", file_id).execute()
+        
+        logger.info(f"✅ Successfully ingested file: {file_path}")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to ingest file {file_path}: {e}")
+        traceback.print_exc()
+        # Optionally, update the file record to indicate failure
+        supabase.table("files").update({
+            "ingested": False,
+            "ingestion_error": str(e)
+        }).eq("id", file_id).execute()
 
 
 router = APIRouter()

@@ -88,67 +88,37 @@ def fixed_size_chunk(text, max_tokens=1500, overlap_tokens=300):
         start += max_tokens - overlap_tokens
     return list(zip(chunks, chunk_meta))
 
-def chunk_file(file_id: str, user_id: str = None):
+def chunk_file(file_id: str, user_id: str, file_text: str, metadata: dict):
     print(f"🔍 Starting chunking for file_id: {file_id}")
     try:
-        file_entry = None
-        is_uuid = re.fullmatch(r"[0-9a-fA-F\-]{36}", file_id)
-
-        if is_uuid:
-            result = supabase.table("files").select("*").eq("id", file_id).execute()
-            file_entry = result.data[0] if result.data else None
-
-        if not file_entry:
-            print(f"❌ No file found for identifier: {file_id}")
-            return []
-
-        file_path = file_entry["file_path"]
-        file_name = file_entry.get("file_name") or file_entry.get("name") or file_path
-        actual_user_id = user_id or file_entry.get("user_id", None)
-        bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
-        print(f"📄 Filepath: {file_path}")
-
-        response = supabase.storage.from_(bucket).download(file_path)
-        if not response:
-            print(f"❌ Could not download file from Supabase: {file_path}")
-            return []
-
-        local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
-        with open(local_temp_path, "wb") as f:
-            f.write(response)
-
-        try:
-            text = extract_text(local_temp_path)
-            print(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
-        except Exception as e:
-            print(f"❌ Failed to extract text from {file_path}: {str(e)}")
-            return []
-
-        filename_meta = extract_metadata_from_filename(Path(file_name).name)
-        print(f"[DEBUG] Filename metadata for {file_name}: {filename_meta}")
         # Use fixed-size overlapping chunking
-        chunk_tuples = fixed_size_chunk(text, max_tokens=1500, overlap_tokens=300)
+        chunk_tuples = fixed_size_chunk(file_text, max_tokens=1500, overlap_tokens=300)
         db_chunks = []
-        for i, (chunk_text, meta) in enumerate(chunk_tuples):
+        
+        # The incoming metadata from the GPT is the source of truth.
+        # We no longer need to infer it from the filename.
+        base_metadata = metadata or {}
+
+        for i, (chunk_text, chunk_specific_meta) in enumerate(chunk_tuples):
             chunk_id = str(uuid4())
-            chunk_metadata = {**filename_meta, **meta}
-            print(f"[DEBUG] Chunk {i} metadata: {chunk_metadata}")
+            
+            # Combine the overall file metadata with any metadata specific to this chunk (like page number)
+            final_chunk_metadata = {**base_metadata, **chunk_specific_meta}
+
             chunk = {
                 "id": chunk_id,
-                "file_id": file_entry["id"],
-                "file_name": file_name,
+                "file_id": file_id,
+                "user_id": user_id,
                 "content": chunk_text,
                 "chunk_index": i,
-                **chunk_metadata,
+                "metadata": final_chunk_metadata,  # The combined metadata for this chunk
             }
-            if actual_user_id:
-                chunk["user_id"] = actual_user_id
             db_chunks.append(chunk)
 
-        print(f"🧹 Got {len(db_chunks)} fixed-size chunks from {file_path}")
-
-        return db_chunks  # Return full chunk dicts, do not insert here
+        print(f"🧹 Got {len(db_chunks)} fixed-size chunks for file {file_id}")
+        return db_chunks
 
     except Exception as e:
         print(f"❌ Error during chunking: {str(e)}")
         return []
+

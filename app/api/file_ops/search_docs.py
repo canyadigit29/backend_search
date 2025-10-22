@@ -144,10 +144,6 @@ def _select_included_and_pending(matches: list[dict], included_limit: int = 25, 
 
 def perform_search(tool_args):
     query_embedding = tool_args.get("embedding")
-    file_name_filter = tool_args.get("file_name_filter")
-    description_filter = tool_args.get("description_filter")
-    start_date = tool_args.get("start_date")
-    end_date = tool_args.get("end_date")
     user_id_filter = tool_args.get("user_id_filter")
     user_prompt = tool_args.get("user_prompt")
     search_query = tool_args.get("search_query")
@@ -167,34 +163,20 @@ def perform_search(tool_args):
     if not user_id_filter:
         return {"error": "user_id must be provided to perform search."}
     try:
-        # --- ALIGNMENT: Pass the relevance_threshold from the assistant directly to the DB ---
-        # The 'relevance_threshold' from the assistant is a SIMILARITY score (0 to 1).
-        # The DB function 'match_documents' expects a DISTANCE (1 - similarity).
-        db_match_threshold = 1 - threshold
-
         # Semantic search
         rpc_args = {
-            "query_embedding": query_embedding,
-            "user_id_filter": user_id_filter,
-            "file_name_filter": file_name_filter,
-            "description_filter": description_filter,
-            "start_date": start_date,
-            "end_date": end_date,
-            "match_threshold": db_match_threshold, # Use the calculated distance threshold
-            "match_count": 150
+            "p_query_embedding": query_embedding,
+            "p_search_weights": json.dumps(tool_args.get("search_weights", {"semantic": 0.5, "keyword": 0.5})),
+            "p_relevance_threshold": threshold,
+            "p_user_id": user_id_filter,
+            "p_doc_type": tool_args.get("doc_type"),
+            "p_or_terms": tool_args.get("or_terms"),
+            "p_chunk_ids_in": tool_args.get("chunk_ids_in"),
+            "p_match_limit": max_results,
+            "p_start_date": tool_args.get("start_date"),
+            "p_end_date": tool_args.get("end_date"),
+            "p_metadata_filter": tool_args.get("metadata_filter"),
         }
-        # Add metadata filters
-        metadata_fields = [
-            ("meeting_year", "filter_meeting_year"),
-            ("meeting_month", "filter_meeting_month"),
-            ("meeting_month_name", "filter_meeting_month_name"),
-            ("meeting_day", "filter_meeting_day"),
-            ("document_type", "filter_document_type"),
-            ("ordinance_title", "filter_ordinance_title"),
-        ]
-        for tool_key, rpc_key in metadata_fields:
-            if tool_args.get(tool_key) is not None:
-                rpc_args[rpc_key] = tool_args[tool_key]
 
         # Exclusively use the new, optimized 'match_documents_v3' RPC function.
         response = supabase.rpc("match_documents_v3", rpc_args).execute()
@@ -204,9 +186,8 @@ def perform_search(tool_args):
 
         matches = response.data or []
 
-        # --- ALIGNMENT: Remove complex python-side scoring. Trust the DB score. ---
-        # The database 'score' is the similarity score, which is what we want.
-        matches.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # The database 'similarity' is the combined score, which is what we want.
+        matches.sort(key=lambda x: x.get("similarity", 0), reverse=True)
 
         # --- Apply max_results limit after sorting ---
         matches = matches[:max_results]
@@ -263,17 +244,11 @@ router = APIRouter()
 def keyword_search(
     keywords,
     user_id_filter=None,
-    file_name_filter=None,
-    description_filter=None,
+    doc_type=None,
+    match_count=150,
     start_date=None,
     end_date=None,
-    match_count=150,
-    document_type=None,
-    meeting_year=None,
-    meeting_month=None,
-    meeting_month_name=None,
-    meeting_day=None,
-    ordinance_title=None,
+    metadata_filter=None,
 ):
     """
     Keyword search over document_chunks table using Postgres FTS (ts_rank/BM25).
@@ -295,19 +270,13 @@ def keyword_search(
 
     # Arguments for match_documents_fts_v3, aligned with its SQL definition
     rpc_args = {
-        "keyword_query": keyword_query,
-        "user_id_filter": user_id_filter,
-        "file_name_filter": file_name_filter,
-        "description_filter": description_filter,
-        "start_date": start_date,
-        "end_date": end_date,
-        "match_count": match_count,
-        "filter_document_type": document_type,
-        "filter_meeting_year": meeting_year,
-        "filter_meeting_month": meeting_month,
-        "filter_meeting_month_name": meeting_month_name,
-        "filter_meeting_day": meeting_day,
-        "filter_ordinance_title": ordinance_title,
+        "p_query_text": keyword_query,
+        "p_user_id": user_id_filter,
+        "p_doc_type": doc_type,
+        "p_match_limit": match_count,
+        "p_start_date": start_date,
+        "p_end_date": end_date,
+        "p_metadata_filter": metadata_filter,
     }
 
     supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
@@ -335,7 +304,7 @@ def keyword_search(
         results = response.json() or []
         print(f"[DEBUG] Keyword search: successfully called {endpoint}, found {len(results)} results.")
         for r in results:
-            r["keyword_score"] = r.get("ts_rank", 0)
+            r["keyword_score"] = r.get("similarity", 0) # FTS function now returns 'similarity'
         return results
     except Exception as e:
         print(f"[ERROR] Keyword search: unhandled exception during search. Error: {str(e)}")
@@ -395,54 +364,28 @@ async def assistant_search_docs(request: Request):
         by_id = {c.get("id"): c for c in fetched}
         matches = [by_id[i] for i in resume_chunk_ids if by_id.get(i)]
     else:
-        tool_args = {
-            "embedding": embedding,
-            "user_id_filter": user_id,
-            "file_name_filter": search_filters.get("file_name") or data.get("file_name_filter"),
-            "description_filter": search_filters.get("description") or data.get("description_filter"),
-            "start_date": data.get("start_date"),
-            "end_date": data.get("end_date"),
-            "user_prompt": user_prompt,
-            "search_query": search_query,
-            "relevance_threshold": relevance_threshold,
-            "max_results": data.get("max_results")
-        }
-        for meta_field in ["document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"]:
-            if search_filters.get(meta_field) is not None:
-                tool_args[meta_field] = search_filters[meta_field]
-        
-        # Optional OR-terms merging: if provided, or inferred from inline "OR"s, run per-term searches and merge by ID using max score
         provided_or_terms = data.get("or_terms") if isinstance(data.get("or_terms"), list) else []
         inline_or_terms = _parse_inline_or_terms(user_prompt)
         or_terms = provided_or_terms or inline_or_terms
-        if or_terms and isinstance(or_terms, list):
-            merged_by_id: dict[str, dict] = {}
-            for term in or_terms:
-                term = (term or "").strip()
-                if not term:
-                    continue
-                try:
-                    term_embedding = embed_text(term)
-                except Exception:
-                    # Skip a term if embedding fails
-                    continue
-                term_args = {**tool_args, "embedding": term_embedding, "search_query": term}
-                term_result = perform_search(term_args)
-                term_matches = term_result.get("retrieved_chunks", []) if isinstance(term_result, dict) else []
-                for m in term_matches:
-                    mid = m.get("id")
-                    if not mid:
-                        continue
-                    best = merged_by_id.get(mid)
-                    if best is None or (m.get("score", 0) or 0) > (best.get("score", 0) or 0):
-                        merged_by_id[mid] = m
-            matches = sorted(merged_by_id.values(), key=lambda x: x.get("score", 0), reverse=True)
-            # Apply max_results cap if provided
-            max_results = data.get("max_results") or 100
-            matches = matches[:max_results]
-        else:
-            search_result = perform_search(tool_args)
-            matches = search_result.get("retrieved_chunks", [])
+        
+        tool_args = {
+            "embedding": embedding,
+            "user_id_filter": user_id,
+            "doc_type": data.get("doc_type"),
+            "start_date": data.get("start_date"),
+            "end_date": data.get("end_date"),
+            "metadata_filter": data.get("metadata_filter"),
+            "user_prompt": user_prompt,
+            "search_query": search_query,
+            "relevance_threshold": relevance_threshold,
+            "max_results": data.get("max_results"),
+            "search_weights": data.get("search_weights"),
+            "or_terms": or_terms,
+        }
+        
+        # Optional OR-terms merging is now handled inside the match_documents_v3 function
+        search_result = perform_search(tool_args)
+        matches = search_result.get("retrieved_chunks", [])
 
         # Fallback: If semantic/OR-merged results are sparse, run a keyword FTS search and merge
         try:
@@ -467,17 +410,11 @@ async def assistant_search_docs(request: Request):
                 fts_results = keyword_search(
                     keywords=keyword_terms,
                     user_id_filter=user_id,
-                    file_name_filter=tool_args.get("file_name_filter"),
-                    description_filter=tool_args.get("description_filter"),
+                    doc_type=tool_args.get("doc_type"),
                     start_date=tool_args.get("start_date"),
                     end_date=tool_args.get("end_date"),
+                    metadata_filter=tool_args.get("metadata_filter"),
                     match_count=150,
-                    document_type=tool_args.get("document_type"),
-                    meeting_year=tool_args.get("meeting_year"),
-                    meeting_month=tool_args.get("meeting_month"),
-                    meeting_month_name=tool_args.get("meeting_month_name"),
-                    meeting_day=tool_args.get("meeting_day"),
-                    ordinance_title=tool_args.get("ordinance_title"),
                 ) or []
                 # Normalize keyword scores to 0..1 (per-batch) for blending
                 kw_scores = [r.get("keyword_score") or 0.0 for r in fts_results]
@@ -518,7 +455,7 @@ async def assistant_search_docs(request: Request):
                         )
                 # Compute combined score and sort
                 for v in merged_by_id.values():
-                    sem = v.get("score", 0.0) or 0.0
+                    sem = v.get("similarity", 0.0) or 0.0 # Now using 'similarity' from DB
                     kw = v.get("keyword_score_norm", 0.0) or 0.0
                     v["combined_score"] = alpha_sem * sem + beta_kw * kw
                 matches = sorted(merged_by_id.values(), key=lambda x: (x.get("combined_score", 0.0) or 0.0), reverse=True)

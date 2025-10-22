@@ -22,6 +22,29 @@ async def background_ingest_all(background_tasks: BackgroundTasks):
     return {"message": "Global ingestion started in background."}
 
 
+def queue_ingestion_task(file_id: str, file_path: str, user_id: str, metadata: dict):
+    """
+    Adds the ingestion task to the background queue.
+    This function is now the central point for queuing ingestion work.
+    """
+    # We can use FastAPI's BackgroundTasks for simplicity if the router is available,
+    # but a more robust system would use Celery or RQ.
+    # For now, we'll just call the worker function directly in a background task.
+    # This assumes the web server process can handle these tasks without timing out.
+
+    # A simple way to run a background task without the `background_tasks` object
+    # from a request is to use asyncio.create_task if in an async context.
+    # However, since this is called from an async endpoint, we can just schedule it.
+
+    # The ingestion worker now needs the metadata.
+    async def run_task():
+        from app.api.file_ops.ingestion_worker import process_file_with_metadata
+
+        await process_file_with_metadata(file_id, file_path, user_id, metadata)
+
+    asyncio.create_task(run_task())
+
+
 def _embed_from_file_id(file_id: str):
     file_result = (
         supabase.table("files")

@@ -53,61 +53,73 @@ def retry_embed_text(text, retries=3, delay=1.5):
                 logging.error(f"Embedding failed after {retries} attempts: {e}")
                 raise
 
-def embed_and_store_chunk(chunk):
-    chunk_text = chunk["content"]
-    if not chunk_text.strip():
-        logging.warning(f"⚠️ Skipping empty chunk {chunk.get('chunk_index')} for file {chunk.get('file_name')}")
-        return {"skipped": True}
-
-    try:
-        embedding = retry_embed_text(chunk_text)
-        # Embedding quality checks
-        norm = np.linalg.norm(embedding)
-        if norm < 0.1 or np.allclose(embedding, 0):
-            logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {chunk.get('chunk_index')} of {chunk.get('file_name')}")
-            return {"skipped": True, "reason": "low-quality embedding", "norm": float(norm)}
-        timestamp = datetime.utcnow().isoformat()
-
-        # Prepare data for insert, including all original chunk fields
-        data = dict(chunk)  # Copy all fields from chunk
-        data["openai_embedding"] = embedding
-        # Do NOT write to 'embedding' column anymore
-        data["timestamp"] = timestamp
-        # Ensure id is present
-        if "id" not in data:
-            data["id"] = str(uuid.uuid4())
-
-        print(f"[DEBUG] Inserting chunk {data.get('chunk_index')} with metadata: "
-              f"document_type={data.get('document_type')}, meeting_year={data.get('meeting_year')}, "
-              f"meeting_month={data.get('meeting_month')}, meeting_day={data.get('meeting_day')}, "
-              f"ordinance_title={data.get('ordinance_title')}, file_extension={data.get('file_extension')}")
-        result = supabase.table("document_chunks").insert(data).execute()
-        if getattr(result, "error", None):
-            logging.error(f"Supabase insert failed: {result.error.message}")
-            return {"error": result.error.message}
-
-        logging.info(
-            f"✅ Stored chunk {data.get('chunk_index')} of {data.get('file_name')} (section: {data.get('section_header')}, page: {data.get('page_number')})"
-        )
-        return {"success": True}
-
-    except Exception as e:
-        logging.exception(f"Unexpected error during embed/store: {e}")
-        return {"error": str(e)}
-
-def embed_chunks(chunks, file_name: str = None):
+async def embed_chunks(chunks, file_name: str, metadata: dict):
     if not chunks:
         logging.warning("⚠️ No chunks to embed.")
         return []
 
-    results = []
+    # The metadata from the GPT is the primary source.
+    # The 'meeting_date' needs to be handled specifically if it exists.
+    meeting_date = metadata.pop('meeting_date', None)
+
+    # Prepare the records for batch insertion
+    records_to_insert = []
     for chunk in chunks:
-        # Optionally set file_name if not present
-        if file_name and not chunk.get("file_name"):
-            chunk["file_name"] = file_name
-        result = embed_and_store_chunk(chunk)
-        results.append(result)
-    return results
+        chunk_text = chunk.get("content")
+        if not chunk_text or not chunk_text.strip():
+            logging.warning(f"⚠️ Skipping empty chunk {chunk.get('chunk_index')} for file {file_name}")
+            continue
+
+        try:
+            embedding = retry_embed_text(chunk_text)
+            norm = np.linalg.norm(embedding)
+            if norm < 0.1 or np.allclose(embedding, 0):
+                logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {chunk.get('chunk_index')} of {file_name}")
+                continue
+
+            record = {
+                "id": chunk["id"],
+                "file_id": chunk["file_id"],
+                "user_id": chunk["user_id"],
+                "file_name": file_name,
+                "content": chunk_text,
+                "chunk_index": chunk.get("chunk_index"),
+                "page_number": chunk.get("metadata", {}).get("page_number"),
+                "doc_type": metadata.get("doc_type"),
+                "openai_embedding": embedding,
+                "meeting_date": meeting_date,  # This can be None
+                "metadata": metadata,  # The rest of the metadata
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+            records_to_insert.append(record)
+
+        except Exception as e:
+            logging.error(f"❌ Error embedding chunk {chunk.get('chunk_index')} for {file_name}: {e}")
+            # Decide if one failure should stop the whole batch. For now, we skip the failed chunk.
+            continue
+
+    if not records_to_insert:
+        logging.warning(f"⚠️ No valid chunks were embedded for file {file_name}.")
+        return []
+
+    # Batch insert the records
+    try:
+        result = supabase.table("document_chunks").insert(records_to_insert).execute()
+        if getattr(result, "error", None):
+            logging.error(f"❌ Supabase batch insert failed: {result.error.message}")
+            raise Exception(f"Supabase batch insert failed: {result.error.message}")
+        
+        logging.info(f"✅ Successfully stored {len(records_to_insert)} chunks for file {file_name}.")
+        return result.data
+    except Exception as e:
+        logging.error(f"❌ An unexpected error occurred during batch insert for {file_name}: {e}")
+        raise
+
+def embed_and_store_chunk(chunk):
+    # This function is now deprecated in favor of the batch-oriented embed_chunks.
+    # It can be removed once all call sites are updated.
+    logging.warning("DEPRECATED: embed_and_store_chunk is called. Switch to embed_chunks for batch processing.")
+    pass
 
 def remove_embeddings_for_file(file_id: str):
     try:
@@ -122,13 +134,13 @@ def remove_embeddings_for_file(file_id: str):
         if not file_data or "file_name" not in file_data:
             raise Exception(f"File not found for ID: {file_id}")
 
-        file_name = file_data["file_name"]
-        print(f"🧹 Removing all embeddings for file: {file_name}")
+        # To be safe, we should delete by file_id, not file_name
+        print(f"🧹 Removing all embeddings for file_id: {file_id}")
 
         delete_result = (
             supabase.table("document_chunks")
             .delete()
-            .eq("file_name", file_name)
+            .eq("file_id", file_id)
             .execute()
         )
         print(f"🧾 Vector delete response: {delete_result}")
@@ -137,6 +149,7 @@ def remove_embeddings_for_file(file_id: str):
     except Exception as e:
         print(f"❌ Failed to remove embeddings: {e}")
         raise
+
 
 # ✅ Add alias for compatibility
 delete_embedding = remove_embeddings_for_file
