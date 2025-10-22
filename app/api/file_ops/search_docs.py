@@ -539,8 +539,8 @@ async def assistant_search_docs(request: Request):
     included_chunk_ids = []
     included_chunks = []
     try:
-        # Fixed batching with diversification: select included with per-file cap, pending is the rest of top 50
-        included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=25, per_file_cap=2)
+        # Temp change for testing: summarize all top 50 chunks at once.
+        included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=50, per_file_cap=5) # Increased limits
         included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
         # Guardrail: trim each chunk to avoid exceeding model context (hard-coded)
