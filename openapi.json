@@ -70,12 +70,12 @@
                     "type": "string",
                     "description": "A JSON string representing the file's metadata. Must include 'doc_type'. Can include 'meeting_date' (YYYY-MM-DD) and other key-value pairs."
                   },
-                  "user_id": {
+                  "user": {
                     "type": "string",
-                    "description": "The user's unique identifier."
+                    "description": "A JSON string representing the user, e.g., '{\"id\": \"...\"}'."
                   }
                 },
-                "required": ["file", "metadata_json", "user_id"]
+                "required": ["file", "metadata_json", "user"]
               }
             }
           }

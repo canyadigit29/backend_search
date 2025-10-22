@@ -45,7 +45,7 @@ async def upload_file(
 @router.post("/upload_with_metadata")
 async def upload_with_metadata(
     file: UploadFile = File(...),
-    user_id: str = Form(...),
+    user: str = Form(...),
     metadata_json: str = Form(...)
 ):
     """
@@ -55,6 +55,15 @@ async def upload_with_metadata(
     3. Queues a background task for ingestion, passing along the metadata.
     """
     try:
+        # Parse the user JSON string to get the user_id
+        try:
+            user_data = json.loads(user)
+            user_id = user_data.get("id")
+            if not user_id:
+                raise HTTPException(status_code=400, detail="Missing 'id' in user JSON field")
+        except (json.JSONDecodeError, AttributeError):
+            raise HTTPException(status_code=400, detail="Invalid JSON in user field. Expected a JSON object with an 'id' key.")
+
         # Generate a unique file_id and construct the file_path
         file_id = str(uuid.uuid4())
         file_extension = os.path.splitext(file.filename)[1]
