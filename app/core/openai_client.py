@@ -2,7 +2,15 @@ from openai import OpenAI
 import os
 import time
 
-client = OpenAI()
+_client = None
+
+
+def get_openai_client() -> OpenAI:
+    """Get or create the OpenAI client singleton."""
+    global _client
+    if _client is None:
+        _client = OpenAI()
+    return _client
 
 
 def _default_model() -> str:
@@ -17,7 +25,7 @@ def chat_completion(messages: list, model: str | None = None, max_tokens: int | 
         kwargs = {"model": use_model, "messages": messages}
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
-        response = client.chat.completions.create(**kwargs)
+        response = get_openai_client().chat.completions.create(**kwargs)
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"Error: {str(e)}"
@@ -41,7 +49,7 @@ def stream_chat_completion(messages: list, model: str | None = None, max_seconds
             kwargs["stream_options"] = {"include_usage": True}
         except Exception:
             pass
-        stream = client.chat.completions.create(**kwargs)
+        stream = get_openai_client().chat.completions.create(**kwargs)
         # Iterate streamed chunks and accumulate text until time budget is exceeded
         for chunk in stream:
             try:
@@ -90,7 +98,7 @@ def stream_chat_completion(messages: list, model: str | None = None, max_seconds
 
 def embed_text(text: str) -> list:
     try:
-        response = client.embeddings.create(
+        response = get_openai_client().embeddings.create(
             input=[text], model="text-embedding-3-small"
         )
         return response.data[0].embedding

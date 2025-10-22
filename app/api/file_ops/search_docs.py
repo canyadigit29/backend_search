@@ -18,10 +18,19 @@ import time
 from app.core.stopwatch import Stopwatch
 
 
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 SUPABASE_BUCKET_ID = "files"  # Hardcoded bucket name for consistency
-supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
+
+_supabase_client = None
+
+
+def get_supabase() -> "Client":
+    """Get or create the search_docs Supabase client singleton."""
+    global _supabase_client
+    if _supabase_client is None:
+        supabase_url = os.environ["SUPABASE_URL"]
+        supabase_service_role = os.environ["SUPABASE_SERVICE_ROLE"]
+        _supabase_client = create_client(supabase_url, supabase_service_role)
+    return _supabase_client
 
 
 def _parse_inline_or_terms(text: str) -> list[str]:
@@ -92,7 +101,7 @@ def _fetch_chunks_by_ids(ids: list[str]):
     try:
         # Fetch minimal fields needed to build sources and summary
         res = (
-            supabase.table("document_chunks")
+            get_supabase().table("document_chunks")
             .select("id,file_id,file_name,page_number,chunk_index,content")
             .in_("id", ids)
             .execute()
@@ -179,7 +188,7 @@ def perform_search(tool_args):
         }
 
         # Exclusively use the new, optimized 'match_documents_v3' RPC function.
-        response = supabase.rpc("match_documents_v3", rpc_args).execute()
+        response = get_supabase().rpc("match_documents_v3", rpc_args).execute()
         if getattr(response, "error", None):
             # If the RPC call itself fails, raise an error to be caught below.
             raise RuntimeError(getattr(response.error, "message", str(response.error)))

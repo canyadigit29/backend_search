@@ -9,13 +9,11 @@ import logging
 from fastapi import APIRouter
 from app.core.supabase_client import supabase
 from app.core.extract_text import extract_text
-from openai import OpenAI
 from app.api.file_ops.chunk import chunk_file
 from app.api.file_ops.embed import embed_chunks
 
 router = APIRouter()
 logging.basicConfig(level=logging.INFO)
-client = OpenAI()
 
 @router.post("/process")
 def api_process_file(file_path: str, file_id: str, user_id: str = None):

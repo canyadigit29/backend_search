@@ -309,3 +309,5 @@ app/Ordinaces/27 Zoning Part 2 Ordinance.pdf
 app/Ordinaces/Appendix Ordinance.pdf
 app/Ordinaces/Chapter Key Ordinance.pdf
 app/Ordinaces/General Code Instructions Ordinance.pdf
+__pycache__/
+*.pyc

@@ -12,9 +12,12 @@ import json
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
-if not SUPABASE_STORAGE_BUCKET:
-    raise RuntimeError("SUPABASE_STORAGE_BUCKET environment variable is not set")
+def get_storage_bucket() -> str:
+    """Get the Supabase storage bucket, raising error if not configured."""
+    bucket = os.getenv("SUPABASE_STORAGE_BUCKET")
+    if not bucket:
+        raise RuntimeError("SUPABASE_STORAGE_BUCKET environment variable is not set")
+    return bucket
 
 @router.post("/upload_with_metadata", response_model=UploadMetadataResponse)
 async def upload_with_metadata(request: UploadMetadataRequest):
@@ -30,6 +33,7 @@ async def upload_with_metadata(request: UploadMetadataRequest):
         if not user_id:
             raise HTTPException(status_code=400, detail="Missing 'id' in user object")
 
+        storage_bucket = get_storage_bucket()
         openai_client = get_openai_client()
         
         # 1. Download file from OpenAI
@@ -76,7 +80,7 @@ async def upload_with_metadata(request: UploadMetadataRequest):
 
         # 3. Upload the file to Supabase Storage
         try:
-            supabase.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
+            supabase.storage.from_(storage_bucket).upload(
                 file_path, file_content, {"content-type": content_type}
             )
         except Exception as e:

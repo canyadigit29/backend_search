@@ -8,7 +8,16 @@ from openai import OpenAI
 from app.core.supabase_client import supabase
 
 logging.basicConfig(level=logging.INFO)
-client = OpenAI()
+
+_client = None
+
+
+def get_openai_client() -> OpenAI:
+    """Get or create the OpenAI client singleton."""
+    global _client
+    if _client is None:
+        _client = OpenAI()
+    return _client
 
 EMBEDDING_MODEL = "text-embedding-3-large"  # 3072-dim
 EMBEDDING_DIM = 3072
@@ -24,7 +33,7 @@ def embed_text(text: str) -> list[float]:
     if not text.strip():
         raise ValueError("Cannot embed empty text")
 
-    response = client.embeddings.create(model=EMBEDDING_MODEL, input=text)
+    response = get_openai_client().embeddings.create(model=EMBEDDING_MODEL, input=text)
     embedding = normalize_vector(np.array(response.data[0].embedding))
 
     if not isinstance(embedding, list) or len(embedding) != EMBEDDING_DIM:

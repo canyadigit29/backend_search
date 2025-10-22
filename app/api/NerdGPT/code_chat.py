@@ -13,7 +13,15 @@ router = APIRouter()
 logger = logging.getLogger("nerdgpt")
 logger.setLevel(logging.DEBUG)
 
-client = OpenAI()
+_client = None
+
+def get_openai_client() -> OpenAI:
+    """Get or create the OpenAI client singleton."""
+    global _client
+    if _client is None:
+        _client = OpenAI()
+    return _client
+
 NERDGPT_ID = os.getenv("NERDGPT_ID", "asst_Yr6XMC7i92tCpHJNVykekJ9N")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
@@ -72,6 +80,7 @@ def code_chat(request: CodeChatRequest):
     thread_messages.append({"role": "user", "content": user_message})
 
     try:
+        client = get_openai_client()
         # Create a new thread
         thread = client.beta.threads.create()
 
