@@ -77,6 +77,20 @@
             "description": "The maximum number of chunks to process for the summary. Default is 100.",
             "default": 100
           },
+          "search_weights": {
+            "type": "object",
+            "description": "Weights to blend semantic and keyword search scores. Both must be provided and sum to 1.0. If omitted, backend defaults to a 50/50 blend.",
+            "properties": {
+              "semantic": {
+                "type": "number",
+                "description": "Weight for semantic search (e.g., 0.8 for broad queries)."
+              },
+              "keyword": {
+                "type": "number",
+                "description": "Weight for keyword search (e.g., 0.8 for exact-match queries)."
+              }
+            }
+          },
           "or_terms": {
             "type": "array",
             "items": { "type": "string" },

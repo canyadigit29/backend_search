@@ -58,6 +58,34 @@ def _parse_inline_or_terms(text: str) -> list[str]:
         uniq.append(t)
     return uniq
 
+def _decide_weighting(user_prompt: str, or_terms: list[str]) -> tuple[float, float]:
+    """
+    Decide semantic vs keyword weighting based on lexical cues in the query.
+    Returns (alpha_semantic, beta_keyword) where alpha + beta = 1.0.
+    Heuristics boost keyword weight for quoted phrases, digits/addresses,
+    short acronyms, and explicit OR lists.
+    """
+    text = (user_prompt or "").strip()
+    import re
+    lexicality = 0.0
+    if not text:
+        return (0.6, 0.4)
+    if re.search(r"\"[^\"]+\"|'[^']+'", text):  # quoted phrases
+        lexicality += 0.3
+    if re.search(r"[A-Za-z]", text) and re.search(r"\d", text):  # letters and digits
+        lexicality += 0.2
+    if re.search(r"\b[A-Z]{2,5}\b", text):  # short all-caps acronyms
+        lexicality += 0.2
+    if or_terms and len(or_terms) > 1:
+        lexicality += 0.2
+    words = [w for w in re.split(r"\s+", text) if w]
+    if 1 <= len(words) <= 2:
+        lexicality += 0.1
+    lexicality = max(0.0, min(1.0, lexicality))
+    beta_keyword = 0.2 + 0.6 * lexicality   # 0.2..0.8
+    alpha_semantic = 1.0 - beta_keyword     # 0.8..0.2
+    return (alpha_semantic, beta_keyword)
+
 def _fetch_chunks_by_ids(ids: list[str]):
     if not ids:
         return []
@@ -355,6 +383,10 @@ async def assistant_search_docs(request: Request):
     # Optional resume mode: summarize only specific chunk IDs provided by the caller
     resume_chunk_ids = data.get("resume_chunk_ids")
 
+    relevance_threshold = data.get("relevance_threshold")
+    if relevance_threshold is None:
+        relevance_threshold = 0.4 # Default if not provided by assistant
+
     query_obj = llama_query_transform(user_prompt)
     search_query = query_obj.get("query") or user_prompt
     search_filters = query_obj.get("filters") or {}
@@ -380,7 +412,7 @@ async def assistant_search_docs(request: Request):
             "end_date": data.get("end_date"),
             "user_prompt": user_prompt,
             "search_query": search_query,
-            "relevance_threshold": data.get("relevance_threshold"),
+            "relevance_threshold": relevance_threshold,
             "max_results": data.get("max_results")
         }
         for meta_field in ["document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"]:
@@ -455,7 +487,24 @@ async def assistant_search_docs(request: Request):
                     meeting_day=tool_args.get("meeting_day"),
                     ordinance_title=tool_args.get("ordinance_title"),
                 ) or []
-                # Merge by id; preserve best score seen (semantic or keyword)
+                # Normalize keyword scores to 0..1 (per-batch) for blending
+                kw_scores = [r.get("keyword_score") or 0.0 for r in fts_results]
+                if kw_scores:
+                    kmin, kmax = min(kw_scores), max(kw_scores)
+                else:
+                    kmin, kmax = (0.0, 0.0)
+                for r in fts_results:
+                    ks = r.get("keyword_score") or 0.0
+                    if kmax > kmin:
+                        r["keyword_score_norm"] = (ks - kmin) / (kmax - kmin)
+                    else:
+                        r["keyword_score_norm"] = 0.0
+                
+                # Let the assistant decide the blend, otherwise default to 50/50
+                weights = data.get("search_weights", {"semantic": 0.5, "keyword": 0.5})
+                alpha_sem = weights.get("semantic", 0.5)
+                beta_kw = weights.get("keyword", 0.5)
+
                 merged_by_id = {}
                 for m in matches:
                     mid = m.get("id")
@@ -466,18 +515,21 @@ async def assistant_search_docs(request: Request):
                     rid = r.get("id")
                     if not rid:
                         continue
-                    if rid in merged_by_id:
-                        # Keep both scores; prefer max on final sort
-                        existing = merged_by_id[rid]
-                        # If FTS provided a higher keyword score, attach it
-                        if (r.get("keyword_score") or 0) > (existing.get("keyword_score") or 0):
-                            existing["keyword_score"] = r.get("keyword_score")
-                    else:
+                    existing = merged_by_id.get(rid)
+                    if existing is None:
                         merged_by_id[rid] = r
-                # Re-rank: prefer semantic score if present, otherwise keyword_score
-                def _rank_key(x):
-                    return max(x.get("score", 0) or 0, x.get("keyword_score", 0) or 0)
-                matches = sorted(merged_by_id.values(), key=_rank_key, reverse=True)
+                    else:
+                        # Preserve best normalized keyword score
+                        existing["keyword_score_norm"] = max(
+                            existing.get("keyword_score_norm", 0.0) or 0.0,
+                            r.get("keyword_score_norm", 0.0) or 0.0,
+                        )
+                # Compute combined score and sort
+                for v in merged_by_id.values():
+                    sem = v.get("score", 0.0) or 0.0
+                    kw = v.get("keyword_score_norm", 0.0) or 0.0
+                    v["combined_score"] = alpha_sem * sem + beta_kw * kw
+                matches = sorted(merged_by_id.values(), key=lambda x: (x.get("combined_score", 0.0) or 0.0), reverse=True)
     
     # --- OPTIMIZED: Neighbor retrieval and summary using the simplified results ---
     chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}
@@ -508,14 +560,24 @@ async def assistant_search_docs(request: Request):
         # Build structured search results block with metadata headers per chunk
         annotated_texts = []
         for idx, chunk in enumerate(included_chunks, start=1):
-            header = f"[#{idx} id={chunk.get('id')} file={chunk.get('file_name')} page={chunk.get('page_number')} score={round(chunk.get('score') or 0, 4)}]"
+            # Prefer combined_score if available, else semantic score, else normalized keyword
+            disp = chunk.get("combined_score")
+            if disp is None:
+                disp = chunk.get("score")
+            if disp is None:
+                disp = chunk.get("keyword_score_norm")
+            try:
+                disp_val = round(float(disp or 0), 4)
+            except Exception:
+                disp_val = 0
+            header = f"[#{{idx}} id={chunk.get('id')} file={chunk.get('file_name')} page={chunk.get('page_number')} score={disp_val}]"
             body = _trim(chunk.get("content", ""), per_chunk_char_limit)
             if body:
                 annotated_texts.append(f"{header}\n{body}")
-        # Token-aware cap across all included texts (hard-coded): assume 200k+ token context, leave headroom
+        # Token-aware cap across all included texts (hard-coded): assume ~200k token context, leave headroom
         MAX_INPUT_TOKENS = 260_000
         top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
-        
+
         if top_text.strip():
             summary_prompt = [
                 {
