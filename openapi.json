@@ -57,40 +57,20 @@
         "requestBody": {
           "required": true,
           "content": {
-            "multipart/form-data": {
+            "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "file": {
-                    "type": "string",
-                    "format": "binary",
-                    "description": "The file to be uploaded."
-                  },
-                  "metadata_json": {
-                    "type": "string",
-                    "description": "A JSON string representing the file's metadata. Must include 'doc_type'. Can include 'meeting_date' (YYYY-MM-DD) and other key-value pairs."
-                  },
-                  "user": {
-                    "type": "string",
-                    "description": "A JSON string representing the user, e.g., '{\"id\": \"...\"}'."
-                  }
-                },
-                "required": ["file", "metadata_json", "user"]
+                "$ref": "#/components/schemas/UploadMetadataRequest"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "File upload successful, processing started.",
+            "description": "File processed and ingestion queued.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "message": { "type": "string" },
-                    "file_id": { "type": "string", "format": "uuid" }
-                  }
+                  "$ref": "#/components/schemas/UploadMetadataResponse"
                 }
               }
             }
@@ -243,6 +223,46 @@
           
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": ["id"]
+      },
+      "UploadMetadataRequest": {
+        "type": "object",
+        "required": ["file_id", "metadata_json", "user"],
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "description": "The ID of the file already uploaded to the GPT environment."
+          },
+          "metadata_json": {
+            "type": "string",
+            "description": "A JSON string representing the file's metadata. Must include 'doc_type'. Can include 'meeting_date' (YYYY-MM-DD) and other key-value pairs."
+          },
+          "user": {
+            "$ref": "#/components/schemas/User"
+          }
+        }
+      },
+      "UploadMetadataResponse": {
+        "type": "object",
+        "required": ["message", "file_id"],
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       }

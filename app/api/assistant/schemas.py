@@ -51,3 +51,12 @@ class SearchResponse(BaseModel):
     included_chunk_ids: List[str] = []
     error: Optional[str] = None
 
+class UploadMetadataRequest(BaseModel):
+    file_id: str
+    metadata_json: str
+    user: User
+
+class UploadMetadataResponse(BaseModel):
+    message: str
+    file_id: str
+

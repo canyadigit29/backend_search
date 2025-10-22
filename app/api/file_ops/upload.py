@@ -2,9 +2,11 @@ import os
 import uuid
 import logging
 from datetime import datetime
-from fastapi import APIRouter, File, Form, UploadFile, HTTPException
+from fastapi import APIRouter, HTTPException
 from app.core.supabase_client import supabase
 from app.api.file_ops.background_tasks import queue_ingestion_task
+from app.api.assistant.schemas import UploadMetadataRequest, UploadMetadataResponse
+from app.core.openai_client import get_openai_client
 import json
 
 router = APIRouter()
@@ -14,99 +16,91 @@ SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET")
 if not SUPABASE_STORAGE_BUCKET:
     raise RuntimeError("SUPABASE_STORAGE_BUCKET environment variable is not set")
 
-@router.post("/upload")
-async def upload_file(
-    file: UploadFile = File(...),
-    user_id: str = Form(...),
-    name: str = Form(...),
-    file_id: str = Form(None)  # Accept it but ignore it
-):
-    try:
-        # 🔍 Lookup file_id and file_path based on name and user_id
-        result = supabase.table("files").select("id", "file_path").eq("name", name).eq("user_id", user_id).single().execute()
-        if not result.data:
-            raise HTTPException(status_code=404, detail="No matching file entry found in files table")
-
-        file_id = result.data["id"]
-        file_path = result.data["file_path"]
-
-        contents = await file.read()
-        supabase.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
-            file_path, contents, {"content-type": file.content_type}
-        )
-
-        return {"filePath": file_path}
-
-    except Exception as e:
-        logger.error(f"Upload failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
-
-
-@router.post("/upload_with_metadata")
-async def upload_with_metadata(
-    file: UploadFile = File(...),
-    user: str = Form(...),
-    metadata_json: str = Form(...)
-):
+@router.post("/upload_with_metadata", response_model=UploadMetadataResponse)
+async def upload_with_metadata(request: UploadMetadataRequest):
     """
-    Accepts a file and a JSON string of metadata.
-    1. Creates a file record in Supabase.
-    2. Uploads the file to storage.
-    3. Queues a background task for ingestion, passing along the metadata.
+    Accepts a file_id and metadata from the GPT environment.
+    1. Downloads the file from OpenAI using the file_id.
+    2. Creates a file record in the Supabase 'files' table.
+    3. Uploads the file content to Supabase Storage.
+    4. Queues a background task for ingestion with the provided metadata.
     """
     try:
-        # Parse the user JSON string to get the user_id
+        user_id = request.user.id
+        if not user_id:
+            raise HTTPException(status_code=400, detail="Missing 'id' in user object")
+
+        openai_client = get_openai_client()
+        
+        # 1. Download file from OpenAI
         try:
-            user_data = json.loads(user)
-            user_id = user_data.get("id")
-            if not user_id:
-                raise HTTPException(status_code=400, detail="Missing 'id' in user JSON field")
-        except (json.JSONDecodeError, AttributeError):
-            raise HTTPException(status_code=400, detail="Invalid JSON in user field. Expected a JSON object with an 'id' key.")
+            file_content_response = openai_client.files.content(request.file_id)
+            file_content = file_content_response.read()
+            
+            # We need the original filename. Let's retrieve the file metadata from OpenAI.
+            file_metadata = openai_client.files.retrieve(request.file_id)
+            original_filename = file_metadata.filename
+            
+        except Exception as e:
+            logger.error(f"Failed to download file {request.file_id} from OpenAI: {e}")
+            raise HTTPException(status_code=502, detail=f"Failed to download file from OpenAI: {e}")
 
-        # Generate a unique file_id and construct the file_path
+        # 2. Create a file record in Supabase
         file_id = str(uuid.uuid4())
-        file_extension = os.path.splitext(file.filename)[1]
+        file_extension = os.path.splitext(original_filename)[1]
         file_path = f"{user_id}/{file_id}{file_extension}"
+        
+        # Determine content type, default if not obvious
+        content_type = 'application/octet-stream' # Default
+        if file_extension.lower() == '.pdf':
+            content_type = 'application/pdf'
+        elif file_extension.lower() in ['.txt', '.md']:
+            content_type = 'text/plain'
+        elif file_extension.lower() in ['.docx']:
+            content_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
-        # Parse the metadata JSON string
-        try:
-            metadata = json.loads(metadata_json)
-        except json.JSONDecodeError:
-            raise HTTPException(status_code=400, detail="Invalid JSON in metadata_json field")
 
-        # Create a record in the 'files' table
         file_record = {
             "id": file_id,
             "user_id": user_id,
-            "name": file.filename,
+            "name": original_filename,
             "file_path": file_path,
-            "file_type": file.content_type,
+            "file_type": content_type,
             "created_at": datetime.utcnow().isoformat(),
             "updated_at": datetime.utcnow().isoformat(),
         }
         insert_res = supabase.table("files").insert(file_record).execute()
         if getattr(insert_res, 'error', None):
+            logger.error(f"Failed to create file record: {insert_res.error.message}")
             raise HTTPException(status_code=500, detail=f"Failed to create file record: {insert_res.error.message}")
 
-        # Upload the file to Supabase Storage
-        contents = await file.read()
-        upload_res = supabase.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
-            file_path, contents, {"content-type": file.content_type}
-        )
-        if getattr(upload_res, 'error', None):
+        # 3. Upload the file to Supabase Storage
+        try:
+            supabase.storage.from_(SUPABASE_STORAGE_BUCKET).upload(
+                file_path, file_content, {"content-type": content_type}
+            )
+        except Exception as e:
+            logger.error(f"Failed to upload file to storage: {e}")
             # Attempt to clean up the file record if upload fails
             supabase.table("files").delete().eq("id", file_id).execute()
-            raise HTTPException(status_code=500, detail=f"Failed to upload file to storage: {upload_res.error.message}")
+            raise HTTPException(status_code=500, detail=f"Failed to upload file to storage: {e}")
 
-        # Queue the background ingestion task with the metadata
+        # 4. Queue the background ingestion task
+        try:
+            metadata = json.loads(request.metadata_json)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid JSON in metadata_json field")
+            
         queue_ingestion_task(file_id, file_path, user_id, metadata)
 
-        return {"file_id": file_id, "file_path": file_path, "message": "File upload successful, ingestion queued."}
+        return UploadMetadataResponse(
+            message="File processed and ingestion queued.",
+            file_id=file_id
+        )
 
     except HTTPException as he:
-        logger.error(f"Upload with metadata failed: {he.detail}")
+        logger.error(f"upload_with_metadata failed: {he.detail}")
         raise he
     except Exception as e:
-        logger.error(f"An unexpected error occurred during upload_with_metadata: {e}")
+        logger.error(f"An unexpected error occurred in upload_with_metadata: {e}")
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
