@@ -44,8 +44,8 @@ async def root():
     return {"message": f"{settings.PROJECT_NAME} is running."}
 
 # ✅ Route mounts (memory routes removed)
-app.include_router(upload.router, prefix=settings.API_PREFIX)
-app.include_router(download.router, prefix=settings.API_PREFIX)
+app.include_router(upload.router, prefix=f"{settings.API_PREFIX}/file_ops")
+app.include_router(download.router, prefix=f"{settings.API_PREFIX}/file_ops")
 app.include_router(project.router, prefix=settings.API_PREFIX)
 app.include_router(background_tasks.router, prefix=settings.API_PREFIX)
 app.include_router(session_log.router, prefix=settings.API_PREFIX)
