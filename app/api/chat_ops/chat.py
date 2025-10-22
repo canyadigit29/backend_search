@@ -15,12 +15,6 @@ from app.core.answer_builder import build_structured_answer
 
 router = APIRouter()
 
-openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    raise RuntimeError("OPENAI_API_KEY not set in environment")
-
-client = OpenAI(api_key=openai_api_key)
-
 class ChatRequest(BaseModel):
     user_prompt: str
     user_id: str
