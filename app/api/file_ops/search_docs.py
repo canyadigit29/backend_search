@@ -196,19 +196,11 @@ def perform_search(tool_args):
             if tool_args.get(tool_key) is not None:
                 rpc_args[rpc_key] = tool_args[tool_key]
 
-        # Try v2 function first; if unavailable in prod, fall back to v1 name
-        try:
-            response = supabase.rpc("match_documents_v2", rpc_args).execute()
-            if getattr(response, "error", None):
-                # Fall back if function missing or other RPC error
-                raise RuntimeError(getattr(response.error, "message", str(response.error)))
-        except Exception:
-            try:
-                response = supabase.rpc("match_documents", rpc_args).execute()
-                if getattr(response, "error", None):
-                    raise RuntimeError(getattr(response.error, "message", str(response.error)))
-            except Exception as e:
-                return {"error": f"Supabase RPC failed: {str(e)}"}
+        # Exclusively use the new, optimized 'match_documents_v3' RPC function.
+        response = supabase.rpc("match_documents_v3", rpc_args).execute()
+        if getattr(response, "error", None):
+            # If the RPC call itself fails, raise an error to be caught below.
+            raise RuntimeError(getattr(response.error, "message", str(response.error)))
 
         matches = response.data or []
 
