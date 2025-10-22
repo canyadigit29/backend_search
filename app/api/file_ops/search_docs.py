@@ -285,7 +285,7 @@ def keyword_search(
 ):
     """
     Keyword search over document_chunks table using Postgres FTS (ts_rank/BM25).
-    Returns chunks containing any of the keywords, with a ts_rank score.
+    This function specifically targets the 'match_documents_fts_v3' RPC endpoint.
     """
     def _quote_term(t: str) -> str:
         t = (t or "").strip()
@@ -297,10 +297,11 @@ def keyword_search(
         if any(ch.isspace() for ch in t) or not t.isalnum():
             return f'"{t}"'
         return t
-    # Use OR between terms so any term can match; avoid accidental AND
+    # Use OR between terms so any term can match
     quoted_terms = [_quote_term(k) for k in keywords if k]
-    # For websearch_to_tsquery, use logical OR spelled out explicitly
     keyword_query = " OR ".join([qt for qt in quoted_terms if qt])
+
+    # Arguments for match_documents_fts_v3, aligned with its SQL definition
     rpc_args = {
         "keyword_query": keyword_query,
         "user_id_filter": user_id_filter,
@@ -309,7 +310,6 @@ def keyword_search(
         "start_date": start_date,
         "end_date": end_date,
         "match_count": match_count,
-        # metadata filters (map to RPC arg names)
         "filter_document_type": document_type,
         "filter_meeting_year": meeting_year,
         "filter_meeting_month": meeting_month,
@@ -317,6 +317,7 @@ def keyword_search(
         "filter_meeting_day": meeting_day,
         "filter_ordinance_title": ordinance_title,
     }
+
     supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
     service_role = os.environ["SUPABASE_SERVICE_ROLE"]
     headers = {
@@ -324,29 +325,28 @@ def keyword_search(
         "Authorization": f"Bearer {service_role}",
         "Content-Type": "application/json"
     }
-    # Try v3; if missing in prod, try v2 then v1
-    endpoints = [
-        f"{supabase_url}/rest/v1/rpc/match_documents_fts_v3",
-        f"{supabase_url}/rest/v1/rpc/match_documents_fts_v2",
-        f"{supabase_url}/rest/v1/rpc/match_documents_fts",
-    ]
+    
+    endpoint = f"{supabase_url}/rest/v1/rpc/match_documents_fts_v3"
+
     try:
-        last_exc = None
-        for endpoint in endpoints:
+        print(f"[DEBUG] Keyword search: attempting endpoint {endpoint} with args {list(rpc_args.keys())}")
+        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
+        
+        if response.status_code >= 400:
             try:
-                response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
-                response.raise_for_status()
-                results = response.json() or []
-                for r in results:
-                    r["keyword_score"] = r.get("ts_rank", 0)
-                return results
-            except Exception as e:
-                last_exc = e
-                continue
-        # If all attempts failed, raise the last exception
-        if last_exc:
-            raise last_exc
+                error_details = response.json()
+                print(f"[ERROR] Keyword search: endpoint {endpoint} returned status {response.status_code} with details: {error_details}")
+            except Exception:
+                print(f"[ERROR] Keyword search: endpoint {endpoint} returned status {response.status_code} with non-JSON body.")
+            response.raise_for_status()
+
+        results = response.json() or []
+        print(f"[DEBUG] Keyword search: successfully called {endpoint}, found {len(results)} results.")
+        for r in results:
+            r["keyword_score"] = r.get("ts_rank", 0)
+        return results
     except Exception as e:
+        print(f"[ERROR] Keyword search: unhandled exception during search. Error: {str(e)}")
         return []
 
 
