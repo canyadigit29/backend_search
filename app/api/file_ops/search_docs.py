@@ -23,6 +23,41 @@ SUPABASE_SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE"]
 SUPABASE_BUCKET_ID = "files"  # Hardcoded bucket name for consistency
 supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE)
 
+
+def _parse_inline_or_terms(text: str) -> list[str]:
+    """
+    Extract OR-separated terms from a single query string, e.g.,
+    "foo OR bar OR baz" -> ["foo", "bar", "baz"].
+    Case-insensitive on the OR separator. Trims quotes and whitespace.
+    If no OR is present, returns an empty list (caller may choose to ignore).
+    """
+    if not isinstance(text, str) or not text:
+        return []
+    import re
+    # Split on standalone OR tokens (case-insensitive); preserve phrases
+    parts = re.split(r"\s+or\s+", text, flags=re.IGNORECASE)
+    # If only one part, no inline OR detected
+    if len(parts) <= 1:
+        return []
+    def _strip_quotes(s: str) -> str:
+        s = (s or "").strip()
+        # Remove wrapping quotes if present
+        if len(s) >= 2 and ((s.startswith('"') and s.endswith('"')) or (s.startswith("'") and s.endswith("'"))):
+            return s[1:-1].strip()
+        return s
+    terms = [_strip_quotes(p) for p in parts]
+    # Deduplicate while preserving order
+    seen = set()
+    uniq = []
+    for t in terms:
+        if not t:
+            continue
+        if t.lower() in seen:
+            continue
+        seen.add(t.lower())
+        uniq.append(t)
+    return uniq
+
 def _fetch_chunks_by_ids(ids: list[str]):
     if not ids:
         return []
@@ -133,9 +168,19 @@ def perform_search(tool_args):
             if tool_args.get(tool_key) is not None:
                 rpc_args[rpc_key] = tool_args[tool_key]
 
-        response = supabase.rpc("match_documents_v2", rpc_args).execute()
-        if getattr(response, "error", None):
-            return {"error": f"Supabase RPC failed: {response.error.message}"}
+        # Try v2 function first; if unavailable in prod, fall back to v1 name
+        try:
+            response = supabase.rpc("match_documents_v2", rpc_args).execute()
+            if getattr(response, "error", None):
+                # Fall back if function missing or other RPC error
+                raise RuntimeError(getattr(response.error, "message", str(response.error)))
+        except Exception:
+            try:
+                response = supabase.rpc("match_documents", rpc_args).execute()
+                if getattr(response, "error", None):
+                    raise RuntimeError(getattr(response.error, "message", str(response.error)))
+            except Exception as e:
+                return {"error": f"Supabase RPC failed: {str(e)}"}
 
         matches = response.data or []
 
@@ -246,19 +291,33 @@ def keyword_search(
     }
     supabase_url = os.environ["SUPABASE_URL"].rstrip("/")
     service_role = os.environ["SUPABASE_SERVICE_ROLE"]
-    endpoint = f"{supabase_url}/rest/v1/rpc/match_documents_fts_v3"
     headers = {
         "apikey": service_role,
         "Authorization": f"Bearer {service_role}",
         "Content-Type": "application/json"
     }
+    # Try v3; if missing in prod, try v2 then v1
+    endpoints = [
+        f"{supabase_url}/rest/v1/rpc/match_documents_fts_v3",
+        f"{supabase_url}/rest/v1/rpc/match_documents_fts_v2",
+        f"{supabase_url}/rest/v1/rpc/match_documents_fts",
+    ]
     try:
-        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
-        response.raise_for_status()
-        results = response.json() or []
-        for r in results:
-            r["keyword_score"] = r.get("ts_rank", 0)
-        return results
+        last_exc = None
+        for endpoint in endpoints:
+            try:
+                response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
+                response.raise_for_status()
+                results = response.json() or []
+                for r in results:
+                    r["keyword_score"] = r.get("ts_rank", 0)
+                return results
+            except Exception as e:
+                last_exc = e
+                continue
+        # If all attempts failed, raise the last exception
+        if last_exc:
+            raise last_exc
     except Exception as e:
         return []
 
@@ -328,8 +387,10 @@ async def assistant_search_docs(request: Request):
             if search_filters.get(meta_field) is not None:
                 tool_args[meta_field] = search_filters[meta_field]
         
-        # Optional OR-terms merging: if provided, run per-term searches and merge by ID using max score
-        or_terms = data.get("or_terms") or []
+        # Optional OR-terms merging: if provided, or inferred from inline "OR"s, run per-term searches and merge by ID using max score
+        provided_or_terms = data.get("or_terms") if isinstance(data.get("or_terms"), list) else []
+        inline_or_terms = _parse_inline_or_terms(user_prompt)
+        or_terms = provided_or_terms or inline_or_terms
         if or_terms and isinstance(or_terms, list):
             merged_by_id: dict[str, dict] = {}
             for term in or_terms:
@@ -365,12 +426,18 @@ async def assistant_search_docs(request: Request):
         except Exception:
             should_fallback = True
         if should_fallback:
-            # Build keyword list: prefer explicit or_terms, also include the full user_prompt as a phrase
+            # Build keyword list: prefer explicit or_terms or inline OR-parsed terms; avoid treating the entire query as one phrase
             keyword_terms = []
-            if isinstance(data.get("or_terms"), list):
-                keyword_terms.extend([str(t) for t in data.get("or_terms") if t])
-            if isinstance(user_prompt, str) and user_prompt.strip():
-                keyword_terms.append(user_prompt.strip())
+            if or_terms:
+                keyword_terms.extend([str(t) for t in or_terms if t])
+            else:
+                # As a last resort, include the whole prompt and also split into tokens > 2 chars
+                if isinstance(user_prompt, str) and user_prompt.strip():
+                    inline_terms = _parse_inline_or_terms(user_prompt)
+                    if inline_terms:
+                        keyword_terms.extend(inline_terms)
+                    else:
+                        keyword_terms.append(user_prompt.strip())
             # If still empty, don't attempt FTS
             if keyword_terms:
                 fts_results = keyword_search(
