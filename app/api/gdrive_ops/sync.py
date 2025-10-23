@@ -57,15 +57,22 @@ async def run_google_drive_sync():
         supabase_files = {file['name'] for file in db_response.data}
         print(f"Found {len(supabase_files)} files in Supabase DB.")
 
-        # 2. Get list of files from Google Drive folder
-        query = f"'{settings.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false"
-        results = drive_service.files().list(
-            q=query,
-            pageSize=100, # Adjust as needed
-            fields="nextPageToken, files(id, name, mimeType)"
-        ).execute()
-        drive_files = results.get('files', [])
-        print(f"Found {len(drive_files)} files in Google Drive folder.")
+        # 2. Get list of files from Google Drive folder, handling pagination
+        drive_files = []
+        page_token = None
+        while True:
+            results = drive_service.files().list(
+                q=query,
+                pageSize=100,  # Adjust as needed
+                fields="nextPageToken, files(id, name, mimeType)",
+                pageToken=page_token
+            ).execute()
+            
+            drive_files.extend(results.get('files', []))
+            page_token = results.get('nextPageToken')
+            if not page_token:
+                break
+        print(f"Found {len(drive_files)} files in Google Drive folder after checking all pages.")
 
         new_files_to_upload = []
         for file in drive_files:
