@@ -1,0 +1,75 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                       PER FILE CAP - QUICK REFERENCE                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+QUESTION: "What is the per file cap you're talking about?"
+
+ANSWER: The per file cap is a limit on how many document chunks from any single 
+file can be included in one batch of search results for summarization.
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ORIGINAL SETTINGS (before temp change)                                      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  included_limit = 25 chunks    ← Total chunks per batch                     │
+│  per_file_cap   = 2 chunks     ← Max chunks from any single file            │
+│                                                                              │
+│  Example:                                                                    │
+│    File A: 2 chunks  ✓                                                      │
+│    File B: 2 chunks  ✓                                                      │
+│    File C: 2 chunks  ✓                                                      │
+│    ... up to 13+ different files to reach 25 total chunks                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ CURRENT TEMPORARY SETTINGS (line 543)                                       │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  included_limit = 50 chunks    ← Total chunks per batch (2x increase!)      │
+│  per_file_cap   = 5 chunks     ← Max chunks from any single file (2.5x!)    │
+│                                                                              │
+│  Comment: "Temp change for testing: summarize all top 50 chunks at once."   │
+│                                                                              │
+│  Example:                                                                    │
+│    File A: 5 chunks  ✓                                                      │
+│    File B: 5 chunks  ✓                                                      │
+│    File C: 5 chunks  ✓                                                      │
+│    ... up to 10+ different files to reach 50 total chunks                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ WHY DOES THIS MATTER?                                                        │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  ✓ Diversity: Prevents one file from dominating the summary                 │
+│  ✓ Coverage: Ensures results from multiple different documents              │
+│  ✓ Balance: Better representation across the document collection            │
+│                                                                              │
+│  With LOWER cap (2):  More files, less depth per file                       │
+│  With HIGHER cap (5): Fewer files, more depth per file                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ WHERE IS IT IN THE CODE?                                                     │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  File:     app/api/file_ops/search_docs.py                                  │
+│  Function: _select_included_and_pending() at line 105                       │
+│  Call:     Line 543 with temporary increased values                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ HOW THE ALGORITHM WORKS                                                      │
+├──────────────────────────────────────────────────────────────────────────────┤
+│  1. Take top 50 search results (sorted by relevance score)                  │
+│  2. FIRST PASS: Select up to included_limit chunks                          │
+│     - But enforce per_file_cap (max chunks per file)                        │
+│  3. SECOND PASS: If still under included_limit                              │
+│     - Fill remaining slots WITHOUT enforcing per_file_cap                   │
+│  4. Return selected chunks + IDs of pending chunks for potential resume     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+IMPACT OF TEMPORARY CHANGE:
+• Sends 2x more chunks to LLM for summarization (50 vs 25)
+• Allows 2.5x more chunks from same file (5 vs 2)
+• More comprehensive but possibly less diverse summaries
+• Higher token usage and costs
+• Longer processing times
+
+For full details, see: PER_FILE_CAP_EXPLANATION.md
