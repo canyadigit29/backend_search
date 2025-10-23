@@ -309,3 +309,8 @@ app/Ordinaces/27 Zoning Part 2 Ordinance.pdf
 app/Ordinaces/Appendix Ordinance.pdf
 app/Ordinaces/Chapter Key Ordinance.pdf
 app/Ordinaces/General Code Instructions Ordinance.pdf
+# Ignore only JSON files in the app directory and its subdirectories
+app/**/*.json
+
+# Or, list specific JSON files or folders to ignore, for example:
+# app/some_folder/generated.json

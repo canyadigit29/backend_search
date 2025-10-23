@@ -148,7 +148,6 @@ def perform_search(tool_args):
     description_filter = tool_args.get("description_filter")
     start_date = tool_args.get("start_date")
     end_date = tool_args.get("end_date")
-    user_id_filter = tool_args.get("user_id_filter")
     user_prompt = tool_args.get("user_prompt")
     search_query = tool_args.get("search_query")
     
@@ -164,8 +163,6 @@ def perform_search(tool_args):
         from app.api.file_ops.embed import embed_text
         query_embedding = embed_text(text_to_embed)
 
-    if not user_id_filter:
-        return {"error": "user_id must be provided to perform search."}
     try:
         # --- ALIGNMENT: Pass the relevance_threshold from the assistant directly to the DB ---
         # The 'relevance_threshold' from the assistant is a SIMILARITY score (0 to 1).
@@ -175,7 +172,6 @@ def perform_search(tool_args):
         # Semantic search
         rpc_args = {
             "query_embedding": query_embedding,
-            "user_id_filter": user_id_filter,
             "file_name_filter": file_name_filter,
             "description_filter": description_filter,
             "start_date": start_date,
@@ -262,7 +258,6 @@ router = APIRouter()
 
 def keyword_search(
     keywords,
-    user_id_filter=None,
     file_name_filter=None,
     description_filter=None,
     start_date=None,
@@ -296,7 +291,6 @@ def keyword_search(
     # Arguments for match_documents_fts_v3, aligned with its SQL definition
     rpc_args = {
         "keyword_query": keyword_query,
-        "user_id_filter": user_id_filter,
         "file_name_filter": file_name_filter,
         "description_filter": description_filter,
         "start_date": start_date,
@@ -368,10 +362,6 @@ async def assistant_search_docs(request: Request):
     if not user_prompt:
         return JSONResponse({"error": "Missing query in payload"}, status_code=400)
 
-    user_id = (data.get("user", {}).get("id") or 
-               os.environ.get("ASSISTANT_DEFAULT_USER_ID") or 
-               "4a867500-7423-4eaa-bc79-94e368555e05")
-
     # Optional resume mode: summarize only specific chunk IDs provided by the caller
     resume_chunk_ids = data.get("resume_chunk_ids")
 
@@ -397,7 +387,6 @@ async def assistant_search_docs(request: Request):
     else:
         tool_args = {
             "embedding": embedding,
-            "user_id_filter": user_id,
             "file_name_filter": search_filters.get("file_name") or data.get("file_name_filter"),
             "description_filter": search_filters.get("description") or data.get("description_filter"),
             "start_date": data.get("start_date"),
@@ -466,7 +455,6 @@ async def assistant_search_docs(request: Request):
             if keyword_terms:
                 fts_results = keyword_search(
                     keywords=keyword_terms,
-                    user_id_filter=user_id,
                     file_name_filter=tool_args.get("file_name_filter"),
                     description_filter=tool_args.get("description_filter"),
                     start_date=tool_args.get("start_date"),
