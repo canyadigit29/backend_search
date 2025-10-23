@@ -1,0 +1,6 @@
+CREATE OR REPLACE FUNCTION get_all_file_names()
+RETURNS TABLE(name TEXT) AS $$
+BEGIN
+  RETURN QUERY SELECT f.name FROM files f;
+END;
+$$ LANGUAGE plpgsql;

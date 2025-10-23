@@ -49,12 +49,14 @@ async def run_google_drive_sync():
     try:
         drive_service = get_google_drive_service()
 
-        # 1. Get list of original file names from the 'files' table in Supabase DB
-        db_response = supabase.from_("files").select("name").execute()
-        if db_response.data is None:
-            raise Exception(f"Error fetching files from Supabase DB: {db_response.get('error') or 'No data returned'}")
+        # 1. Get list of original file names from the 'files' table in Supabase DB via RPC
+        rpc_response = supabase.rpc('get_all_file_names').execute()
+        if rpc_response.data is None:
+            # Handle potential errors if the RPC call fails
+            error_message = rpc_response.get('error') or 'No data returned from RPC'
+            raise Exception(f"Error fetching files from Supabase DB: {error_message}")
 
-        supabase_files = {file['name'] for file in db_response.data}
+        supabase_files = {file['name'] for file in rpc_response.data}
         print(f"Found {len(supabase_files)} files in Supabase DB.")
 
         # 2. Get list of files from Google Drive folder, handling pagination
