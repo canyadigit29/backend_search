@@ -15,8 +15,8 @@
     "/api/assistant/search_docs": {
       "post": {
         "operationId": "searchDocumentsAssistant",
-    "summary": "Search documents via assistant",
-  "description": "Performs a semantic search and returns a summary plus sources. Uses fixed batching: summarizes a diversified set of 25 from the top-50 (capped per file to improve breadth) and returns the remaining top-50 as pending via resume_chunk_ids.",
+        "summary": "Search documents via assistant",
+        "description": "Performs a semantic search and returns a summary plus sources. Uses fixed batching: summarizes a diversified set of 25 from the top-50 (capped per file to improve breadth) and returns the remaining top-50 as pending via resume_chunk_ids.",
         "x-oai-meta": {
           "name": "searchDocumentsAssistant",
           "isUserFacing": true
@@ -64,7 +64,9 @@
                 "type": "string"
               }
             },
-            "required": ["id"],
+            "required": [
+              "id"
+            ],
             "description": "Static user identifier required by the backend."
           },
           "relevance_threshold": {
@@ -93,7 +95,9 @@
           },
           "or_terms": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Optional alternate phrasings or synonyms. Results from each term are merged by chunk id using the best (max) score before ranking."
           },
           "resume_chunk_ids": {
@@ -170,7 +174,6 @@
               "format": "uuid"
             }
           },
-          
           "error": {
             "type": "string"
           }
