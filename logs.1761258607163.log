@@ -1,0 +1,661 @@
+2025-10-23T22:27:50.000000000Z [inf]  Starting Container
+2025-10-23T22:27:54.220365665Z [err]  Traceback (most recent call last):
+2025-10-23T22:27:54.220369480Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:27:54.220374274Z [err]      sys.exit(main())
+2025-10-23T22:27:54.220378005Z [err]               ^^^^^^
+2025-10-23T22:27:54.220381739Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:27:54.220385560Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:27:54.220389630Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220394147Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:27:54.220399328Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:27:54.220403120Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220407340Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:27:54.220411378Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:27:54.220415349Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220419206Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:27:54.220422870Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:27:54.220426431Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220430257Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:27:54.220433870Z [err]      run(
+2025-10-23T22:27:54.220438149Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:27:54.220442046Z [err]      server.run()
+2025-10-23T22:27:54.220445722Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:27:54.220449347Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:27:54.220464505Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220474137Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:27:54.220478553Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220481777Z [err]      await self._serve(sockets)
+2025-10-23T22:27:54.220483643Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:27:54.220487115Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:27:54.220489118Z [err]      return runner.run(main)
+2025-10-23T22:27:54.220494801Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220495373Z [err]      config.load()
+2025-10-23T22:27:54.220499662Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:27:54.220505160Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:27:54.220505183Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:27:54.220509335Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220514347Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:27:54.220514796Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:27:54.220519133Z [err]      return future.result()
+2025-10-23T22:27:54.220524036Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220531722Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:27:54.220536127Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:27:54.220539928Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.220543877Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:27:54.221110555Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:27:54.221115852Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.221122562Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:27:54.221128757Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:27:54.221137862Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:27:54.221145642Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:27:54.221152112Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:27:54.221158752Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:27:54.221165265Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:27:54.221171962Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:27:54.221177272Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:54.221180932Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:27:54.221184740Z [err]      self.router.include_router(
+2025-10-23T22:27:54.221188702Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:27:54.221193187Z [err]      for route in router.routes:
+2025-10-23T22:27:54.221196777Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:27:54.221200879Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:27:56.691949702Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:27:56.691958856Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.691962094Z [err]  Traceback (most recent call last):
+2025-10-23T22:27:56.691965844Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:27:56.691967877Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:27:56.691971947Z [err]      run(
+2025-10-23T22:27:56.691973211Z [err]      sys.exit(main())
+2025-10-23T22:27:56.691978284Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:27:56.691978711Z [err]               ^^^^^^
+2025-10-23T22:27:56.691984210Z [err]      server.run()
+2025-10-23T22:27:56.691985644Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:27:56.691990685Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:27:56.691991110Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:27:56.691996011Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.691998143Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:27:56.692001095Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:27:56.692005939Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:27:56.692009985Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.692013768Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:27:56.692017133Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:27:56.692021168Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.692025130Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:27:56.692619540Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.692627936Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:27:56.692633013Z [err]      return runner.run(main)
+2025-10-23T22:27:56.692637992Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.692642250Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:27:56.692647152Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:27:56.692651513Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.692655637Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:27:56.692660604Z [err]      return future.result()
+2025-10-23T22:27:56.692665728Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.692669814Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:27:56.692675545Z [err]      await self._serve(sockets)
+2025-10-23T22:27:56.692682083Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:27:56.692689510Z [err]      config.load()
+2025-10-23T22:27:56.692696399Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:27:56.692703319Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:27:56.692709581Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.692716059Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:27:56.692722770Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:27:56.692730487Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.692737395Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:27:56.693179925Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:27:56.693186223Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.693190672Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:27:56.693194949Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:27:56.693199127Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:27:56.693207904Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:27:56.693212005Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:27:56.693216140Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:27:56.693220376Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:27:56.693224538Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:27:56.693243418Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:56.693249875Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:27:56.693256081Z [err]      self.router.include_router(
+2025-10-23T22:27:56.693261923Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:27:56.693294641Z [err]      for route in router.routes:
+2025-10-23T22:27:56.693316781Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:27:56.693322790Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:27:59.707520992Z [err]  Traceback (most recent call last):
+2025-10-23T22:27:59.707521224Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:27:59.707532721Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:27:59.707540411Z [err]      sys.exit(main())
+2025-10-23T22:27:59.707546356Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:27:59.707548275Z [err]               ^^^^^^
+2025-10-23T22:27:59.707556053Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:27:59.707561330Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.707565207Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:27:59.707573386Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:27:59.707581187Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.707584343Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:27:59.707589909Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:27:59.707593818Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.707598688Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:27:59.707603776Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:27:59.707607576Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.707613124Z [err]      run(
+2025-10-23T22:27:59.707617032Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:27:59.707621482Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:27:59.707629803Z [err]      server.run()
+2025-10-23T22:27:59.707637690Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:27:59.707871673Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.707879453Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:27:59.707886184Z [err]      return runner.run(main)
+2025-10-23T22:27:59.707892489Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.707900096Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:27:59.707906929Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:27:59.707913348Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.707919699Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:27:59.707926418Z [err]      return future.result()
+2025-10-23T22:27:59.707933525Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.707940149Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:27:59.707946813Z [err]      await self._serve(sockets)
+2025-10-23T22:27:59.707953236Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:27:59.707959871Z [err]      config.load()
+2025-10-23T22:27:59.707966823Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:27:59.707996830Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:27:59.708003353Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.708010380Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:27:59.708017334Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:27:59.708023677Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.708030505Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:27:59.708580080Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:27:59.708590389Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:27:59.708590423Z [err]      for route in router.routes:
+2025-10-23T22:27:59.708595207Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.708601414Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:27:59.708602337Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:27:59.708602825Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:27:59.708608790Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:27:59.708609240Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:27:59.708612728Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:27:59.708615887Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:27:59.708616806Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:27:59.708623159Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:27:59.708624927Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:27:59.708629193Z [err]      self.router.include_router(
+2025-10-23T22:27:59.708631243Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:27:59.708634594Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:28:03.681494161Z [err]  Traceback (most recent call last):
+2025-10-23T22:28:03.681499738Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:28:03.681503505Z [err]      sys.exit(main())
+2025-10-23T22:28:03.681507160Z [err]               ^^^^^^
+2025-10-23T22:28:03.681511364Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:28:03.681515925Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:28:03.681519751Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.681524384Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:28:03.681528332Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:28:03.681532428Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.681536062Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:28:03.681541499Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:28:03.681545051Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.681548667Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:28:03.681552587Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:28:03.681556218Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.681560933Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:28:03.681565261Z [err]      run(
+2025-10-23T22:28:03.681568877Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:28:03.681572417Z [err]      server.run()
+2025-10-23T22:28:03.681576031Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:28:03.681581754Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:28:03.688032303Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.688045777Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:28:03.688051809Z [err]      return runner.run(main)
+2025-10-23T22:28:03.688059542Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.688065752Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:28:03.688072692Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:28:03.688076847Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.688081189Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:28:03.688085512Z [err]      return future.result()
+2025-10-23T22:28:03.688090175Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.688094287Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:28:03.688098229Z [err]      await self._serve(sockets)
+2025-10-23T22:28:03.688102173Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:28:03.688105777Z [err]      config.load()
+2025-10-23T22:28:03.688110013Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:28:03.688113883Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:28:03.688117697Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.688121827Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:28:03.688125544Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:28:03.688130026Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.688134134Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:28:03.688143703Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:28:03.688147558Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.688154023Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:28:03.688158705Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:28:03.688162887Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:28:03.688166717Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:28:03.688170312Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:28:03.688173920Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:28:03.688178374Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:28:03.688182520Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:28:03.688186610Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:03.688190373Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:28:03.688194207Z [err]      self.router.include_router(
+2025-10-23T22:28:03.688197699Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:28:03.688201695Z [err]      for route in router.routes:
+2025-10-23T22:28:03.688205555Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:28:03.688209140Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:28:07.316611153Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:28:07.316618283Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.316624207Z [err]      server.run()
+2025-10-23T22:28:07.316630196Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:28:07.316635420Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:28:07.316639064Z [err]  Traceback (most recent call last):
+2025-10-23T22:28:07.316642510Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:28:07.316646580Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:28:07.316647843Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:28:07.316653733Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.316654053Z [err]      sys.exit(main())
+2025-10-23T22:28:07.316661057Z [err]               ^^^^^^
+2025-10-23T22:28:07.316664328Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:28:07.316667714Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:28:07.316674535Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:28:07.316674900Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:28:07.316683899Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.316691436Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:28:07.316701007Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:28:07.316710722Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.316719388Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:28:07.316743339Z [err]      run(
+2025-10-23T22:28:07.317505652Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:28:07.317511110Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.317518350Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:28:07.317525257Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:28:07.317530034Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.317537218Z [err]      return runner.run(main)
+2025-10-23T22:28:07.317540532Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:28:07.317550181Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.330175551Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.330185869Z [err]      return future.result()
+2025-10-23T22:28:07.330186498Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:28:07.330193458Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:28:07.330196882Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.330199970Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:28:07.330203910Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:28:07.330206979Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:28:07.330210505Z [err]      await self._serve(sockets)
+2025-10-23T22:28:07.330214277Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:28:07.330217017Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:28:07.330222819Z [err]      config.load()
+2025-10-23T22:28:07.330231624Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:28:07.330238257Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:28:07.330244927Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.330251286Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:28:07.330258226Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:28:07.330266495Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.330272865Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:28:07.330280232Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:28:07.331081214Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:28:07.331089304Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:28:07.331095914Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:28:07.331102365Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:07.331108694Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:28:07.331115347Z [err]      self.router.include_router(
+2025-10-23T22:28:07.331121657Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:28:07.331128283Z [err]      for route in router.routes:
+2025-10-23T22:28:07.331135067Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:28:07.331139883Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:28:10.896715848Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:28:10.896729533Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.896730100Z [err]  Traceback (most recent call last):
+2025-10-23T22:28:10.896740850Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:28:10.896745290Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:28:10.896749402Z [err]      run(
+2025-10-23T22:28:10.896755767Z [err]      sys.exit(main())
+2025-10-23T22:28:10.896761020Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:28:10.896770571Z [err]               ^^^^^^
+2025-10-23T22:28:10.896771929Z [err]      server.run()
+2025-10-23T22:28:10.896780636Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:28:10.896782365Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:28:10.896789728Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:28:10.896792722Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:28:10.896799070Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.896806571Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:28:10.896814540Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:28:10.896820594Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.896825889Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:28:10.896831095Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:28:10.896836232Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.896841385Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:28:10.898790955Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.898797276Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:28:10.898802120Z [err]      return runner.run(main)
+2025-10-23T22:28:10.898806065Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.898810375Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:28:10.898814472Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:28:10.898818798Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.898823572Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:28:10.898827637Z [err]      return future.result()
+2025-10-23T22:28:10.898832032Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.898836305Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:28:10.898840787Z [err]      await self._serve(sockets)
+2025-10-23T22:28:10.898845174Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:28:10.898848944Z [err]      config.load()
+2025-10-23T22:28:10.898852663Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:28:10.898857444Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:28:10.898862119Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.898866536Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:28:10.898870994Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:28:10.898875655Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.898880762Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:28:10.898888993Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:28:10.898892679Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.898896609Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:28:10.898900261Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:28:10.898904070Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:28:10.898907451Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:28:10.898912048Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:28:10.898915995Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:28:10.898919662Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:28:10.898923301Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:28:10.898927022Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:10.898931060Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:28:10.898934771Z [err]      self.router.include_router(
+2025-10-23T22:28:10.898938526Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:28:10.898942547Z [err]      for route in router.routes:
+2025-10-23T22:28:10.898946531Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:28:10.898950461Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:28:13.640847753Z [err]  Traceback (most recent call last):
+2025-10-23T22:28:13.640851403Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.640854358Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:28:13.640858749Z [err]      sys.exit(main())
+2025-10-23T22:28:13.640863480Z [err]               ^^^^^^
+2025-10-23T22:28:13.640865315Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:28:13.640868686Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:28:13.640873012Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:28:13.640873972Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:28:13.640879653Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.640880067Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.640885212Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:28:13.640886746Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:28:13.640890426Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:28:13.640896817Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:28:13.640902453Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.640907980Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:28:13.640915982Z [err]      run(
+2025-10-23T22:28:13.640922204Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:28:13.640928749Z [err]      server.run()
+2025-10-23T22:28:13.640935604Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:28:13.640942192Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:28:13.641993952Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.641999603Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:28:13.642003639Z [err]      return runner.run(main)
+2025-10-23T22:28:13.642007899Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.642014880Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:28:13.642015380Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:28:13.642020605Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:28:13.642024861Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:28:13.642025403Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:28:13.642026702Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.642029607Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:28:13.642037423Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.642038197Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.642039327Z [err]      await self._serve(sockets)
+2025-10-23T22:28:13.642040636Z [err]      return future.result()
+2025-10-23T22:28:13.642044728Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:28:13.642050068Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:28:13.642051663Z [err]      config.load()
+2025-10-23T22:28:13.642052619Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.642056829Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:28:13.642060402Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:28:13.642535388Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:28:13.642553854Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:28:13.642559412Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.642564953Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:28:13.642568959Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:28:13.642572979Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:28:13.642576683Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:28:13.642580365Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:28:13.642583882Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:28:13.642592596Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:28:13.642596874Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:28:13.642601869Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:13.642605663Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:28:13.642609328Z [err]      self.router.include_router(
+2025-10-23T22:28:13.642612979Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:28:13.642616880Z [err]      for route in router.routes:
+2025-10-23T22:28:13.642620724Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:28:16.173091209Z [err]  Traceback (most recent call last):
+2025-10-23T22:28:16.173099037Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:28:16.173105818Z [err]      sys.exit(main())
+2025-10-23T22:28:16.173110867Z [err]               ^^^^^^
+2025-10-23T22:28:16.173114651Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:28:16.173119593Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:28:16.173123604Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.173127819Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:28:16.174104955Z [err]      run(
+2025-10-23T22:28:16.174112717Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:28:16.174120656Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:28:16.174129707Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.174136928Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:28:16.174143159Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:28:16.174151933Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.174158237Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:28:16.174163959Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:28:16.174169320Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.174174817Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:28:16.175163711Z [err]      server.run()
+2025-10-23T22:28:16.175169828Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:28:16.175175075Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:28:16.175179565Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.175184479Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:28:16.175185242Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:28:16.175189533Z [err]      return runner.run(main)
+2025-10-23T22:28:16.175197654Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.175198707Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:28:16.175205728Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:28:16.175209624Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.175214149Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:28:16.175219113Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:28:16.175222819Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.175229480Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:28:16.175236301Z [err]      return future.result()
+2025-10-23T22:28:16.175242644Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.175248973Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:28:16.175255255Z [err]      await self._serve(sockets)
+2025-10-23T22:28:16.175261420Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:28:16.175268229Z [err]      config.load()
+2025-10-23T22:28:16.176067700Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:28:16.176076486Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.176083522Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:28:16.176090262Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:28:16.176096572Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.176104486Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:28:16.176110990Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:28:16.176117393Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:28:16.176123878Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:28:16.176129749Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:28:16.176134405Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:28:16.176138456Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:28:16.176142875Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:28:16.176147036Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:16.176150721Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:28:16.176154394Z [err]      self.router.include_router(
+2025-10-23T22:28:16.176158023Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:28:16.176426103Z [err]      for route in router.routes:
+2025-10-23T22:28:16.176434560Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:28:16.176440699Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:28:19.090200171Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.090210765Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:28:19.090213051Z [err]  Traceback (most recent call last):
+2025-10-23T22:28:19.090218231Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:28:19.090224930Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.090225808Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:28:19.090232843Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:28:19.090235314Z [err]      sys.exit(main())
+2025-10-23T22:28:19.090240125Z [err]      run(
+2025-10-23T22:28:19.090244115Z [err]               ^^^^^^
+2025-10-23T22:28:19.090247152Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:28:19.090250308Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:28:19.090254351Z [err]      server.run()
+2025-10-23T22:28:19.090256112Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:28:19.090261580Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.090264107Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:28:19.090266738Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:28:19.090271623Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:28:19.090272642Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:28:19.090276574Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.090280676Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:28:19.090284173Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:28:19.091166961Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.091176980Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:28:19.091183314Z [err]      return runner.run(main)
+2025-10-23T22:28:19.091188960Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.091194491Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:28:19.091200896Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:28:19.091206050Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.091213162Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:28:19.091218625Z [err]      return future.result()
+2025-10-23T22:28:19.091224180Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.091229944Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:28:19.091235473Z [err]      await self._serve(sockets)
+2025-10-23T22:28:19.091240869Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:28:19.091246801Z [err]      config.load()
+2025-10-23T22:28:19.091252067Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:28:19.091255878Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:28:19.091259932Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.091265293Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:28:19.091269152Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:28:19.091273245Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.091277445Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:28:19.091777790Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:28:19.091787771Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.091795450Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:28:19.091801970Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:28:19.091808455Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:28:19.091815051Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:28:19.091821211Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:28:19.091829513Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:28:19.091835568Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:28:19.091842990Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:28:19.091849822Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:19.091861888Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:28:19.091868091Z [err]      self.router.include_router(
+2025-10-23T22:28:19.091874260Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:28:19.091880868Z [err]      for route in router.routes:
+2025-10-23T22:28:19.091887522Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:28:19.091894259Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:28:22.016807029Z [err]      server.run()
+2025-10-23T22:28:22.016823822Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:28:22.016824351Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:28:22.016831143Z [err]  Traceback (most recent call last):
+2025-10-23T22:28:22.016838801Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:28:22.016838828Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:28:22.016846331Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.016846933Z [err]      sys.exit(main())
+2025-10-23T22:28:22.016853521Z [err]               ^^^^^^
+2025-10-23T22:28:22.016854402Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:28:22.016862464Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:28:22.016862817Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:28:22.016870609Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.016871326Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:28:22.016877579Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:28:22.016879309Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.016884582Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:28:22.016886352Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:28:22.016890899Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.016897772Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:28:22.016903663Z [err]      run(
+2025-10-23T22:28:22.016909413Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:28:22.017516944Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.017527669Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:28:22.017535041Z [err]      return runner.run(main)
+2025-10-23T22:28:22.017542029Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.017548763Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:28:22.017555881Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:28:22.017562584Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.017568390Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:28:22.017577769Z [err]      return future.result()
+2025-10-23T22:28:22.017584977Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.017590745Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:28:22.017596664Z [err]      await self._serve(sockets)
+2025-10-23T22:28:22.017604621Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:28:22.017610859Z [err]      config.load()
+2025-10-23T22:28:22.017618436Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:28:22.017627358Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:28:22.017633725Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.017640588Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:28:22.017646861Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:28:22.017653757Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.017660948Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:28:22.018096156Z [err]                   ^^^^^^^^^^^^^
+2025-10-23T22:28:22.018098934Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:28:22.018106787Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:28:22.018108988Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.018116223Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:28:22.018122719Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:28:22.018130092Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:28:22.018136983Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:28:22.018144594Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:28:22.018151161Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:28:22.018157437Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:28:22.018164296Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:28:22.018170425Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:22.018175940Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:28:22.018179538Z [err]      self.router.include_router(
+2025-10-23T22:28:22.018184596Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:28:22.018189567Z [err]      for route in router.routes:
+2025-10-23T22:28:24.987610755Z [err]      return callback(*args, **kwargs)
+2025-10-23T22:28:24.987619760Z [err]  Traceback (most recent call last):
+2025-10-23T22:28:24.987621177Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.987630920Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-23T22:28:24.987633084Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-23T22:28:24.987640228Z [err]      run(
+2025-10-23T22:28:24.987642702Z [err]      sys.exit(main())
+2025-10-23T22:28:24.987649172Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-23T22:28:24.987651471Z [err]               ^^^^^^
+2025-10-23T22:28:24.987659790Z [err]      server.run()
+2025-10-23T22:28:24.987661106Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-23T22:28:24.987669184Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-23T22:28:24.987669857Z [err]      return self.main(*args, **kwargs)
+2025-10-23T22:28:24.987678417Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-23T22:28:24.987678675Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.987686001Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-23T22:28:24.987692754Z [err]      rv = self.invoke(ctx)
+2025-10-23T22:28:24.987700133Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.987707107Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-23T22:28:24.987714901Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-23T22:28:24.987721554Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.987728970Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-23T22:28:24.988163032Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.988175844Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-23T22:28:24.988183994Z [err]      return runner.run(main)
+2025-10-23T22:28:24.988191272Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.988198943Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-23T22:28:24.988206610Z [err]      return self._loop.run_until_complete(task)
+2025-10-23T22:28:24.988213780Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.988220436Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-23T22:28:24.988227482Z [err]      return future.result()
+2025-10-23T22:28:24.988234584Z [err]             ^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.988241531Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-23T22:28:24.988248448Z [err]      await self._serve(sockets)
+2025-10-23T22:28:24.988254997Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-23T22:28:24.988261748Z [err]      config.load()
+2025-10-23T22:28:24.988268884Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-23T22:28:24.988276852Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-23T22:28:24.988283876Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.988291230Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-23T22:28:24.988297702Z [err]      module = importlib.import_module(module_str)
+2025-10-23T22:28:24.988304617Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.988311493Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-23T22:28:24.988904098Z [err]  AttributeError: module 'app.api.gdrive_ops.router' has no attribute 'routes'. Did you mean: 'router'?
+2025-10-23T22:28:24.988911598Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-23T22:28:24.988923379Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.988930200Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-23T22:28:24.988937179Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-23T22:28:24.988943455Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-23T22:28:24.988949436Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-23T22:28:24.988955616Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-23T22:28:24.988961878Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-23T22:28:24.988968219Z [err]    File "/app/app/main.py", line 60, in <module>
+2025-10-23T22:28:24.988974660Z [err]      app.include_router(gdrive_router, prefix=f"{settings.API_PREFIX}/gdrive") # Mount GDrive endpoint
+2025-10-23T22:28:24.988982016Z [err]      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-23T22:28:24.988987962Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/applications.py", line 1526, in include_router
+2025-10-23T22:28:24.988993724Z [err]      self.router.include_router(
+2025-10-23T22:28:24.988999570Z [err]    File "/usr/local/lib/python3.11/site-packages/fastapi/routing.py", line 1350, in include_router
+2025-10-23T22:28:24.989005494Z [err]      for route in router.routes:
+2025-10-23T22:28:24.989012715Z [err]                   ^^^^^^^^^^^^^
