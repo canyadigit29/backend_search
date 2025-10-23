@@ -470,4 +470,171 @@ async def assistant_search_docs(request: Request):
                     file_name_filter=tool_args.get("file_name_filter"),
                     description_filter=tool_args.get("description_filter"),
                     start_date=tool_args.get("start_date"),
-                    end_date=tool_args.get("end_date
+                    end_date=tool_args.get("end_date"),
+                    match_count=150,
+                    document_type=tool_args.get("document_type"),
+                    meeting_year=tool_args.get("meeting_year"),
+                    meeting_month=tool_args.get("meeting_month"),
+                    meeting_month_name=tool_args.get("meeting_month_name"),
+                    meeting_day=tool_args.get("meeting_day"),
+                    ordinance_title=tool_args.get("ordinance_title"),
+                ) or []
+                # Normalize keyword scores to 0..1 (per-batch) for blending
+                kw_scores = [r.get("keyword_score") or 0.0 for r in fts_results]
+                if kw_scores:
+                    kmin, kmax = min(kw_scores), max(kw_scores)
+                else:
+                    kmin, kmax = (0.0, 0.0)
+                for r in fts_results:
+                    ks = r.get("keyword_score") or 0.0
+                    if kmax > kmin:
+                        r["keyword_score_norm"] = (ks - kmin) / (kmax - kmin)
+                    else:
+                        r["keyword_score_norm"] = 0.0
+                
+                # Let the assistant decide the blend, otherwise default to 50/50
+                weights = data.get("search_weights", {"semantic": 0.5, "keyword": 0.5})
+                alpha_sem = weights.get("semantic", 0.5)
+                beta_kw = weights.get("keyword", 0.5)
+
+                merged_by_id = {}
+                for m in matches:
+                    mid = m.get("id")
+                    if not mid:
+                        continue
+                    merged_by_id[mid] = m
+                for r in fts_results:
+                    rid = r.get("id")
+                    if not rid:
+                        continue
+                    existing = merged_by_id.get(rid)
+                    if existing is None:
+                        merged_by_id[rid] = r
+                    else:
+                        # Preserve best normalized keyword score
+                        existing["keyword_score_norm"] = max(
+                            existing.get("keyword_score_norm", 0.0) or 0.0,
+                            r.get("keyword_score_norm", 0.0) or 0.0,
+                        )
+                # Compute combined score and sort
+                for v in merged_by_id.values():
+                    sem = v.get("score", 0.0) or 0.0
+                    kw = v.get("keyword_score_norm", 0.0) or 0.0
+                    v["combined_score"] = alpha_sem * sem + beta_kw * kw
+                matches = sorted(merged_by_id.values(), key=lambda x: (x.get("combined_score", 0.0) or 0.0), reverse=True)
+    
+    # --- OPTIMIZED: Neighbor retrieval and summary using the simplified results ---
+    chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}
+    for chunk in matches:
+        file_id, chunk_index = chunk.get("file_id"), chunk.get("chunk_index")
+        if file_id and chunk_index is not None:
+            prev_chunk = chunk_map.get((file_id, chunk_index - 1))
+            if prev_chunk: chunk["prev_chunk"] = {k: prev_chunk[k] for k in ("content", "page_number") if k in prev_chunk}
+            next_chunk = chunk_map.get((file_id, chunk_index + 1))
+            if next_chunk: chunk["next_chunk"] = {k: next_chunk[k] for k in ("content", "page_number") if k in next_chunk}
+
+    summary = None
+    summary_was_partial = False
+    pending_chunk_ids = []
+    included_chunk_ids = []
+    included_chunks = []
+    try:
+        # Fixed batching with diversification: select included with per-file cap, pending is the rest of top 50
+        included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=25, per_file_cap=2)
+        included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
+
+        # Guardrail: trim each chunk to avoid exceeding model context (hard-coded)
+        per_chunk_char_limit = 2500
+        def _trim(s: str, n: int) -> str:
+            if not s:
+                return ""
+            return s[:n]
+        # Build structured search results block with metadata headers per chunk
+        annotated_texts = []
+        for idx, chunk in enumerate(included_chunks, start=1):
+            # Prefer combined_score if available, else semantic score, else normalized keyword
+            disp = chunk.get("combined_score")
+            if disp is None:
+                disp = chunk.get("score")
+            if disp is None:
+                disp = chunk.get("keyword_score_norm")
+            try:
+                disp_val = round(float(disp or 0), 4)
+            except Exception:
+                disp_val = 0
+            header = f"[#{{idx}} id={chunk.get('id')} file={chunk.get('file_name')} page={chunk.get('page_number')} score={disp_val}]"
+            body = _trim(chunk.get("content", ""), per_chunk_char_limit)
+            if body:
+                annotated_texts.append(f"{header}\n{body}")
+        # Token-aware cap across all included texts (hard-coded): assume ~200k token context, leave headroom
+        MAX_INPUT_TOKENS = 260_000
+        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
+
+        if top_text.strip():
+            summary_prompt = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an insightful research assistant. Read the provided document chunks and produce a concise, accurate synthesis that directly answers the user's query. "
+                        "Cite evidence using the chunk ids (id=...) when making claims. Prefer precision over verbosity. If multiple interpretations exist, explain them briefly."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"User query: {user_prompt}\n\n"
+                        "Search results (each chunk starts with a metadata header):\n"
+                        f"{top_text}\n\n"
+                        "Please respond with the following structure:\n"
+                        "1) Key findings (with inline citations like [id=...])\n"
+                        "2) Evidence by chunk (grouped by id, 1-3 bullets each)\n"
+                        "3) Important names/aliases/variants\n"
+                        "4) Suggested follow-up questions"
+                    ),
+                },
+            ]
+            # No time cap: complete the summary for this batch; constrain output tokens (hard-coded)
+            MAX_OUTPUT_TOKENS = 100_000
+            content, was_partial = stream_chat_completion(summary_prompt, model=None, max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
+            summary = content if content else None
+            summary_was_partial = bool(was_partial)
+            # Even if partial occurs due to upstream issues, we still return pending based on batch remainder
+    except Exception:
+        summary = None
+        summary_was_partial = False
+        # Keep pending/included as computed if any
+    
+    # --- Build sources without clickable links (no signed URLs) ---
+    excerpt_length = 300
+    sources = []
+    # Iterate over the same 'included_chunks' list to build the sources we summarized.
+    for c in included_chunks:
+        file_name = c.get("file_name")
+        content = c.get("content") or ""
+        excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+        sources.append({
+            "id": c.get("id"),
+            "file_name": file_name,
+            "page_number": c.get("page_number"),
+            "score": c.get("score"),
+            "excerpt": excerpt
+        })
+
+    # Resume is offered when there are remainder chunks in the top-50 (batch 2)
+    can_resume = bool(pending_chunk_ids)
+    return JSONResponse({
+        "summary": summary,
+        "summary_was_partial": summary_was_partial,
+        "sources": sources,
+        "can_resume": can_resume,
+        "pending_chunk_ids": pending_chunk_ids,
+        "included_chunk_ids": included_chunk_ids,
+        # Timing metrics removed for batch-based flow
+    })
+
+
+# Legacy endpoint maintained for backward compatibility
+@router.post("/search")
+async def api_search_documents(request: Request):
+    tool_args = await request.json()
+    return perform_search(tool_args)
