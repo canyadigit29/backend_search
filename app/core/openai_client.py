@@ -5,16 +5,10 @@ import time
 client = OpenAI()
 
 
-def _default_model() -> str:
-    # Hard-coded per user request
-    return "gpt-5"
-
-
-def chat_completion(messages: list, model: str | None = None, max_tokens: int | None = None) -> str:
+def chat_completion(messages: list, model: str = "gpt-5", max_tokens: int | None = None) -> str:
     """Synchronous chat completion that returns the full message content or an error string."""
     try:
-        use_model = model or _default_model()
-        kwargs = {"model": use_model, "messages": messages}
+        kwargs = {"model": model, "messages": messages}
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
         response = client.chat.completions.create(**kwargs)
@@ -23,7 +17,7 @@ def chat_completion(messages: list, model: str | None = None, max_tokens: int | 
         return f"Error: {str(e)}"
 
 
-def stream_chat_completion(messages: list, model: str | None = None, max_seconds: float = 50.0, max_tokens: int | None = None) -> tuple[str, bool]:
+def stream_chat_completion(messages: list, model: str = "gpt-5", max_seconds: float = 50.0, max_tokens: int | None = None) -> tuple[str, bool]:
     """
     Stream chat completion and return accumulated text within a time budget.
     Returns (content, was_partial) where was_partial=True if we stopped due to timeout or error.
@@ -32,9 +26,8 @@ def stream_chat_completion(messages: list, model: str | None = None, max_seconds
     content_parts: list[str] = []
     last_finish_reason = None
     try:
-        use_model = model or _default_model()
         # include_usage is supported by newer SDK versions; ignore if not available
-        kwargs = {"model": use_model, "messages": messages, "stream": True}
+        kwargs = {"model": model, "messages": messages, "stream": True}
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
         try:

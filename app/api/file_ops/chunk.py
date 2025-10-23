@@ -5,10 +5,11 @@ from uuid import uuid4
 import tiktoken
 import calendar
 
-from app.core.extract_text import extract_text  # Assumed
+from app.core.extract_text import extract_text, TextExtractionError
 from app.core.supabase_client import supabase
 
 def extract_metadata_from_filename(file_name):
+    # ... (keep existing function)
     import re
     import calendar
     meta = {}
@@ -59,9 +60,7 @@ def extract_metadata_from_filename(file_name):
     return meta
 
 def parse_page_markers(paragraphs):
-    """
-    Returns a dict mapping paragraph index to page number, based on ---PAGE N--- markers.
-    """
+    # ... (keep existing function)
     page_number = 1
     para_to_page = {}
     for idx, para in enumerate(paragraphs):
@@ -71,7 +70,8 @@ def parse_page_markers(paragraphs):
         para_to_page[idx] = page_number
     return para_to_page
 
-def fixed_size_chunk(text, max_tokens=1500, overlap_tokens=300):
+def fixed_size_chunk(text, max_tokens=1200, overlap_tokens=120):
+    # ... (keep existing function)
     encoding = tiktoken.get_encoding("cl100k_base")
     tokens = encoding.encode(text)
     total_tokens = len(tokens)
@@ -82,7 +82,6 @@ def fixed_size_chunk(text, max_tokens=1500, overlap_tokens=300):
         end = min(start + max_tokens, total_tokens)
         chunk_tokens = tokens[start:end]
         chunk_text = encoding.decode(chunk_tokens)
-        # Optionally, estimate page number as None or use 1 for all
         chunk_meta.append({"section_header": None, "page_number": None})
         chunks.append(chunk_text)
         start += max_tokens - overlap_tokens
@@ -91,6 +90,7 @@ def fixed_size_chunk(text, max_tokens=1500, overlap_tokens=300):
 def chunk_file(file_id: str, user_id: str = None):
     print(f"🔍 Starting chunking for file_id: {file_id}")
     try:
+        # ... (file lookup logic remains the same)
         file_entry = None
         is_uuid = re.fullmatch(r"[0-9a-fA-F\-]{36}", file_id)
 
@@ -100,10 +100,11 @@ def chunk_file(file_id: str, user_id: str = None):
 
         if not file_entry:
             print(f"❌ No file found for identifier: {file_id}")
-            return []
+            return {"error": "File not found."}
 
         file_path = file_entry["file_path"]
         file_name = file_entry.get("file_name") or file_entry.get("name") or file_path
+        # ... (rest of the setup is the same)
         actual_user_id = user_id or file_entry.get("user_id", None)
         bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
         print(f"📄 Filepath: {file_path}")
@@ -111,7 +112,7 @@ def chunk_file(file_id: str, user_id: str = None):
         response = supabase.storage.from_(bucket).download(file_path)
         if not response:
             print(f"❌ Could not download file from Supabase: {file_path}")
-            return []
+            return {"error": "Failed to download file from storage."}
 
         local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
         with open(local_temp_path, "wb") as f:
@@ -120,14 +121,17 @@ def chunk_file(file_id: str, user_id: str = None):
         try:
             text = extract_text(local_temp_path)
             print(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
-        except Exception as e:
+        except TextExtractionError as e:
             print(f"❌ Failed to extract text from {file_path}: {str(e)}")
-            return []
+            return {"error": str(e)}
+        except Exception as e:
+            print(f"❌ An unexpected error occurred during text extraction: {str(e)}")
+            return {"error": "An unexpected error occurred during file processing."}
 
+        # ... (the rest of the chunking logic is the same)
         filename_meta = extract_metadata_from_filename(Path(file_name).name)
         print(f"[DEBUG] Filename metadata for {file_name}: {filename_meta}")
-        # Use fixed-size overlapping chunking
-        chunk_tuples = fixed_size_chunk(text, max_tokens=1500, overlap_tokens=300)
+        chunk_tuples = fixed_size_chunk(text, max_tokens=1200, overlap_tokens=120)
         db_chunks = []
         for i, (chunk_text, meta) in enumerate(chunk_tuples):
             chunk_id = str(uuid4())
@@ -147,8 +151,8 @@ def chunk_file(file_id: str, user_id: str = None):
 
         print(f"🧹 Got {len(db_chunks)} fixed-size chunks from {file_path}")
 
-        return db_chunks  # Return full chunk dicts, do not insert here
+        return {"chunks": db_chunks}
 
     except Exception as e:
         print(f"❌ Error during chunking: {str(e)}")
-        return []
+        return {"error": "An unexpected error occurred during chunking."}

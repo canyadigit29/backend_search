@@ -8,6 +8,7 @@ python-docx
 python-dotenv
 python-multipart
 pytesseract
+pdf2image
 requests
 striprtf
 supabase

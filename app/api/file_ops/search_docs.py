@@ -181,7 +181,7 @@ def perform_search(tool_args):
             "start_date": start_date,
             "end_date": end_date,
             "match_threshold": db_match_threshold, # Use the calculated distance threshold
-            "match_count": 150
+            "match_count": 25
         }
         # Add metadata filters
         metadata_fields = [
@@ -595,7 +595,7 @@ async def assistant_search_docs(request: Request):
             ]
             # No time cap: complete the summary for this batch; constrain output tokens (hard-coded)
             MAX_OUTPUT_TOKENS = 100_000
-            content, was_partial = stream_chat_completion(summary_prompt, model=None, max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
+            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
             # Even if partial occurs due to upstream issues, we still return pending based on batch remainder
