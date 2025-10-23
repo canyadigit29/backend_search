@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 async def upload_and_ingest_file(
     file_content: bytes,
     file_name: str,
-    user_id: str,
     content_type: str,
+    user_id: str = "gdrive_sync",  # Default user for sync operations
 ):
     """
     Handles the logic of creating a file record in the database and uploading the file to storage.
@@ -20,7 +20,7 @@ async def upload_and_ingest_file(
     """
     try:
         file_extension = os.path.splitext(file_name)[1]
-        file_path = f"{user_id}/{uuid.uuid4()}{file_extension}"
+        file_path = f"{uuid.uuid4()}{file_extension}"
 
         # Step 1: Insert metadata into the 'files' table
         inserted_file = supabase.table("files").insert({
