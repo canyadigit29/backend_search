@@ -49,17 +49,20 @@ async def run_google_drive_sync():
     try:
         drive_service = get_google_drive_service()
 
-        # 1. Get list of files from Supabase
-        response = supabase.storage.from_("files").list()
-        supabase_files = {file['name'] for file in response}
-        print(f"Found {len(supabase_files)} files in Supabase storage.")
+        # 1. Get list of original file names from the 'files' table in Supabase DB
+        db_response = supabase.from_("files").select("name").execute()
+        if db_response.data is None:
+            raise Exception(f"Error fetching files from Supabase DB: {db_response.get('error') or 'No data returned'}")
+
+        supabase_files = {file['name'] for file in db_response.data}
+        print(f"Found {len(supabase_files)} files in Supabase DB.")
 
         # 2. Get list of files from Google Drive folder
         query = f"'{settings.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false"
         results = drive_service.files().list(
             q=query,
             pageSize=100, # Adjust as needed
-            fields="nextPageToken, files(id, name)"
+            fields="nextPageToken, files(id, name, mimeType)"
         ).execute()
         drive_files = results.get('files', [])
         print(f"Found {len(drive_files)} files in Google Drive folder.")
@@ -75,6 +78,7 @@ async def run_google_drive_sync():
         for file_to_upload in new_files_to_upload:
             file_id = file_to_upload['id']
             file_name = file_to_upload['name']
+            content_type = file_to_upload.get('mimeType', 'application/octet-stream')
             print(f"Processing new file: {file_name} (ID: {file_id})")
 
             request = drive_service.files().get_media(fileId=file_id)
@@ -88,9 +92,12 @@ async def run_google_drive_sync():
 
             fh.seek(0)
             
-            # We pass the content as bytes and the filename
-            # The upload function will handle the rest
-            await upload_file_to_supabase(file_content=fh.getvalue(), file_name=file_name)
+            # We pass the content as bytes, the filename, and the content_type
+            await upload_and_ingest_file(
+                file_content=fh.getvalue(), 
+                file_name=file_name,
+                content_type=content_type
+            )
             print(f"Successfully uploaded {file_name} to Supabase and triggered ingestion.")
 
         print("Google Drive sync completed successfully.")
