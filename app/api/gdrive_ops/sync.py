@@ -9,7 +9,7 @@ from fastapi import HTTPException
 
 from app.core.supabase_client import supabase
 from app.core.config import settings
-from app.api.file_ops.upload import upload_file_to_supabase
+from app.api.file_ops.upload_logic import upload_and_ingest_file
 
 # Define the scopes for Google Drive API
 SCOPES = ['https://www.googleapis.com/auth/drive']
