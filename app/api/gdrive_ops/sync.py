@@ -8,7 +8,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from fastapi import HTTPException
 
 from app.core.supabase_client import supabase
-from app.core.config import GOOGLE_CREDENTIALS_BASE64, GOOGLE_ADMIN_EMAIL, GOOGLE_DRIVE_FOLDER_ID
+from app.core.config import settings
 from app.api.file_ops.upload import upload_file_to_supabase
 
 # Define the scopes for Google Drive API
@@ -19,19 +19,19 @@ def get_google_drive_service():
     Authenticates with Google Drive API using service account credentials
     and returns a service object.
     """
-    if not GOOGLE_CREDENTIALS_BASE64:
+    if not settings.GOOGLE_CREDENTIALS_BASE64:
         raise HTTPException(status_code=500, detail="Google credentials are not configured.")
     
     try:
         # Decode the base64 credentials
-        creds_json_str = base64.b64decode(GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
+        creds_json_str = base64.b64decode(settings.GOOGLE_CREDENTIALS_BASE64).decode('utf-8')
         creds_info = json.loads(creds_json_str)
 
         # Create credentials with the required scopes and subject (for domain-wide delegation)
         creds = service_account.Credentials.from_service_account_info(
             creds_info,
             scopes=SCOPES,
-            subject=GOOGLE_ADMIN_EMAIL
+            subject=settings.GOOGLE_ADMIN_EMAIL
         )
         
         # Build the Google Drive service
@@ -55,7 +55,7 @@ async def run_google_drive_sync():
         print(f"Found {len(supabase_files)} files in Supabase storage.")
 
         # 2. Get list of files from Google Drive folder
-        query = f"'{GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false"
+        query = f"'{settings.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false"
         results = drive_service.files().list(
             q=query,
             pageSize=100, # Adjust as needed
