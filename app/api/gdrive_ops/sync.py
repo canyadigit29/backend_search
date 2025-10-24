@@ -56,8 +56,9 @@ async def run_google_drive_sync():
             error_message = rpc_response.get('error') or 'No data returned from RPC'
             raise Exception(f"Error fetching files from Supabase DB: {error_message}")
 
-        supabase_files = {file['name'] for file in rpc_response.data}
-        print(f"Found {len(supabase_files)} files in Supabase DB.")
+        supabase_files_map = {file['name']: {'id': file['id'], 'file_path': file['file_path']} for file in rpc_response.data}
+        supabase_file_names = set(supabase_files_map.keys())
+        print(f"Found {len(supabase_file_names)} files in Supabase DB.")
 
         # 2. Get list of files from Google Drive folder, handling pagination
         query = f"'{settings.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false"
@@ -79,14 +80,39 @@ async def run_google_drive_sync():
                 break
         print(f"Found {len(drive_files)} files in Google Drive folder after checking all pages.")
 
-        new_files_to_upload = []
-        for file in drive_files:
-            if file['name'] not in supabase_files:
-                new_files_to_upload.append(file)
-        
-        print(f"Found {len(new_files_to_upload)} new files to upload.")
+        drive_file_names = {file['name'] for file in drive_files}
 
-        # 3. Download new files and upload to Supabase
+        # 3. Determine which files to upload and which to delete
+        new_files_to_upload_names = drive_file_names - supabase_file_names
+        files_to_delete_names = supabase_file_names - drive_file_names
+
+        print(f"Found {len(new_files_to_upload_names)} new files to upload.")
+        print(f"Found {len(files_to_delete_names)} files to delete.")
+
+        # 4. Process deletions
+        for file_name in files_to_delete_names:
+            file_info = supabase_files_map[file_name]
+            file_id = file_info['id']
+            file_path = file_info['file_path']
+            
+            print(f"Deleting file: {file_name} (ID: {file_id})")
+
+            try:
+                # Delete from storage first
+                supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).remove([file_path])
+                print(f"Successfully deleted {file_name} from storage.")
+                
+                # Then delete from the database table
+                supabase.table("files").delete().eq("id", file_id).execute()
+                print(f"Successfully deleted {file_name} record from database.")
+
+            except Exception as e:
+                print(f"Error deleting file {file_name}: {e}")
+
+
+        # 5. Process uploads
+        new_files_to_upload = [file for file in drive_files if file['name'] in new_files_to_upload_names]
+        
         for file_to_upload in new_files_to_upload:
             file_id = file_to_upload['id']
             file_name = file_to_upload['name']
@@ -113,7 +139,7 @@ async def run_google_drive_sync():
             print(f"Successfully uploaded {file_name} to Supabase and triggered ingestion.")
 
         print("Google Drive sync completed successfully.")
-        return {"status": "success", "new_files_processed": len(new_files_to_upload)}
+        return {"status": "success", "new_files_processed": len(new_files_to_upload), "files_deleted": len(files_to_delete_names)}
 
     except Exception as e:
         print(f"An error occurred during Google Drive sync: {e}")
