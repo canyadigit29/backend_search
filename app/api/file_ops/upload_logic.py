@@ -12,7 +12,6 @@ async def upload_and_ingest_file(
     file_content: bytes,
     file_name: str,
     content_type: str,
-    user_id: str = "gdrive_sync",  # Default user for sync operations
 ):
     """
     Handles the logic of creating a file record in the database and uploading the file to storage.
@@ -24,8 +23,7 @@ async def upload_and_ingest_file(
 
         # Step 1: Insert metadata into the 'files' table
         inserted_file = supabase.table("files").insert({
-            "user_id": user_id,
-            "name": file_name,
+            "file_name": file_name,
             "file_path": file_path,
             "file_type": content_type,
             "created_at": datetime.utcnow().isoformat(),
