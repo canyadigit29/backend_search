@@ -70,30 +70,45 @@ class FileProcessingService:
         file_path = file_record["file_path"]
         text = None
 
+        # Priority 1: Use pre-existing OCR text if available and valid.
         if file_record.get("ocr_scanned") and file_record.get("ocr_text_path"):
-            logger.info(f"Using pre-existing OCR text from {file_record['ocr_text_path']}")
-            response = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_record["ocr_text_path"])
-            text = response.decode('utf-8')
-        else:
-            logger.info(f"Extracting text directly from file: {file_path}")
-            response = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)
-            
-            local_temp_path = f"/tmp/{file_id}{Path(file_path).suffix}"
-            with open(local_temp_path, "wb") as f:
-                f.write(response)
-
+            logger.info(f"Found OCR text at {file_record['ocr_text_path']}. Loading it.")
             try:
-                text = extract_text(local_temp_path)
-                # If text is very short, it's likely a scanned PDF.
-                if file_path.lower().endswith('.pdf') and (text is None or len(text.strip()) < 250):
-                    logger.warning(f"Text extraction yielded very little text ({len(text.strip()) if text else 0} chars). Marking for OCR and processing.")
+                response = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_record["ocr_text_path"])
+                if response:
+                    text = response.decode('utf-8')
+                    logger.info(f"Successfully loaded OCR text. Length: {len(text)} chars.")
+                else:
+                    logger.warning("Failed to download OCR text file, it may be empty.")
+            except Exception as e:
+                logger.error(f"Error downloading OCR text for file {file_id}: {e}")
+        
+        # Priority 2: If no valid OCR text was loaded, try direct extraction.
+        if text is None:
+            logger.info(f"No valid OCR text found. Attempting direct text extraction from: {file_path}")
+            local_temp_path = None
+            try:
+                response = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)
+                
+                local_temp_path = f"/tmp/{file_id}{Path(file_path).suffix}"
+                with open(local_temp_path, "wb") as f:
+                    f.write(response)
+
+                extracted_content = extract_text(local_temp_path)
+                
+                # Check if the extracted content is meaningful
+                if file_path.lower().endswith('.pdf') and (extracted_content is None or len(re.sub(r'---PAGE \d+---', '', extracted_content).strip()) < 100):
+                    logger.warning(f"Direct extraction yielded little or no content. Marking for OCR.")
                     supabase.table("files").update({"ocr_needed": True}).eq("id", file_id).execute()
-                    # Immediately process for OCR instead of waiting for the next worker cycle
                     FileProcessingService.process_file_for_ocr(file_id)
-                    os.remove(local_temp_path)
-                    return # Stop further ingestion processing, OCR text will be used next cycle
+                    return # Stop this ingestion cycle; OCR will run and trigger a new one.
+                else:
+                    text = extracted_content
+
+            except Exception as e:
+                logger.error(f"An error occurred during direct text extraction: {e}")
             finally:
-                if os.path.exists(local_temp_path):
+                if local_temp_path and os.path.exists(local_temp_path):
                     os.remove(local_temp_path)
 
         if not text or not text.strip():
