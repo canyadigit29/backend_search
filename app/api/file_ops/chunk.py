@@ -9,43 +9,45 @@ from app.core.extract_text import extract_text, TextExtractionError
 from app.core.supabase_client import supabase
 
 def extract_metadata_from_filename(file_name):
-    # ... (keep existing function)
-    import re
-    import calendar
     meta = {}
     name = file_name.rsplit('.', 1)[0].strip()
     ext = file_name.rsplit('.', 1)[-1].lower() if '.' in file_name else ''
     meta['file_extension'] = ext
 
-    # Agendas
-    m = re.match(r'([A-Za-z]+) (\d{4}) Agenda(?: ([A-Za-z ]+))?$', name)
-    if m:
-        meta['document_type'] = 'Agenda'
-        meta['meeting_month_name'] = m.group(1).capitalize()
-        try:
-            meta['meeting_month'] = list(calendar.month_name).index(m.group(1).capitalize())
-        except ValueError:
-            meta['meeting_month'] = None
-        meta['meeting_year'] = int(m.group(2))
-        if m.group(3):
-            meta['extra'] = m.group(3).strip()
+    # More flexible meeting document parsing
+    doc_type_match = re.search(r'(Agenda|Minutes)', name, re.IGNORECASE)
+    if doc_type_match:
+        meta['document_type'] = doc_type_match.group(1).capitalize()
+
+        # Find year
+        year_match = re.search(r'(\d{4})', name)
+        if year_match:
+            meta['meeting_year'] = int(year_match.group(1))
+
+        # Find month
+        month_names = list(calendar.month_name)[1:]  # January to December
+        month_abbrs = list(calendar.month_abbr)[1:]
+        
+        # Create a regex pattern for all month names and abbreviations
+        month_pattern = '|'.join(month_names + month_abbrs)
+        month_match = re.search(f'({month_pattern})', name, re.IGNORECASE)
+        
+        if month_match:
+            month_str = month_match.group(1).capitalize()
+            try:
+                # Get month number from full name
+                meta['meeting_month'] = list(calendar.month_name).index(month_str)
+            except ValueError:
+                try:
+                    # Get month number from abbreviation
+                    meta['meeting_month'] = list(calendar.month_abbr).index(month_str)
+                except ValueError:
+                    meta['meeting_month'] = None
+            meta['meeting_month_name'] = month_str
+        
         return meta
 
-    # Minutes
-    m = re.match(r'([A-Za-z]+) (\d{4}) Minutes(?: ([A-Za-z ]+))?$', name)
-    if m:
-        meta['document_type'] = 'Minutes'
-        meta['meeting_month_name'] = m.group(1).capitalize()
-        try:
-            meta['meeting_month'] = list(calendar.month_name).index(m.group(1).capitalize())
-        except ValueError:
-            meta['meeting_month'] = None
-        meta['meeting_year'] = int(m.group(2))
-        if m.group(3):
-            meta['extra'] = m.group(3).strip()
-        return meta
-
-    # Ordinaces
+    # Ordinaces (existing logic)
     m = re.match(r'(\d+)?\s*(.*?) Ordinance$', name)
     if m:
         meta['document_type'] = 'Ordinance'
@@ -54,7 +56,7 @@ def extract_metadata_from_filename(file_name):
         meta['ordinance_title'] = m.group(2).strip()
         return meta
 
-    # Misc
+    # Misc (fallback)
     meta['document_type'] = 'Misc'
     meta['misc_title'] = name
     return meta
@@ -134,15 +136,41 @@ def chunk_file(file_id: str):
         db_chunks = []
         for i, (chunk_text, meta) in enumerate(chunk_tuples):
             chunk_id = str(uuid4())
-            chunk_metadata = {**filename_meta, **meta}
-            print(f"[DEBUG] Chunk {i} metadata: {chunk_metadata}")
+            
+            # Start with a clean slate for metadata that will go to the DB
+            db_metadata = {}
+
+            # Set document_type, which should always be present
+            db_metadata['document_type'] = filename_meta.get('document_type')
+
+            # Conditionally create meeting_date
+            if 'meeting_year' in filename_meta and 'meeting_month' in filename_meta:
+                try:
+                    year = int(filename_meta['meeting_year'])
+                    month = int(filename_meta['meeting_month'])
+                    db_metadata['meeting_date'] = f"{year}-{month:02d}-01"
+                except (ValueError, TypeError):
+                    db_metadata['meeting_date'] = None
+            else:
+                db_metadata['meeting_date'] = None
+
+            # Conditionally add ordinance fields
+            if 'ordinance_number' in filename_meta:
+                db_metadata['ordinance_number'] = filename_meta.get('ordinance_number')
+            if 'ordinance_title' in filename_meta:
+                db_metadata['ordinance_title'] = filename_meta.get('ordinance_title')
+
+            # Merge with chunk-specific metadata like page_number
+            db_metadata.update(meta)
+            
+            print(f"[DEBUG] Chunk {i} metadata for DB: {db_metadata}")
+
             chunk = {
                 "id": chunk_id,
                 "file_id": file_entry["id"],
-                "file_name": file_name,
                 "content": chunk_text,
                 "chunk_index": i,
-                **chunk_metadata,
+                **db_metadata,
             }
             db_chunks.append(chunk)
 

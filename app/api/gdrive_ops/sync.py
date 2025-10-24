@@ -9,7 +9,7 @@ from fastapi import HTTPException
 
 from app.core.supabase_client import supabase
 from app.core.config import settings
-from app.api.file_ops.upload_logic import upload_and_ingest_file
+from app.services.file_processing_service import FileProcessingService
 
 # Define the scopes for Google Drive API
 SCOPES = ['https://www.googleapis.com/auth/drive']
@@ -131,7 +131,7 @@ async def run_google_drive_sync():
             fh.seek(0)
             
             # We pass the content as bytes, the filename, and the content_type
-            await upload_and_ingest_file(
+            await FileProcessingService.upload_and_register_file(
                 file_content=fh.getvalue(), 
                 file_name=file_name,
                 content_type=content_type
