@@ -177,7 +177,7 @@ def perform_search(tool_args):
             "start_date": start_date,
             "end_date": end_date,
             "match_threshold": db_match_threshold, # Use the calculated distance threshold
-            "match_count": 25
+            "match_count": max_results
         }
         # Add metadata filters
         metadata_fields = [

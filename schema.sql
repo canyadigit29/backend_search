@@ -101,6 +101,77 @@ $$;
 ALTER FUNCTION "public"."match_documents"("query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer, "user_id_filter" "uuid", "filter_document_type" "text", "filter_start_date" "date", "filter_end_date" "date") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."match_documents_fts_v3"("keyword_query" "text", "match_count" integer DEFAULT 150, "file_name_filter" "text" DEFAULT NULL::"text", "description_filter" "text" DEFAULT NULL::"text", "start_date" "date" DEFAULT NULL::"date", "end_date" "date" DEFAULT NULL::"date", "filter_document_type" "text" DEFAULT NULL::"text", "filter_meeting_year" integer DEFAULT NULL::integer, "filter_meeting_month" integer DEFAULT NULL::integer, "filter_meeting_month_name" "text" DEFAULT NULL::"text", "filter_meeting_day" integer DEFAULT NULL::integer, "filter_ordinance_title" "text" DEFAULT NULL::"text") RETURNS TABLE("id" "uuid", "file_id" "uuid", "file_name" "text", "content" "text", "page_number" integer, "chunk_index" integer, "ts_rank" double precision)
+    LANGUAGE "sql" SECURITY DEFINER
+    AS $$
+    SELECT
+        dc.id,
+        dc.file_id,
+        f.file_name,
+        dc.content,
+        dc.page_number,
+        dc.chunk_index,
+        ts_rank_cd(dc.content_tsv, websearch_to_tsquery('english', keyword_query)) AS ts_rank
+    FROM public.document_chunks AS dc
+    JOIN public.files AS f ON f.id = dc.file_id
+    WHERE
+        (keyword_query IS NULL OR dc.content_tsv @@ websearch_to_tsquery('english', keyword_query))
+        AND (file_name_filter IS NULL OR f.file_name ILIKE '%' || file_name_filter || '%')
+        AND (filter_document_type IS NULL OR dc.document_type = filter_document_type)
+        AND (filter_meeting_year IS NULL OR EXTRACT(YEAR FROM dc.meeting_date) = filter_meeting_year)
+        AND (filter_meeting_month IS NULL OR EXTRACT(MONTH FROM dc.meeting_date) = filter_meeting_month)
+        AND (filter_meeting_month_name IS NULL OR TO_CHAR(dc.meeting_date, 'Month') ILIKE filter_meeting_month_name || '%')
+        AND (filter_meeting_day IS NULL OR EXTRACT(DAY FROM dc.meeting_date) = filter_meeting_day)
+        AND (filter_ordinance_title IS NULL OR dc.ordinance_title ILIKE '%' || filter_ordinance_title || '%')
+        AND (start_date IS NULL OR dc.meeting_date >= start_date)
+        AND (end_date IS NULL OR dc.meeting_date <= end_date)
+    ORDER BY ts_rank DESC
+    LIMIT match_count;
+$$;
+
+
+ALTER FUNCTION "public"."match_documents_fts_v3"("keyword_query" "text", "match_count" integer, "file_name_filter" "text", "description_filter" "text", "start_date" "date", "end_date" "date", "filter_document_type" "text", "filter_meeting_year" integer, "filter_meeting_month" integer, "filter_meeting_month_name" "text", "filter_meeting_day" integer, "filter_ordinance_title" "text") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."match_documents_v3"("query_embedding" "public"."vector", "match_threshold" double precision DEFAULT 0.6, "match_count" integer DEFAULT 25, "file_name_filter" "text" DEFAULT NULL::"text", "description_filter" "text" DEFAULT NULL::"text", "start_date" "date" DEFAULT NULL::"date", "end_date" "date" DEFAULT NULL::"date", "filter_document_type" "text" DEFAULT NULL::"text", "filter_meeting_year" integer DEFAULT NULL::integer, "filter_meeting_month" integer DEFAULT NULL::integer, "filter_meeting_month_name" "text" DEFAULT NULL::"text", "filter_meeting_day" integer DEFAULT NULL::integer, "filter_ordinance_title" "text" DEFAULT NULL::"text") RETURNS TABLE("id" "uuid", "file_id" "uuid", "file_name" "text", "content" "text", "page_number" integer, "chunk_index" integer, "score" double precision)
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        dc.id,
+        dc.file_id,
+        f.file_name,
+        dc.content,
+        dc.page_number,
+        dc.chunk_index,
+        (1 - (dc.embedding <=> query_embedding)) AS score  -- return SIMILARITY (0..1)
+    FROM public.document_chunks AS dc
+    JOIN public.files AS f ON f.id = dc.file_id
+    WHERE
+        -- distance threshold: app already converts similarity->distance
+        (dc.embedding <=> query_embedding) < match_threshold
+        -- file name filter (ILIKE contains)
+        AND (file_name_filter IS NULL OR f.file_name ILIKE '%' || file_name_filter || '%')
+        -- metadata filters
+        AND (filter_document_type IS NULL OR dc.document_type = filter_document_type)
+        AND (filter_meeting_year IS NULL OR EXTRACT(YEAR FROM dc.meeting_date) = filter_meeting_year)
+        AND (filter_meeting_month IS NULL OR EXTRACT(MONTH FROM dc.meeting_date) = filter_meeting_month)
+        AND (filter_meeting_month_name IS NULL OR TO_CHAR(dc.meeting_date, 'Month') ILIKE filter_meeting_month_name || '%')
+        AND (filter_meeting_day IS NULL OR EXTRACT(DAY FROM dc.meeting_date) = filter_meeting_day)
+        AND (filter_ordinance_title IS NULL OR dc.ordinance_title ILIKE '%' || filter_ordinance_title || '%')
+        -- date bounds
+        AND (start_date IS NULL OR dc.meeting_date >= start_date)
+        AND (end_date IS NULL OR dc.meeting_date <= end_date)
+    ORDER BY score DESC
+    LIMIT match_count;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."match_documents_v3"("query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer, "file_name_filter" "text", "description_filter" "text", "start_date" "date", "end_date" "date", "filter_document_type" "text", "filter_meeting_year" integer, "filter_meeting_month" integer, "filter_meeting_month_name" "text", "filter_meeting_day" integer, "filter_ordinance_title" "text") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."update_document_chunks_tsv"() RETURNS "trigger"
     LANGUAGE "plpgsql"
     AS $$
@@ -132,7 +203,8 @@ CREATE TABLE IF NOT EXISTS "public"."document_chunks" (
     "ordinance_number" "text",
     "content_tsv" "tsvector",
     "created_at" timestamp with time zone DEFAULT "now"(),
-    "section_header" "text"
+    "section_header" "text",
+    "metadata" "jsonb"
 );
 
 
@@ -1001,6 +1073,18 @@ GRANT ALL ON FUNCTION "public"."l2_normalize"("public"."vector") TO "service_rol
 GRANT ALL ON FUNCTION "public"."match_documents"("query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer, "user_id_filter" "uuid", "filter_document_type" "text", "filter_start_date" "date", "filter_end_date" "date") TO "anon";
 GRANT ALL ON FUNCTION "public"."match_documents"("query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer, "user_id_filter" "uuid", "filter_document_type" "text", "filter_start_date" "date", "filter_end_date" "date") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."match_documents"("query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer, "user_id_filter" "uuid", "filter_document_type" "text", "filter_start_date" "date", "filter_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."match_documents_fts_v3"("keyword_query" "text", "match_count" integer, "file_name_filter" "text", "description_filter" "text", "start_date" "date", "end_date" "date", "filter_document_type" "text", "filter_meeting_year" integer, "filter_meeting_month" integer, "filter_meeting_month_name" "text", "filter_meeting_day" integer, "filter_ordinance_title" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."match_documents_fts_v3"("keyword_query" "text", "match_count" integer, "file_name_filter" "text", "description_filter" "text", "start_date" "date", "end_date" "date", "filter_document_type" "text", "filter_meeting_year" integer, "filter_meeting_month" integer, "filter_meeting_month_name" "text", "filter_meeting_day" integer, "filter_ordinance_title" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."match_documents_fts_v3"("keyword_query" "text", "match_count" integer, "file_name_filter" "text", "description_filter" "text", "start_date" "date", "end_date" "date", "filter_document_type" "text", "filter_meeting_year" integer, "filter_meeting_month" integer, "filter_meeting_month_name" "text", "filter_meeting_day" integer, "filter_ordinance_title" "text") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."match_documents_v3"("query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer, "file_name_filter" "text", "description_filter" "text", "start_date" "date", "end_date" "date", "filter_document_type" "text", "filter_meeting_year" integer, "filter_meeting_month" integer, "filter_meeting_month_name" "text", "filter_meeting_day" integer, "filter_ordinance_title" "text") TO "anon";
+GRANT ALL ON FUNCTION "public"."match_documents_v3"("query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer, "file_name_filter" "text", "description_filter" "text", "start_date" "date", "end_date" "date", "filter_document_type" "text", "filter_meeting_year" integer, "filter_meeting_month" integer, "filter_meeting_month_name" "text", "filter_meeting_day" integer, "filter_ordinance_title" "text") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."match_documents_v3"("query_embedding" "public"."vector", "match_threshold" double precision, "match_count" integer, "file_name_filter" "text", "description_filter" "text", "start_date" "date", "end_date" "date", "filter_document_type" "text", "filter_meeting_year" integer, "filter_meeting_month" integer, "filter_meeting_month_name" "text", "filter_meeting_day" integer, "filter_ordinance_title" "text") TO "service_role";
 
 
 
