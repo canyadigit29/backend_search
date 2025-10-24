@@ -9,6 +9,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY . .
 
+# Convert line endings to Unix format to prevent script errors
+RUN sed -i 's/\r$//' start.sh
+
 # Make start script executable
 RUN chmod +x start.sh
 
