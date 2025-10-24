@@ -1,4 +1,4 @@
-```python
+# Re-linting file
 import os
 import uuid
 import logging
@@ -126,5 +126,3 @@ class FileProcessingService:
 
         ocr_pdf(file_path=file_record["file_path"], file_id=file_id)
         logger.info(f"✅ Successfully performed OCR on file: {file_record['file_name']} (ID: {file_id})")
-
-```

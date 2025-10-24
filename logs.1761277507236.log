@@ -1,0 +1,749 @@
+2025-10-24T03:43:20.000000000Z [inf]  Starting Container
+2025-10-24T03:43:21.894265782Z [inf]  Initializing...
+2025-10-24T03:43:25.817817415Z [inf]  Starting Uvicorn server...
+2025-10-24T03:43:25.817824737Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:43:25.817834477Z [inf]  Starting ingestion worker...
+2025-10-24T03:43:25.877647716Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:25.877657697Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:43:25.877663596Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:25.877669713Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:25.877674723Z [err]      ```python
+2025-10-24T03:43:25.877679912Z [err]      ^
+2025-10-24T03:43:25.877685242Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:26.829363628Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:43:26.829373917Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.829373979Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:43:26.830046522Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:26.830052754Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:43:26.830059434Z [err]      sys.exit(main())
+2025-10-24T03:43:26.830084110Z [err]               ^^^^^^
+2025-10-24T03:43:26.830092013Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:43:26.830099755Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:43:26.830106711Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.830114662Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:43:26.830120718Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:43:26.830127088Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.830250718Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:43:26.830317124Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:43:26.830324234Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.830331633Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:43:26.830339822Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:43:26.830347442Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.830355057Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:43:26.830362985Z [err]      run(
+2025-10-24T03:43:26.830370290Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:43:26.830375738Z [err]      server.run()
+2025-10-24T03:43:26.830381259Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:43:26.830387199Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:43:26.830694013Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.830698916Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:43:26.830703355Z [err]      return runner.run(main)
+2025-10-24T03:43:26.830708122Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.830713253Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:43:26.830718463Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:43:26.830723595Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.830733393Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:43:26.830738613Z [err]      return future.result()
+2025-10-24T03:43:26.830743304Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.830747960Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:43:26.830753028Z [err]      await self._serve(sockets)
+2025-10-24T03:43:26.830759494Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:43:26.830763670Z [err]      config.load()
+2025-10-24T03:43:26.830767860Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:43:26.830771872Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:43:26.830778277Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.830782377Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:43:26.831599707Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:43:26.831608264Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:26.831618917Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:43:26.831629979Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:43:26.831641536Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:43:26.831652594Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:43:26.831664910Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:43:26.831676239Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:43:26.831687934Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:43:26.831701816Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:26.831712284Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:26.831727971Z [err]      ```python
+2025-10-24T03:43:26.831736819Z [err]      ^
+2025-10-24T03:43:26.831748829Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:28.105977071Z [inf]  Initializing...
+2025-10-24T03:43:32.779536961Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:43:32.779542625Z [inf]  Starting ingestion worker...
+2025-10-24T03:43:32.779548095Z [inf]  Starting Uvicorn server...
+2025-10-24T03:43:32.779558592Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:32.779564557Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:43:32.779571169Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:32.779577594Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:32.779583487Z [err]      ```python
+2025-10-24T03:43:32.779588751Z [err]      ^
+2025-10-24T03:43:32.779593466Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:32.910369603Z [err]               ^^^^^^
+2025-10-24T03:43:32.910388016Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:43:32.910397602Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:43:32.910405642Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.910413771Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:43:32.910423158Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:43:32.910431156Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.910438546Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:43:32.910446219Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:43:32.910453144Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.910464648Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:43:32.910475947Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:43:32.910477850Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:32.910487006Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:43:32.910488093Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.910496147Z [err]      sys.exit(main())
+2025-10-24T03:43:32.910500040Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:43:32.910508063Z [err]      run(
+2025-10-24T03:43:32.910514617Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:43:32.910525553Z [err]      server.run()
+2025-10-24T03:43:32.910535456Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:43:32.910542815Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:43:32.914667534Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.914676089Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:43:32.914682616Z [err]      return runner.run(main)
+2025-10-24T03:43:32.914689034Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.914696709Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:43:32.914705602Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:43:32.914713549Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.914722258Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:43:32.914725398Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.914731458Z [err]      return future.result()
+2025-10-24T03:43:32.914739874Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.914748814Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:43:32.914752059Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:43:32.914760248Z [err]      await self._serve(sockets)
+2025-10-24T03:43:32.914764500Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:43:32.914774367Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:43:32.914780119Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.914785993Z [err]      config.load()
+2025-10-24T03:43:32.914795762Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:43:32.914799176Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:43:32.914806865Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:43:32.917971727Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:43:32.917982935Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:32.917989835Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:43:32.917996520Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:43:32.918002450Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:43:32.918013378Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:43:32.918018902Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:43:32.918024931Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:43:32.918030132Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:43:32.918036510Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:32.918042672Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:32.918048104Z [err]      ```python
+2025-10-24T03:43:32.918053679Z [err]      ^
+2025-10-24T03:43:32.918059387Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:34.896459689Z [inf]  Initializing...
+2025-10-24T03:43:39.844520820Z [inf]  Starting ingestion worker...
+2025-10-24T03:43:39.844531509Z [inf]  Starting Uvicorn server...
+2025-10-24T03:43:39.844537893Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:39.844543764Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:43:39.844549594Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:39.844555089Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:39.844561200Z [err]      ```python
+2025-10-24T03:43:39.844568367Z [err]      ^
+2025-10-24T03:43:39.844575714Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:39.844731968Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:43:39.924508960Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.924520922Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:39.924523317Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:43:39.924531686Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:43:39.924533127Z [err]      run(
+2025-10-24T03:43:39.924541981Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:43:39.924544059Z [err]      sys.exit(main())
+2025-10-24T03:43:39.924550942Z [err]      server.run()
+2025-10-24T03:43:39.924555320Z [err]               ^^^^^^
+2025-10-24T03:43:39.924560236Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:43:39.924567499Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:43:39.924569612Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:43:39.924585404Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:43:39.924593145Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.924599269Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:43:39.924605888Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:43:39.924612169Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.924621216Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:43:39.924627950Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:43:39.924634705Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.924640566Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:43:39.924646671Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:43:39.927378386Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.927386365Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:43:39.927390334Z [err]      return future.result()
+2025-10-24T03:43:39.927393820Z [err]      return runner.run(main)
+2025-10-24T03:43:39.927399021Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.927406813Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:43:39.927408160Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.927414203Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:43:39.927418515Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:43:39.927422498Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.927430642Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:43:39.927431866Z [err]      await self._serve(sockets)
+2025-10-24T03:43:39.927440254Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:43:39.927446343Z [err]      config.load()
+2025-10-24T03:43:39.927452768Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:43:39.927460198Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:43:39.927466299Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.927476263Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:43:39.927486448Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:43:39.927495949Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.927506552Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:43:39.930560921Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:43:39.930573822Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:39.930581214Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:43:39.930588322Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:43:39.930595316Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:43:39.930602384Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:43:39.930609409Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:43:39.930615692Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:43:39.930621919Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:43:39.930628615Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:39.930634971Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:39.930641303Z [err]      ```python
+2025-10-24T03:43:39.930647864Z [err]      ^
+2025-10-24T03:43:39.930653922Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:41.838022089Z [inf]  Initializing...
+2025-10-24T03:43:46.300379732Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:43:46.300388851Z [inf]  Starting ingestion worker...
+2025-10-24T03:43:46.300394420Z [inf]  Starting Uvicorn server...
+2025-10-24T03:43:47.033224306Z [err]      config.load()
+2025-10-24T03:43:47.033239444Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:43:47.033248179Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:43:47.033264402Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.033268438Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:43:47.033273936Z [err]      run(
+2025-10-24T03:43:47.033280058Z [err]      await self._serve(sockets)
+2025-10-24T03:43:47.033284841Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:43:47.033287615Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:43:47.033293117Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:43:47.033297789Z [err]      return future.result()
+2025-10-24T03:43:47.033306465Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.033308179Z [err]      server.run()
+2025-10-24T03:43:47.033324078Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:43:47.033332283Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:43:47.033342162Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.033350067Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:43:47.033364338Z [err]      return runner.run(main)
+2025-10-24T03:43:47.033372926Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:47.033374358Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.033382877Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:43:47.033383581Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:43:47.033392998Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:47.033393168Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:43:47.033400427Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:47.033408485Z [err]      ```python
+2025-10-24T03:43:47.033415724Z [err]      ^
+2025-10-24T03:43:47.033423373Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:47.033430167Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:47.033435767Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:43:47.033443398Z [err]      sys.exit(main())
+2025-10-24T03:43:47.033463050Z [err]               ^^^^^^
+2025-10-24T03:43:47.033469335Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:43:47.033475652Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:43:47.033482200Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.033489041Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:43:47.033514251Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:43:47.033521939Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.033529957Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:43:47.033535598Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:43:47.033542389Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.033558483Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:43:47.033565937Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:43:47.033572977Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.033579303Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:43:47.034171284Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.034175914Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:43:47.034180997Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:43:47.034186986Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.034191782Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:43:47.034199065Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:43:47.034206763Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:47.034213300Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:43:47.034220972Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:43:47.034228116Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:43:47.034233459Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:43:47.034238462Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:43:47.034244282Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:43:47.034249934Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:43:47.034255168Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:47.034260296Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:47.034265690Z [err]      ```python
+2025-10-24T03:43:47.034270708Z [err]      ^
+2025-10-24T03:43:47.034275441Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:48.072241029Z [inf]  Initializing...
+2025-10-24T03:43:53.074660167Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:43:53.074667262Z [inf]  Starting ingestion worker...
+2025-10-24T03:43:53.074674317Z [inf]  Starting Uvicorn server...
+2025-10-24T03:43:53.155757455Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:53.155771057Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:43:53.155780296Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:53.155787749Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:53.155798984Z [err]      ```python
+2025-10-24T03:43:53.155810442Z [err]      ^
+2025-10-24T03:43:53.155817741Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:54.032097406Z [err]               ^^^^^^
+2025-10-24T03:43:54.032106998Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:43:54.032186171Z [err]  Traceback (most recent call last):
+2025-10-24T03:43:54.032192093Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:43:54.032197361Z [err]      sys.exit(main())
+2025-10-24T03:43:54.032221522Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:43:54.032226462Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.032232798Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:43:54.032239048Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:43:54.032245312Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.032251798Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:43:54.032258381Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:43:54.032278726Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.032287179Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:43:54.032293416Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:43:54.032299901Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.032308497Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:43:54.032314993Z [err]      run(
+2025-10-24T03:43:54.032322553Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:43:54.032328496Z [err]      server.run()
+2025-10-24T03:43:54.032334177Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:43:54.038919685Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:43:54.039198595Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.039207802Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:43:54.039213390Z [err]      return runner.run(main)
+2025-10-24T03:43:54.039217783Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.039224142Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:43:54.039230555Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:43:54.039236603Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.039242646Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:43:54.039249636Z [err]      return future.result()
+2025-10-24T03:43:54.039255844Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.039260671Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:43:54.039266118Z [err]      await self._serve(sockets)
+2025-10-24T03:43:54.039271935Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:43:54.039279139Z [err]      config.load()
+2025-10-24T03:43:54.039284956Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:43:54.039292253Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:43:54.039299084Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.039305005Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:43:54.039311530Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:43:54.039317490Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.039324128Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:43:54.040795396Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:43:54.040800993Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:43:54.040807861Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:43:54.040813423Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:43:54.040818693Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:43:54.040824041Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:43:54.040828914Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:43:54.040834343Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:43:54.040838980Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:43:54.040843905Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:43:54.040848616Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:43:54.040853669Z [err]      ```python
+2025-10-24T03:43:54.040859987Z [err]      ^
+2025-10-24T03:43:54.040866056Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:43:55.100126776Z [inf]  Initializing...
+2025-10-24T03:44:00.025833662Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:44:00.025837957Z [inf]  Starting ingestion worker...
+2025-10-24T03:44:00.025842203Z [inf]  Starting Uvicorn server...
+2025-10-24T03:44:00.025846439Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:00.025850337Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:44:00.025854565Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:00.025858796Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:00.025863596Z [err]      ```python
+2025-10-24T03:44:00.025868276Z [err]      ^
+2025-10-24T03:44:00.025871844Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:01.060915418Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:01.060921844Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:44:01.060927435Z [err]               ^^^^^^
+2025-10-24T03:44:01.060932109Z [err]      sys.exit(main())
+2025-10-24T03:44:01.060939772Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:44:01.060957303Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:44:01.060967179Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.060977034Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:44:01.060983840Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:44:01.060992109Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.060998548Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:44:01.061005081Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:44:01.061011706Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.061019716Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:44:01.061027654Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:44:01.061035315Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.061040847Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:44:01.061045845Z [err]      run(
+2025-10-24T03:44:01.061050978Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:44:01.061055833Z [err]      server.run()
+2025-10-24T03:44:01.061061413Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:44:01.061066974Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:44:01.066902055Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.066908998Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:44:01.066915209Z [err]      return runner.run(main)
+2025-10-24T03:44:01.066922357Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.066928978Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:44:01.066935269Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:44:01.066941772Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.066950891Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:44:01.066956716Z [err]      return future.result()
+2025-10-24T03:44:01.066963153Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.066968290Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:44:01.066973959Z [err]      await self._serve(sockets)
+2025-10-24T03:44:01.066980186Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:44:01.066986080Z [err]      config.load()
+2025-10-24T03:44:01.066991360Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:44:01.066997278Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:44:01.067003347Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.067010455Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:44:01.067016064Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:44:01.067022356Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.067028287Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:44:01.069803420Z [err]      ^
+2025-10-24T03:44:01.069814936Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:01.069825572Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:44:01.069846322Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:44:01.069858350Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:44:01.069869157Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:44:01.069885798Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:01.069896830Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:01.069908064Z [err]      ```python
+2025-10-24T03:44:01.069943599Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:44:01.069950118Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:01.069957013Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:44:01.069963463Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:44:01.069970564Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:44:02.085896554Z [inf]  Initializing...
+2025-10-24T03:44:07.294150508Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:07.294188731Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:44:07.294199913Z [inf]  Starting ingestion worker...
+2025-10-24T03:44:07.294208727Z [inf]  Starting Uvicorn server...
+2025-10-24T03:44:07.294220505Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:07.294229636Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:44:07.294238325Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:07.294245136Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:07.294252714Z [err]      ```python
+2025-10-24T03:44:07.294261300Z [err]      ^
+2025-10-24T03:44:07.447022812Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:07.447027690Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:44:07.447031977Z [err]      sys.exit(main())
+2025-10-24T03:44:07.447036493Z [err]               ^^^^^^
+2025-10-24T03:44:07.447041204Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:44:07.447045084Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:44:07.447049058Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.447052869Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:44:07.451219857Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.451241980Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:44:07.451253182Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.451260719Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:44:07.451268206Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:44:07.451275528Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.451285800Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:44:07.451291596Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:44:07.451297760Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.451303834Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:44:07.451310584Z [err]      run(
+2025-10-24T03:44:07.451316917Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:44:07.451322207Z [err]      server.run()
+2025-10-24T03:44:07.451327913Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:44:07.451337391Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:44:07.451343510Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.451350106Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:44:07.451356903Z [err]      return runner.run(main)
+2025-10-24T03:44:07.451364580Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.451370497Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:44:07.451376668Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:44:07.456662310Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:44:07.456663173Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:44:07.456674396Z [err]      return future.result()
+2025-10-24T03:44:07.456682054Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.456690499Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:44:07.456698648Z [err]      await self._serve(sockets)
+2025-10-24T03:44:07.456705944Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:44:07.456716222Z [err]      config.load()
+2025-10-24T03:44:07.456723694Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:44:07.456729688Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:44:07.456736629Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.456744638Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:44:07.456750484Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:44:07.456755209Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.456759667Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:44:07.456764669Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:44:07.456770548Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:07.456775387Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:44:07.456782999Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:44:07.456787120Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:44:07.461089320Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:44:07.461102804Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:44:07.461110257Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:44:07.461117043Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:07.461123701Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:07.461130166Z [err]      ```python
+2025-10-24T03:44:07.461136415Z [err]      ^
+2025-10-24T03:44:07.461143151Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:09.175095963Z [inf]  Initializing...
+2025-10-24T03:44:14.194432516Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:44:14.194437175Z [inf]  Starting ingestion worker...
+2025-10-24T03:44:14.194442052Z [inf]  Starting Uvicorn server...
+2025-10-24T03:44:14.194446633Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:14.194451494Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:44:14.194463114Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:14.194470311Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:14.194476964Z [err]      ```python
+2025-10-24T03:44:14.194483052Z [err]      ^
+2025-10-24T03:44:14.194489904Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:14.299717912Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:14.299725582Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:44:14.299731521Z [err]      sys.exit(main())
+2025-10-24T03:44:14.299738940Z [err]               ^^^^^^
+2025-10-24T03:44:14.299746492Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:44:14.299751940Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:44:14.299757611Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.299762966Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:44:14.299768620Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:44:14.299773503Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.299779083Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:44:14.299784759Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:44:14.299790858Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.299796535Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:44:14.299802043Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:44:14.299807883Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.299813726Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:44:14.299819843Z [err]      run(
+2025-10-24T03:44:14.299826313Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:44:14.299832097Z [err]      server.run()
+2025-10-24T03:44:14.299837579Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:44:14.299843099Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:44:14.302393118Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.302410328Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:44:14.302417890Z [err]      return runner.run(main)
+2025-10-24T03:44:14.302424627Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.302432228Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:44:14.302440748Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:44:14.302448017Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.302456181Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:44:14.302463639Z [err]      return future.result()
+2025-10-24T03:44:14.302470962Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.302478140Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:44:14.302484763Z [err]      await self._serve(sockets)
+2025-10-24T03:44:14.302492276Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:44:14.302501674Z [err]      config.load()
+2025-10-24T03:44:14.302509530Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:44:14.302517926Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:44:14.302525319Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.302532714Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:44:14.302540769Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:44:14.302548299Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.302555344Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:44:14.304706185Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:44:14.304713598Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:14.304721183Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:44:14.304728464Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:44:14.304735043Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:44:14.304741196Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:44:14.304747312Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:44:14.304754437Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:44:14.304760597Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:44:14.304767102Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:14.304772993Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:14.304779339Z [err]      ```python
+2025-10-24T03:44:14.304785587Z [err]      ^
+2025-10-24T03:44:14.304791843Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:16.336832390Z [inf]  Initializing...
+2025-10-24T03:44:21.137092334Z [err]      ^
+2025-10-24T03:44:21.137107196Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:21.137119475Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:21.137120990Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:44:21.137132978Z [inf]  Starting ingestion worker...
+2025-10-24T03:44:21.137134276Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:44:21.137144534Z [inf]  Starting Uvicorn server...
+2025-10-24T03:44:21.137148860Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:21.137156776Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:21.137162530Z [err]      ```python
+2025-10-24T03:44:21.164956744Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:21.164959492Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:44:21.164970133Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:44:21.164980580Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:44:21.164981065Z [err]      sys.exit(main())
+2025-10-24T03:44:21.164993135Z [err]               ^^^^^^
+2025-10-24T03:44:21.164997409Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.165004716Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:44:21.165011338Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:44:21.165018349Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:44:21.165025162Z [err]      run(
+2025-10-24T03:44:21.165031195Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.165038359Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:44:21.165042649Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:44:21.165053793Z [err]      server.run()
+2025-10-24T03:44:21.165055163Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:44:21.165064232Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.165068881Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:44:21.165072743Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:44:21.165083580Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:44:21.165084334Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:44:21.165093099Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.167423662Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:44:21.167434280Z [err]      config.load()
+2025-10-24T03:44:21.167445575Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:44:21.167448845Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.167454267Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:44:21.167457724Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:44:21.167463782Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.167465670Z [err]      return runner.run(main)
+2025-10-24T03:44:21.167472434Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.167472909Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:44:21.167480873Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:44:21.167481456Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:44:21.167489766Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:44:21.167489991Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.167497957Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:44:21.167501372Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.167510386Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:44:21.167515782Z [err]      return future.result()
+2025-10-24T03:44:21.167520650Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.167525794Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:44:21.167530153Z [err]      await self._serve(sockets)
+2025-10-24T03:44:21.170843990Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:44:21.170860514Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:21.170868964Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:44:21.170877116Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:44:21.170890449Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:44:21.170909018Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:44:21.170922755Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:44:21.170929933Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:44:21.170937540Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:44:21.170946966Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:21.170955331Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:21.170963541Z [err]      ```python
+2025-10-24T03:44:21.170970906Z [err]      ^
+2025-10-24T03:44:21.170978245Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:22.350499479Z [inf]  Initializing...
+2025-10-24T03:44:27.356634156Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:44:27.356644087Z [inf]  Starting ingestion worker...
+2025-10-24T03:44:27.356650170Z [inf]  Starting Uvicorn server...
+2025-10-24T03:44:27.415993104Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:27.415998598Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:44:27.416003373Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:27.416008831Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:27.416015343Z [err]      ```python
+2025-10-24T03:44:27.416025624Z [err]      ^
+2025-10-24T03:44:27.416034866Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:28.485711040Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:28.485717918Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:44:28.485725041Z [err]      sys.exit(main())
+2025-10-24T03:44:28.485732778Z [err]               ^^^^^^
+2025-10-24T03:44:28.485739110Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:44:28.485745954Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:44:28.485752633Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.485759941Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:44:28.485767536Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:44:28.485774640Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.485781774Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:44:28.485788294Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:44:28.485794501Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.485800411Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:44:28.485807356Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:44:28.485814054Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.485820410Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:44:28.485827236Z [err]      run(
+2025-10-24T03:44:28.485833170Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:44:28.485840125Z [err]      server.run()
+2025-10-24T03:44:28.485846843Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:44:28.485852617Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:44:28.491489347Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.491496826Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:44:28.491508754Z [err]      return runner.run(main)
+2025-10-24T03:44:28.491516162Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.491528717Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:44:28.491536210Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:44:28.491543960Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.491551391Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:44:28.491558280Z [err]      return future.result()
+2025-10-24T03:44:28.491565663Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.491572636Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:44:28.491579823Z [err]      await self._serve(sockets)
+2025-10-24T03:44:28.491587183Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:44:28.491598330Z [err]      config.load()
+2025-10-24T03:44:28.491606535Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:44:28.491616643Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:44:28.491624342Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.491630857Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:44:28.491638516Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:44:28.491645763Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.491652988Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:44:28.492213486Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:44:28.492222557Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:28.492228829Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:44:28.492235343Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:44:28.492242116Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:44:28.492248202Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:44:28.492254538Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:44:28.492261396Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:44:28.492271220Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:44:28.492277958Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:28.492286479Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:28.492293971Z [err]      ```python
+2025-10-24T03:44:28.492301528Z [err]      ^
+2025-10-24T03:44:28.492308493Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:29.453743463Z [inf]  Initializing...
+2025-10-24T03:44:34.388134674Z [inf]  Starting Google Drive sync worker...
+2025-10-24T03:44:34.388141142Z [inf]  Starting ingestion worker...
+2025-10-24T03:44:34.388147976Z [inf]  Starting Uvicorn server...
+2025-10-24T03:44:34.388154506Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:34.388161008Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T03:44:34.388167073Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:34.388172198Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:34.388177181Z [err]      ```python
+2025-10-24T03:44:34.388182939Z [err]      ^
+2025-10-24T03:44:34.388187740Z [err]  SyntaxError: invalid syntax
+2025-10-24T03:44:34.622627194Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T03:44:34.622640001Z [err]      return callback(*args, **kwargs)
+2025-10-24T03:44:34.622642674Z [err]  Traceback (most recent call last):
+2025-10-24T03:44:34.622650105Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.622650838Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T03:44:34.622657241Z [err]      sys.exit(main())
+2025-10-24T03:44:34.622658994Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T03:44:34.622662831Z [err]               ^^^^^^
+2025-10-24T03:44:34.622667229Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T03:44:34.622672400Z [err]      return self.main(*args, **kwargs)
+2025-10-24T03:44:34.622673950Z [err]      run(
+2025-10-24T03:44:34.622678378Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.622683376Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T03:44:34.622683732Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T03:44:34.622688339Z [err]      rv = self.invoke(ctx)
+2025-10-24T03:44:34.622691821Z [err]      server.run()
+2025-10-24T03:44:34.622694268Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.622700727Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T03:44:34.622700890Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T03:44:34.622706291Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T03:44:34.622709289Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T03:44:34.622711443Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.624123178Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.624130420Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T03:44:34.624135420Z [err]      return runner.run(main)
+2025-10-24T03:44:34.624139592Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.624143764Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T03:44:34.624148085Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T03:44:34.624152288Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.624157872Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T03:44:34.624163302Z [err]      return future.result()
+2025-10-24T03:44:34.624171093Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.624177122Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T03:44:34.624182495Z [err]      await self._serve(sockets)
+2025-10-24T03:44:34.624188082Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T03:44:34.624193731Z [err]      config.load()
+2025-10-24T03:44:34.624199361Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T03:44:34.624205320Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T03:44:34.624211317Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.624218552Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T03:44:34.624224510Z [err]      module = importlib.import_module(module_str)
+2025-10-24T03:44:34.624230338Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.624236147Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T03:44:34.626546332Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T03:44:34.626552534Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T03:44:34.626558297Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T03:44:34.626563775Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T03:44:34.626569266Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T03:44:34.626574778Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T03:44:34.626580653Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T03:44:34.626586127Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T03:44:34.626591363Z [err]    File "/app/app/main.py", line 7, in <module>
+2025-10-24T03:44:34.626597282Z [err]      from app.workers.main_worker import MainWorker
+2025-10-24T03:44:34.626603735Z [err]    File "/app/app/workers/main_worker.py", line 1
+2025-10-24T03:44:34.626609435Z [err]      ```python
+2025-10-24T03:44:34.626614723Z [err]      ^
+2025-10-24T03:44:34.626620156Z [err]  SyntaxError: invalid syntax

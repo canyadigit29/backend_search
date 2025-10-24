@@ -1,4 +1,3 @@
-```python
 import logging
 import asyncio
 from app.core.supabase_client import supabase
@@ -78,5 +77,3 @@ class MainWorker:
             await MainWorker.run_ingestion_task()
             logger.info(f"--- Worker cycle complete. Sleeping for {interval_seconds} seconds. ---")
             await asyncio.sleep(interval_seconds)
-
-```
