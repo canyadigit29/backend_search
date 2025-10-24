@@ -343,9 +343,11 @@ async def api_search_docs(request: Request):
     return await assistant_search_docs(request)
 
 
+from app.api.assistant.schemas import AssistantSearchRequest
+
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
 @router.post("/assistant/search_docs")
-async def assistant_search_docs(request: Request):
+async def assistant_search_docs(payload: AssistantSearchRequest):
     """
     Accepts a payload from an OpenAI assistant, normalizes fields, and forwards
     to the perform_search flow.
@@ -353,19 +355,15 @@ async def assistant_search_docs(request: Request):
     # Timer no longer controls batching; kept available if needed elsewhere
     sw = None
 
-    try:
-        data = await request.json()
-    except Exception as e:
-        return JSONResponse({"error": f"Invalid JSON payload: {e}"}, status_code=400)
-
-    user_prompt = data.get("query") or data.get("user_prompt")
+    # Data is now a validated Pydantic model, access attributes directly
+    user_prompt = payload.query or payload.user_prompt
     if not user_prompt:
         return JSONResponse({"error": "Missing query in payload"}, status_code=400)
 
     # Optional resume mode: summarize only specific chunk IDs provided by the caller
-    resume_chunk_ids = data.get("resume_chunk_ids")
+    resume_chunk_ids = payload.resume_chunk_ids
 
-    relevance_threshold = data.get("relevance_threshold")
+    relevance_threshold = payload.relevance_threshold
     if relevance_threshold is None:
         relevance_threshold = 0.4 # Default if not provided by assistant
 
