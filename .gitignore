@@ -314,3 +314,6 @@ app/**/*.json
 
 # Or, list specific JSON files or folders to ignore, for example:
 # app/some_folder/generated.json
+.env
+tmp_repro.py
+tune_search.py
