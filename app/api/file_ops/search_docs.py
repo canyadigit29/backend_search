@@ -385,21 +385,21 @@ async def assistant_search_docs(payload: AssistantSearchRequest):
     else:
         tool_args = {
             "embedding": embedding,
-            "file_name_filter": search_filters.get("file_name") or data.get("file_name_filter"),
-            "description_filter": search_filters.get("description") or data.get("description_filter"),
-            "start_date": data.get("start_date"),
-            "end_date": data.get("end_date"),
+            "file_name_filter": search_filters.get("file_name") or payload.file_name_filter,
+            "description_filter": search_filters.get("description") or payload.description_filter,
+            "start_date": payload.start_date,
+            "end_date": payload.end_date,
             "user_prompt": user_prompt,
             "search_query": search_query,
             "relevance_threshold": relevance_threshold,
-            "max_results": data.get("max_results")
+            "max_results": payload.max_results
         }
         for meta_field in ["document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"]:
             if search_filters.get(meta_field) is not None:
                 tool_args[meta_field] = search_filters[meta_field]
         
         # Optional OR-terms merging: if provided, or inferred from inline "OR"s, run per-term searches and merge by ID using max score
-        provided_or_terms = data.get("or_terms") if isinstance(data.get("or_terms"), list) else []
+        provided_or_terms = payload.or_terms if isinstance(payload.or_terms, list) else []
         inline_or_terms = _parse_inline_or_terms(user_prompt)
         or_terms = provided_or_terms or inline_or_terms
         if or_terms and isinstance(or_terms, list):
@@ -425,7 +425,7 @@ async def assistant_search_docs(payload: AssistantSearchRequest):
                         merged_by_id[mid] = m
             matches = sorted(merged_by_id.values(), key=lambda x: x.get("score", 0), reverse=True)
             # Apply max_results cap if provided
-            max_results = data.get("max_results") or 100
+            max_results = payload.max_results or 100
             matches = matches[:max_results]
         else:
             search_result = perform_search(tool_args)
@@ -482,8 +482,8 @@ async def assistant_search_docs(payload: AssistantSearchRequest):
                         r["keyword_score_norm"] = 0.0
                 
                 # Blend: prefer explicit weights if provided, else use smart heuristic
-                if isinstance(data.get("search_weights"), dict):
-                    weights = data.get("search_weights")
+                if isinstance(payload.search_weights, dict):
+                    weights = payload.search_weights
                     alpha_sem = float(weights.get("semantic", sem_w))
                     beta_kw = float(weights.get("keyword", kw_w))
                 else:
