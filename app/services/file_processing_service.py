@@ -84,8 +84,9 @@ class FileProcessingService:
 
             try:
                 text = extract_text(local_temp_path)
-                if text is None and file_path.lower().endswith('.pdf'):
-                    logger.warning(f"Text extraction failed for PDF. Marking for OCR.")
+                # If text is very short, it's likely a scanned PDF.
+                if file_path.lower().endswith('.pdf') and (text is None or len(text.strip()) < 250):
+                    logger.warning(f"Text extraction yielded very little text ({len(text.strip()) if text else 0} chars). Marking for OCR.")
                     supabase.table("files").update({"ocr_needed": True}).eq("id", file_id).execute()
                     os.remove(local_temp_path)
                     return # Stop processing, OCR worker will pick it up

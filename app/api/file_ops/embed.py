@@ -82,8 +82,11 @@ def embed_and_store_chunk(chunk):
         if "created_at" not in data:
             data["created_at"] = datetime.utcnow().isoformat()
 
-        # This is a critical change: we are now raising an exception on failure
-        supabase.table("document_chunks").insert(data).execute(raise_on_failure=True)
+        print(f"[DEBUG] Data to be inserted: {data}")
+        # Manually check for an error and raise an exception on failure
+        result = supabase.table("document_chunks").insert(data).execute()
+        if hasattr(result, 'error') and result.error:
+            raise Exception(f"Supabase insert failed: {result.error.message}")
 
         logging.info(
             f"✅ Stored chunk {data.get('chunk_index')} for file {data.get('file_id')} "
