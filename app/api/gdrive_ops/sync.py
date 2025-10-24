@@ -60,17 +60,17 @@ async def run_google_drive_sync():
         print(f"Found {len(supabase_files)} files in Supabase DB.")
 
         # 2. Get list of files from Google Drive folder, handling pagination
-        print(f"--- DEBUG: Using Google Drive Folder ID: {settings.GOOGLE_DRIVE_FOLDER_ID} ---")
         query = f"'{settings.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false"
-        print(f"--- DEBUG: Executing Google Drive query: {query} ---")
         drive_files = []
         page_token = None
         while True:
             results = drive_service.files().list(
                 q=query,
-                pageSize=100,  # Adjust as needed
+                pageSize=100,
                 fields="nextPageToken, files(id, name, mimeType)",
-                pageToken=page_token
+                pageToken=page_token,
+                includeItemsFromAllDrives=True,  # Required for Shared Drives
+                supportsAllDrives=True           # Required for Shared Drives
             ).execute()
             
             drive_files.extend(results.get('files', []))
