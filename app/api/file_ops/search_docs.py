@@ -433,12 +433,15 @@ async def assistant_search_docs(request: Request):
             search_result = perform_search(tool_args)
             matches = search_result.get("retrieved_chunks", [])
 
-        # Fallback: If semantic/OR-merged results are sparse, run a keyword FTS search and merge
+        # Smart hybrid: decide weights and when to bring in FTS based on lexical cues
+        sem_w, kw_w = _decide_weighting(user_prompt or "", or_terms if isinstance(or_terms, list) else [])
+        # Trigger FTS if results are sparse OR query looks lexical (quotes, digits, acronyms, OR terms)
         try:
-            should_fallback = len(matches) < 5
+            sparse = len(matches) < 5
         except Exception:
-            should_fallback = True
-        if should_fallback:
+            sparse = True
+        looks_lexical = kw_w >= 0.5 or (or_terms and len(or_terms) > 0)
+        if sparse or looks_lexical:
             # Build keyword list: prefer explicit or_terms or inline OR-parsed terms; avoid treating the entire query as one phrase
             keyword_terms = []
             if or_terms:
@@ -480,10 +483,13 @@ async def assistant_search_docs(request: Request):
                     else:
                         r["keyword_score_norm"] = 0.0
                 
-                # Let the assistant decide the blend, otherwise default to 50/50
-                weights = data.get("search_weights", {"semantic": 0.5, "keyword": 0.5})
-                alpha_sem = weights.get("semantic", 0.5)
-                beta_kw = weights.get("keyword", 0.5)
+                # Blend: prefer explicit weights if provided, else use smart heuristic
+                if isinstance(data.get("search_weights"), dict):
+                    weights = data.get("search_weights")
+                    alpha_sem = float(weights.get("semantic", sem_w))
+                    beta_kw = float(weights.get("keyword", kw_w))
+                else:
+                    alpha_sem, beta_kw = sem_w, kw_w
 
                 merged_by_id = {}
                 for m in matches:
