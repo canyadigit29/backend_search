@@ -7,6 +7,7 @@ import calendar
 
 from app.core.extract_text import extract_text, TextExtractionError
 from app.core.supabase_client import supabase
+from app.api.file_ops.embed import remove_embeddings_for_file
 
 def extract_metadata_from_filename(file_name):
     meta = {}
@@ -92,6 +93,11 @@ def fixed_size_chunk(text, max_tokens=1200, overlap_tokens=120):
 def chunk_file(file_id: str):
     print(f"🔍 Starting chunking for file_id: {file_id}")
     try:
+        # First, delete any existing chunks for this file to prevent stale data
+        print(f"🗑️ Deleting existing chunks for file_id: {file_id}")
+        remove_embeddings_for_file(file_id)
+        print(f"✅ Successfully deleted existing chunks for file_id: {file_id}")
+
         # ... (file lookup logic remains the same)
         file_entry = None
         is_uuid = re.fullmatch(r"[0-9a-fA-F\-]{36}", file_id)

@@ -89,7 +89,7 @@ class FileProcessingService:
                     logger.warning(f"Text extraction yielded very little text ({len(text.strip()) if text else 0} chars). Marking for OCR and processing.")
                     supabase.table("files").update({"ocr_needed": True}).eq("id", file_id).execute()
                     # Immediately process for OCR instead of waiting for the next worker cycle
-                    self.process_file_for_ocr(file_id)
+                    FileProcessingService.process_file_for_ocr(file_id)
                     os.remove(local_temp_path)
                     return # Stop further ingestion processing, OCR text will be used next cycle
             finally:
