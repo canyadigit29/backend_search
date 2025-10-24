@@ -1,0 +1,10 @@
+# For backend_search project
+
+[api]
+port = 8001
+
+[db]
+port = 54328
+
+[studio]
+port = 54329
