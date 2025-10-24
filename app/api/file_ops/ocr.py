@@ -64,12 +64,17 @@ def ocr_pdf(file_path: str, file_id: str):
         logger.info(f"Successfully completed OCR for file_id: {file_id}")
 
     except Exception as e:
-        logger.error(f"Error during OCR for file {file_id}: {e}")
-        # Optionally, update the database to reflect the error
-        supabase.table("files").update({
-            "ocr_scanned": False,
-            "ocr_error": str(e)
-        }).eq("id", file_id).execute()
+        logger.error(f"Error during OCR for file {file_id}: {e}", exc_info=True)
+        # Update the database to reflect the error
+        try:
+            supabase.table("files").update({
+                "ocr_scanned": False,
+                "ocr_error": str(e)
+            }).eq("id", file_id).execute()
+        except Exception as db_error:
+            logger.error(f"Could not even update the database with OCR error: {db_error}")
+        # Re-raise the exception to ensure the worker knows it failed
+        raise
     finally:
         # Clean up local files
         if os.path.exists(local_pdf_path):
