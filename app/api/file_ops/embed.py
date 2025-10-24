@@ -66,31 +66,37 @@ def embed_and_store_chunk(chunk):
             logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {chunk.get('chunk_index')} of file {chunk.get('file_id')}")
             return
 
-        # Prepare data for insert, ensuring it matches the schema
-        data = chunk.copy()
-        data["embedding"] = embedding # Use the 'embedding' column
-        
-        # Remove fields that are not in the document_chunks table
-        data.pop('file_name', None) # Explicitly remove file_name
-        data.pop('file_extension', None)
-        data.pop('misc_title', None)
-        data.pop('meeting_month_name', None)
-        
-        # Ensure required fields are present
-        if "id" not in data:
-            data["id"] = str(uuid.uuid4())
-        if "created_at" not in data:
-            data["created_at"] = datetime.utcnow().isoformat()
+        # Define the structured columns that have dedicated fields in the DB
+        structured_keys = [
+            "id", "file_id", "user_id", "content", "embedding", "chunk_index", 
+            "page_number", "document_type", "meeting_date", "ordinance_title", 
+            "ordinance_number", "content_tsv", "created_at", "section_header"
+        ]
 
-        print(f"[DEBUG] Data to be inserted: {data}")
+        # Prepare data for insert
+        data_to_insert = {k: v for k, v in chunk.items() if k in structured_keys}
+        
+        # All other keys are collected into the 'metadata' JSONB field
+        misc_metadata = {k: v for k, v in chunk.items() if k not in structured_keys}
+        data_to_insert["metadata"] = misc_metadata
+        
+        data_to_insert["embedding"] = embedding
+
+        # Ensure required fields are present
+        if "id" not in data_to_insert:
+            data_to_insert["id"] = str(uuid.uuid4())
+        if "created_at" not in data_to_insert:
+            data_to_insert["created_at"] = datetime.utcnow().isoformat()
+
+        print(f"[DEBUG] Data to be inserted: {data_to_insert}")
         # Manually check for an error and raise an exception on failure
-        result = supabase.table("document_chunks").insert(data).execute()
+        result = supabase.table("document_chunks").insert(data_to_insert).execute()
         if hasattr(result, 'error') and result.error:
             raise Exception(f"Supabase insert failed: {result.error.message}")
 
         logging.info(
-            f"✅ Stored chunk {data.get('chunk_index')} for file {data.get('file_id')} "
-            f"(page: {data.get('page_number')})"
+            f"✅ Stored chunk {data_to_insert.get('chunk_index')} for file {data_to_insert.get('file_id')} "
+            f"(page: {data_to_insert.get('page_number')})"
         )
 
     except Exception as e:
