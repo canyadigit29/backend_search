@@ -1,21 +1,15 @@
 import asyncio
 import logging
-from app.tasks.chunk_and_embed_logs import process_unindexed_files
+from app.workers.main_worker import MainWorker
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-async def main():
-    logger.info("Starting the ingestion worker...")
-    while True:
-        try:
-            await process_unindexed_files()
-        except Exception as e:
-            logger.error(f"An error occurred in the worker loop: {e}")
-        
-        # Wait for 60 seconds before checking for new files again
-        logger.info("Worker sleeping for 60 seconds...")
-        await asyncio.sleep(60)
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    logging.info("Starting the main background worker...")
+    try:
+        asyncio.run(MainWorker.run_main_loop())
+    except KeyboardInterrupt:
+        logging.info("Worker stopped manually.")
+    except Exception as e:
+        logging.critical(f"The main worker loop crashed: {e}", exc_info=True)

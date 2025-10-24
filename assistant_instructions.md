@@ -28,15 +28,14 @@ When calling `searchDocumentsAssistant`:
 ```json
 {
   "query": "<user query>",
-  "user": { "id": "4a867500-7423-4eaa-bc79-94e368555e05" },
   "relevance_threshold": "<from table>",
   "search_weights": { "semantic": X, "keyword": Y },
   "or_terms": ["optional synonyms or variations"]
 }
 ```
 
-### **Manual Sync Trigger:**
-If the user asks to "check for new files", "scan Google Drive", "sync documents", or a similar phrase, you MUST use the `triggerGoogleDriveSync` function. This is an asynchronous call; inform the user that the process has started and they can search for the new content in a few moments.
+### **File Ingestion Command:**
+If the user asks to "check for new files", "scan Google Drive", "sync documents", or a similar phrase, you MUST use the `triggerGoogleDriveSync` function. This single command starts the entire background process: it finds new files, performs OCR on them if needed, and then chunks and embeds them. Inform the user that the process has started and they can search for the new content in a few moments.
 
 ### **Adaptive Fallback Logic:**
 
@@ -57,8 +56,7 @@ When `can_resume == true`:
 
    ```json
    {
-     "resume_chunk_ids": <pending_chunk_ids>,
-     "user": { "id": "4a867500-7423-4eaa-bc79-94e368555e05" }
+     "resume_chunk_ids": <pending_chunk_ids>
    }
    ```
 3. Merge new summaries and deduplicate sources by `id`.
