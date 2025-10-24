@@ -1,13 +1,20 @@
 #!/bin/bash
 
-# Start the Google Drive sync worker in the background
+# Set the Python path to include the current directory, fixing module import errors
+export PYTHONPATH=.
+
+# Give the container a few seconds to initialize networking and other services
+echo "Initializing..."
+sleep 5
+
+# Start the background workers.
+# Their output is piped to awk to add a prefix, making logs easier to read.
 echo "Starting Google Drive sync worker..."
-python run_gdrive_sync.py &
+python run_gdrive_sync.py | awk '{ print "[gdrive-sync] " $0 }' &
 
-# Start the ingestion worker in the background
 echo "Starting ingestion worker..."
-python run_worker.py &
+python run_worker.py | awk '{ print "[ingestion-worker] " $0 }' &
 
-# Start the Uvicorn server in the foreground
+# Start the Uvicorn server in the foreground. This must be the last command.
 echo "Starting Uvicorn server..."
 uvicorn llama_server:app --host 0.0.0.0 --port 8000
