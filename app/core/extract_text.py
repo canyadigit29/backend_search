@@ -18,7 +18,7 @@ def clean_text(text):
     return text.strip()
 
 def extract_text_from_pdf(path):
-    # ... (keep existing PDF extraction logic, but raise TextExtractionError on failure)
+    # Try to extract text with pdfplumber
     try:
         with pdfplumber.open(path) as pdf:
             text = "\n".join(
@@ -28,8 +28,9 @@ def extract_text_from_pdf(path):
             if len(text.strip()) > 100:
                 return clean_text(text)
     except Exception as e:
-        print(f"🛑 pdfplumber failed: {e}")
+        print(f"pdfplumber failed: {e}")
 
+    # If pdfplumber fails, try with PyMuPDF
     try:
         doc = fitz.open(path)
         text = "\n".join(
@@ -39,19 +40,10 @@ def extract_text_from_pdf(path):
         if len(text.strip()) > 100:
             return clean_text(text)
     except Exception as e:
-        print(f"🛑 PyMuPDF failed: {e}")
+        print(f"PyMuPDF failed: {e}")
 
-    try:
-        images = convert_from_path(path)
-        ocr_text = ""
-        for i, image in enumerate(images):
-            ocr_text += f"---PAGE {i+1}---\n" + pytesseract.image_to_string(image) + "\n"
-        if len(ocr_text.strip()) > 100:
-            return clean_text(ocr_text)
-    except Exception as e:
-        print(f"� OCR failed: {e}")
-
-    raise TextExtractionError("PDF text extraction failed. The document may be scanned or corrupted. Please OCR it manually.")
+    # If both methods fail, return None to indicate OCR is needed
+    return None
 
 def extract_text_from_docx(path):
     try:

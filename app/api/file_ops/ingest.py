@@ -41,23 +41,41 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
     file_name = file_record["file_name"]
     bucket = os.getenv("SUPABASE_STORAGE_BUCKET")
 
-    response = supabase.storage.from_(bucket).download(file_path)
-    if not response:
-        logging.error(f"❌ Could not download file from Supabase: {file_path}")
-        return
+    if file_record.get("ocr_scanned") and file_record.get("ocr_text_path"):
+        # If OCR has been performed, use the OCR'd text
+        ocr_text_path = file_record["ocr_text_path"]
+        response = supabase.storage.from_(bucket).download(ocr_text_path)
+        text = response.decode('utf-8')
+        logging.info(f"📜 Using OCR'd text from {ocr_text_path}")
+    else:
+        # Otherwise, extract text directly from the original file
+        response = supabase.storage.from_(bucket).download(file_path)
+        if not response:
+            logging.error(f"❌ Could not download file from Supabase: {file_path}")
+            return
 
-    local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
-    with open(local_temp_path, "wb") as f:
-        f.write(response)
+        local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
+        with open(local_temp_path, "wb") as f:
+            f.write(response)
 
-    try:
-        text = extract_text(local_temp_path)
-        logging.info(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
-        if len(text.strip()) < 100:
-            logging.warning(f"⚠️ Extracted text is very short, possible extraction issue for {file_path}")
-    except Exception as e:
-        logging.error(f"❌ Failed to extract text from {file_path}: {str(e)}")
-        return
+        try:
+            text = extract_text(local_temp_path)
+            if text is None:
+                # If text extraction fails, mark for OCR and skip for now
+                logging.warning(f"⚠️ Text extraction failed for {file_path}. Marking for OCR.")
+                supabase.table("files").update({"ocr_needed": True}).eq("id", file_id).execute()
+                os.remove(local_temp_path)
+                return
+            logging.info(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
+            if len(text.strip()) < 100:
+                logging.warning(f"⚠️ Extracted text is very short, possible extraction issue for {file_path}")
+        except Exception as e:
+            logging.error(f"❌ Failed to extract text from {file_path}: {str(e)}")
+            os.remove(local_temp_path)
+            return
+        finally:
+            if os.path.exists(local_temp_path):
+                os.remove(local_temp_path)
 
     if len(text.strip()) == 0:
         logging.warning(f"⚠️ Skipping empty file: {file_path}")
