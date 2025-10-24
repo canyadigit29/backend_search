@@ -5,7 +5,6 @@ from uuid import uuid4
 import tiktoken
 import calendar
 
-from app.core.extract_text import extract_text, TextExtractionError
 from app.core.supabase_client import supabase
 from app.api.file_ops.embed import remove_embeddings_for_file
 
@@ -15,40 +14,28 @@ def extract_metadata_from_filename(file_name):
     ext = file_name.rsplit('.', 1)[-1].lower() if '.' in file_name else ''
     meta['file_extension'] = ext
 
-    # More flexible meeting document parsing
     doc_type_match = re.search(r'(Agenda|Minutes)', name, re.IGNORECASE)
     if doc_type_match:
         meta['document_type'] = doc_type_match.group(1).capitalize()
-
-        # Find year
         year_match = re.search(r'(\d{4})', name)
         if year_match:
             meta['meeting_year'] = int(year_match.group(1))
-
-        # Find month
-        month_names = list(calendar.month_name)[1:]  # January to December
+        month_names = list(calendar.month_name)[1:]
         month_abbrs = list(calendar.month_abbr)[1:]
-        
-        # Create a regex pattern for all month names and abbreviations
         month_pattern = '|'.join(month_names + month_abbrs)
         month_match = re.search(f'({month_pattern})', name, re.IGNORECASE)
-        
         if month_match:
             month_str = month_match.group(1).capitalize()
             try:
-                # Get month number from full name
                 meta['meeting_month'] = list(calendar.month_name).index(month_str)
             except ValueError:
                 try:
-                    # Get month number from abbreviation
                     meta['meeting_month'] = list(calendar.month_abbr).index(month_str)
                 except ValueError:
                     meta['meeting_month'] = None
             meta['meeting_month_name'] = month_str
-        
         return meta
 
-    # Ordinaces (existing logic)
     m = re.match(r'(\d+)?\s*(.*?) Ordinance$', name)
     if m:
         meta['document_type'] = 'Ordinance'
@@ -57,13 +44,11 @@ def extract_metadata_from_filename(file_name):
         meta['ordinance_title'] = m.group(2).strip()
         return meta
 
-    # Misc (fallback)
     meta['document_type'] = 'Misc'
     meta['misc_title'] = name
     return meta
 
 def parse_page_markers(paragraphs):
-    # ... (keep existing function)
     page_number = 1
     para_to_page = {}
     for idx, para in enumerate(paragraphs):
@@ -74,7 +59,6 @@ def parse_page_markers(paragraphs):
     return para_to_page
 
 def fixed_size_chunk(text, max_tokens=1200, overlap_tokens=120):
-    # ... (keep existing function)
     encoding = tiktoken.get_encoding("cl100k_base")
     tokens = encoding.encode(text)
     total_tokens = len(tokens)
@@ -90,80 +74,29 @@ def fixed_size_chunk(text, max_tokens=1200, overlap_tokens=120):
         start += max_tokens - overlap_tokens
     return list(zip(chunks, chunk_meta))
 
-def chunk_file(file_id: str, text: str = None):
+def chunk_file(file_id: str, file_name: str, text: str):
     """
-    Chunks a file into smaller pieces. If text is provided, it chunks the text directly.
-    Otherwise, it downloads the file, extracts the text, and then chunks it.
+    Chunks the provided text and associates it with the given file_id and file_name.
+    This is a pure function that does not perform I/O besides deleting old chunks.
     """
-    print(f"🔍 Starting chunking for file_id: {file_id}")
+    print(f"🔍 Starting chunking for file_id: {file_id} and file_name: {file_name}")
     try:
-        # First, delete any existing chunks for this file to prevent stale data
         print(f"🗑️ Deleting existing chunks for file_id: {file_id}")
         remove_embeddings_for_file(file_id)
         print(f"✅ Successfully deleted existing chunks for file_id: {file_id}")
 
-        # ... (file lookup logic remains the same)
-        file_entry = None
-        is_uuid = re.fullmatch(r"[0-9a-fA-F\-]{36}", file_id)
-
-        if is_uuid:
-            result = supabase.table("files").select("*").eq("id", file_id).execute()
-            file_entry = result.data[0] if result.data else None
-
-        if not file_entry:
-            print(f"❌ No file found for identifier: {file_id}")
-            return {"error": "File not found."}
-
-        file_name = file_entry.get("file_name") or file_entry.get("name") or file_entry.get("file_path")
-
-        # If text is not provided, download and extract it.
-        if text is None:
-            print("📜 Text not provided, extracting from file...")
-            file_path = file_entry["file_path"]
-            bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
-            print(f"📄 Filepath: {file_path}")
-
-            response = supabase.storage.from_(bucket).download(file_path)
-            if not response:
-                print(f"❌ Could not download file from Supabase: {file_path}")
-                return {"error": "Failed to download file from storage."}
-
-            local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
-            with open(local_temp_path, "wb") as f:
-                f.write(response)
-
-            try:
-                text = extract_text(local_temp_path)
-                print(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
-            except TextExtractionError as e:
-                print(f"❌ Failed to extract text from {file_path}: {str(e)}")
-                return {"error": str(e)}
-            except Exception as e:
-                print(f"❌ An unexpected error occurred during text extraction: {str(e)}")
-                return {"error": "An unexpected error occurred during file processing."}
-            finally:
-                if os.path.exists(local_temp_path):
-                    os.remove(local_temp_path)
-        
         if not text or not text.strip():
             print("🤷 No text available to chunk.")
             return {"chunks": []}
 
-        # ... (the rest of the chunking logic is the same)
         filename_meta = extract_metadata_from_filename(Path(file_name).name)
         print(f"[DEBUG] Filename metadata for {file_name}: {filename_meta}")
         chunk_tuples = fixed_size_chunk(text, max_tokens=1200, overlap_tokens=120)
         db_chunks = []
         for i, (chunk_text, meta) in enumerate(chunk_tuples):
             chunk_id = str(uuid4())
-            
-            # Start with a clean slate for metadata that will go to the DB
             db_metadata = {}
-
-            # Set document_type, which should always be present
             db_metadata['document_type'] = filename_meta.get('document_type')
-
-            # Conditionally create meeting_date
             if 'meeting_year' in filename_meta and 'meeting_month' in filename_meta:
                 try:
                     year = int(filename_meta['meeting_year'])
@@ -173,33 +106,24 @@ def chunk_file(file_id: str, text: str = None):
                     db_metadata['meeting_date'] = None
             else:
                 db_metadata['meeting_date'] = None
-
-            # Conditionally add ordinance fields
             if 'ordinance_number' in filename_meta:
                 db_metadata['ordinance_number'] = filename_meta.get('ordinance_number')
             if 'ordinance_title' in filename_meta:
                 db_metadata['ordinance_title'] = filename_meta.get('ordinance_title')
-
-            # Merge with chunk-specific metadata like page_number
             db_metadata.update(meta)
             
-            print(f"[DEBUG] Chunk {i} metadata for DB: {db_metadata}")
-
             chunk = {
                 "id": chunk_id,
-                "file_id": file_entry["id"],
+                "file_id": file_id,
                 "content": chunk_text,
                 "chunk_index": i,
                 **db_metadata,
             }
-            # Ensure file_name is not in the chunk dictionary
             chunk.pop('file_name', None)
             db_chunks.append(chunk)
 
-        print(f"🧹 Got {len(db_chunks)} fixed-size chunks from {file_path}")
-
+        print(f"🧹 Got {len(db_chunks)} fixed-size chunks from {file_name}")
         return {"chunks": db_chunks}
-
     except Exception as e:
         print(f"❌ Error during chunking: {str(e)}")
         return {"error": "An unexpected error occurred during chunking."}
