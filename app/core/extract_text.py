@@ -25,7 +25,10 @@ def extract_text_from_pdf(path):
                 f"---PAGE {i+1}---\n" + (page.extract_text() or "")
                 for i, page in enumerate(pdf.pages)
             )
-            if len(text.strip()) > 100:
+            # New, more robust check:
+            # Remove all page markers and whitespace to see if any real text remains.
+            text_content_only = re.sub(r'---PAGE \d+---', '', text).strip()
+            if len(text_content_only) > 100: # Check if there's substantial content
                 return clean_text(text)
     except Exception as e:
         print(f"pdfplumber failed: {e}")
@@ -37,7 +40,9 @@ def extract_text_from_pdf(path):
             f"---PAGE {i+1}---\n" + page.get_text()
             for i, page in enumerate(doc)
         )
-        if len(text.strip()) > 100:
+        # Apply the same robust check here
+        text_content_only = re.sub(r'---PAGE \d+---', '', text).strip()
+        if len(text_content_only) > 100:
             return clean_text(text)
     except Exception as e:
         print(f"PyMuPDF failed: {e}")
