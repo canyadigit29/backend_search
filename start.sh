@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Source Railway's environment variables file if it exists
+if [ -f "$RAILWAY_ENVIRONMENT_FILE" ]; then
+  echo "Sourcing Railway environment variables..."
+  source "$RAILWAY_ENVIRONMENT_FILE"
+fi
+
 # Set the Python path to include the current directory, fixing module import errors
 export PYTHONPATH=.
 

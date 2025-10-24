@@ -1,0 +1,535 @@
+2025-10-24T01:50:00.000000000Z [inf]  Starting Container
+2025-10-24T01:50:01.765372833Z [inf]  Initializing...
+2025-10-24T01:50:05.984602938Z [inf]  Starting Uvicorn server...
+2025-10-24T01:50:05.984669325Z [inf]  Starting Google Drive sync worker...
+2025-10-24T01:50:05.984676078Z [inf]  Starting ingestion worker...
+2025-10-24T01:50:07.068147935Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:07.068157684Z [err]  postgrest.exceptions.APIError: {'message': "Could not find the table 'public.daily_chat_log' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2025-10-24T01:50:07.068162048Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T01:50:07.068172591Z [err]      from app.tasks.chunk_and_embed_logs import process_unindexed_files
+2025-10-24T01:50:07.068179695Z [err]    File "/app/app/tasks/chunk_and_embed_logs.py", line 29, in <module>
+2025-10-24T01:50:07.068186547Z [err]      .execute()
+2025-10-24T01:50:07.068193917Z [err]       ^^^^^^^^^
+2025-10-24T01:50:07.068201603Z [err]    File "/usr/local/lib/python3.11/site-packages/postgrest/_sync/request_builder.py", line 53, in execute
+2025-10-24T01:50:07.068211334Z [err]      raise APIError(dict(json_obj))
+2025-10-24T01:50:07.102431710Z [err]  /usr/local/lib/python3.11/site-packages/pydantic/_internal/_generate_schema.py:2249: UnsupportedFieldAttributeWarning: The 'validate_default' attribute with value True was provided to the `Field()` function, which has no effect in the context it was used. 'validate_default' is field-specific metadata, and can only be attached to a model field using `Annotated` metadata or by assignment. This may have happened because an `Annotated` type alias using the `type` statement was used, or if the `Field()` function was attached to a single member of a union type.
+2025-10-24T01:50:07.102445949Z [err]    warnings.warn(
+2025-10-24T01:50:07.420551718Z [inf]  [ingestion-worker] 📁 Current Working Directory: /app
+2025-10-24T01:50:07.420558850Z [inf]  [ingestion-worker] 📂 Contents: ['app', 'start.sh', 'tests', 'assistant_instructions.md', 'Procfile', 'readme', 'run_gdrive_sync.py', '.env.example', 'Dockerfile', 'run_worker.py', 'llama_server.py', 'REVERT_af74f78a557b975b95f5680ad42f0e17cccc3331.md', 'openapi.json', 'supabase', 'logs.1761258607163.log', 'requirements.txt', '.vscode', '.gitignore']
+2025-10-24T01:50:07.420565778Z [inf]  [ingestion-worker] 📦 sys.path = ['/app', '/app', '/usr/local/lib/python311.zip', '/usr/local/lib/python3.11', '/usr/local/lib/python3.11/lib-dynload', '/usr/local/lib/python3.11/site-packages']
+2025-10-24T01:50:08.078347048Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:08.078353710Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T01:50:08.078362299Z [err]      sys.exit(main())
+2025-10-24T01:50:08.078369098Z [err]               ^^^^^^
+2025-10-24T01:50:08.078375492Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T01:50:08.078382508Z [err]      return self.main(*args, **kwargs)
+2025-10-24T01:50:08.078389009Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.078510635Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T01:50:08.078527313Z [err]      rv = self.invoke(ctx)
+2025-10-24T01:50:08.078535399Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.078541932Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T01:50:08.078548059Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T01:50:08.078554321Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.078560332Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T01:50:08.085060668Z [err]      await self._serve(sockets)
+2025-10-24T01:50:08.085061370Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.085076015Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T01:50:08.085077224Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T01:50:08.085092492Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.085097775Z [err]      return runner.run(main)
+2025-10-24T01:50:08.085104000Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T01:50:08.085111053Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.085114348Z [err]      return future.result()
+2025-10-24T01:50:08.085121933Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T01:50:08.085123839Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.085131121Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T01:50:08.085134310Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T01:50:08.085159812Z [err]      return callback(*args, **kwargs)
+2025-10-24T01:50:08.085166345Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.085173263Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T01:50:08.085180272Z [err]      run(
+2025-10-24T01:50:08.085187073Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T01:50:08.085195482Z [err]      server.run()
+2025-10-24T01:50:08.085202902Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T01:50:08.085209753Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T01:50:08.088544634Z [err]    File "/app/llama_server.py", line 9, in <module>
+2025-10-24T01:50:08.088561485Z [err]      from llama_index.core.retrievers import BM25Retriever, VectorIndexRetriever, HybridRetriever
+2025-10-24T01:50:08.088568900Z [err]  ImportError: cannot import name 'BM25Retriever' from 'llama_index.core.retrievers' (/usr/local/lib/python3.11/site-packages/llama_index/core/retrievers/__init__.py)
+2025-10-24T01:50:08.088786784Z [err]      config.load()
+2025-10-24T01:50:08.088793843Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T01:50:08.088800519Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T01:50:08.088809383Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.088817079Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T01:50:08.088824100Z [err]      module = importlib.import_module(module_str)
+2025-10-24T01:50:08.088833517Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.088839427Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T01:50:08.088845212Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T01:50:08.088852192Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:08.088857820Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T01:50:08.088879187Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T01:50:08.088886965Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T01:50:08.088893878Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T01:50:08.088899502Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T01:50:08.088904971Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T01:50:08.269567450Z [err]  INFO:__main__:Starting the Google Drive sync worker...
+2025-10-24T01:50:08.269574637Z [err]  INFO:__main__:Running scheduled Google Drive sync...
+2025-10-24T01:50:08.319823341Z [err]  INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+2025-10-24T01:50:08.430555005Z [err]  INFO:httpx:HTTP Request: POST https://tphojwggedgjvchamcfp.supabase.co/rest/v1/rpc/get_all_file_names "HTTP/2 200 OK"
+2025-10-24T01:50:09.375469243Z [inf]  Initializing...
+2025-10-24T01:50:14.378528976Z [inf]  Starting Google Drive sync worker...
+2025-10-24T01:50:14.378535375Z [inf]  Starting ingestion worker...
+2025-10-24T01:50:14.378541552Z [inf]  Starting Uvicorn server...
+2025-10-24T01:50:15.457680922Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:15.457688723Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T01:50:15.457696515Z [err]      from app.tasks.chunk_and_embed_logs import process_unindexed_files
+2025-10-24T01:50:15.457702588Z [err]    File "/app/app/tasks/chunk_and_embed_logs.py", line 29, in <module>
+2025-10-24T01:50:15.457710384Z [err]      .execute()
+2025-10-24T01:50:15.457716545Z [err]       ^^^^^^^^^
+2025-10-24T01:50:15.457724532Z [err]    File "/usr/local/lib/python3.11/site-packages/postgrest/_sync/request_builder.py", line 53, in execute
+2025-10-24T01:50:15.457731246Z [err]      raise APIError(dict(json_obj))
+2025-10-24T01:50:15.457738277Z [err]  postgrest.exceptions.APIError: {'message': "Could not find the table 'public.daily_chat_log' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2025-10-24T01:50:16.166069553Z [err]  /usr/local/lib/python3.11/site-packages/pydantic/_internal/_generate_schema.py:2249: UnsupportedFieldAttributeWarning: The 'validate_default' attribute with value True was provided to the `Field()` function, which has no effect in the context it was used. 'validate_default' is field-specific metadata, and can only be attached to a model field using `Annotated` metadata or by assignment. This may have happened because an `Annotated` type alias using the `type` statement was used, or if the `Field()` function was attached to a single member of a union type.
+2025-10-24T01:50:16.166105951Z [err]    warnings.warn(
+2025-10-24T01:50:16.166114403Z [inf]  [ingestion-worker] 📁 Current Working Directory: /app
+2025-10-24T01:50:16.166123077Z [inf]  [ingestion-worker] 📂 Contents: ['__pycache__', 'app', 'start.sh', 'tests', 'assistant_instructions.md', 'Procfile', 'readme', 'run_gdrive_sync.py', '.env.example', 'Dockerfile', 'run_worker.py', 'llama_server.py', 'REVERT_af74f78a557b975b95f5680ad42f0e17cccc3331.md', 'openapi.json', 'supabase', 'logs.1761258607163.log', 'requirements.txt', '.vscode', '.gitignore']
+2025-10-24T01:50:16.166134972Z [inf]  [ingestion-worker] 📦 sys.path = ['/app', '/app', '/usr/local/lib/python311.zip', '/usr/local/lib/python3.11', '/usr/local/lib/python3.11/lib-dynload', '/usr/local/lib/python3.11/site-packages']
+2025-10-24T01:50:16.492056418Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:16.492066212Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T01:50:16.492075460Z [err]      sys.exit(main())
+2025-10-24T01:50:16.492086952Z [err]               ^^^^^^
+2025-10-24T01:50:16.492099308Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T01:50:16.492107976Z [err]      return self.main(*args, **kwargs)
+2025-10-24T01:50:16.492117662Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.492136855Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T01:50:16.492156031Z [err]      rv = self.invoke(ctx)
+2025-10-24T01:50:16.492167091Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.492176663Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T01:50:16.492186520Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T01:50:16.492195652Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.492205544Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T01:50:16.492215166Z [err]      return callback(*args, **kwargs)
+2025-10-24T01:50:16.492224819Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.492233495Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T01:50:16.492242263Z [err]      run(
+2025-10-24T01:50:16.492250780Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T01:50:16.492260228Z [err]      server.run()
+2025-10-24T01:50:16.492276795Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T01:50:16.492286173Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T01:50:16.496810496Z [err]      module = importlib.import_module(module_str)
+2025-10-24T01:50:16.496828230Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.496839835Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T01:50:16.496985835Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.496994364Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T01:50:16.497001032Z [err]      return runner.run(main)
+2025-10-24T01:50:16.497007195Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.497012889Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T01:50:16.497018787Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T01:50:16.497025630Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.497032156Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T01:50:16.497039105Z [err]      return future.result()
+2025-10-24T01:50:16.497046435Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.497053469Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T01:50:16.497058986Z [err]      await self._serve(sockets)
+2025-10-24T01:50:16.497065133Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T01:50:16.497072949Z [err]      config.load()
+2025-10-24T01:50:16.497080155Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T01:50:16.497087461Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T01:50:16.497093391Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.497102126Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T01:50:16.499361561Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T01:50:16.499373448Z [err]    File "/app/llama_server.py", line 9, in <module>
+2025-10-24T01:50:16.499381291Z [err]      from llama_index.core.retrievers import BM25Retriever, VectorIndexRetriever, HybridRetriever
+2025-10-24T01:50:16.499389280Z [err]  ImportError: cannot import name 'BM25Retriever' from 'llama_index.core.retrievers' (/usr/local/lib/python3.11/site-packages/llama_index/core/retrievers/__init__.py)
+2025-10-24T01:50:16.499423055Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T01:50:16.499432343Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:16.499440374Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T01:50:16.499450276Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T01:50:16.499457950Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T01:50:16.499465284Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T01:50:16.499475479Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T01:50:17.063492968Z [err]  INFO:__main__:Starting the Google Drive sync worker...
+2025-10-24T01:50:17.063498963Z [err]  INFO:__main__:Running scheduled Google Drive sync...
+2025-10-24T01:50:17.063504780Z [err]  INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+2025-10-24T01:50:18.001372722Z [inf]  Initializing...
+2025-10-24T01:50:23.001336648Z [inf]  Starting Google Drive sync worker...
+2025-10-24T01:50:23.001346107Z [inf]  Starting ingestion worker...
+2025-10-24T01:50:23.002627589Z [inf]  Starting Uvicorn server...
+2025-10-24T01:50:24.115839334Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:24.115852827Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T01:50:24.115859331Z [err]      from app.tasks.chunk_and_embed_logs import process_unindexed_files
+2025-10-24T01:50:24.115868252Z [err]    File "/app/app/tasks/chunk_and_embed_logs.py", line 29, in <module>
+2025-10-24T01:50:24.115874117Z [err]      .execute()
+2025-10-24T01:50:24.115880050Z [err]       ^^^^^^^^^
+2025-10-24T01:50:24.115887524Z [err]    File "/usr/local/lib/python3.11/site-packages/postgrest/_sync/request_builder.py", line 53, in execute
+2025-10-24T01:50:24.115893205Z [err]      raise APIError(dict(json_obj))
+2025-10-24T01:50:24.115899603Z [err]  postgrest.exceptions.APIError: {'message': "Could not find the table 'public.daily_chat_log' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2025-10-24T01:50:24.235268730Z [inf]  [ingestion-worker] 📁 Current Working Directory: /app
+2025-10-24T01:50:24.235273191Z [inf]  [ingestion-worker] 📂 Contents: ['__pycache__', 'app', 'start.sh', 'tests', 'assistant_instructions.md', 'Procfile', 'readme', 'run_gdrive_sync.py', '.env.example', 'Dockerfile', 'run_worker.py', 'llama_server.py', 'REVERT_af74f78a557b975b95f5680ad42f0e17cccc3331.md', 'openapi.json', 'supabase', 'logs.1761258607163.log', 'requirements.txt', '.vscode', '.gitignore']
+2025-10-24T01:50:24.235278006Z [inf]  [ingestion-worker] 📦 sys.path = ['/app', '/app', '/usr/local/lib/python311.zip', '/usr/local/lib/python3.11', '/usr/local/lib/python3.11/lib-dynload', '/usr/local/lib/python3.11/site-packages']
+2025-10-24T01:50:24.301504704Z [err]  /usr/local/lib/python3.11/site-packages/pydantic/_internal/_generate_schema.py:2249: UnsupportedFieldAttributeWarning: The 'validate_default' attribute with value True was provided to the `Field()` function, which has no effect in the context it was used. 'validate_default' is field-specific metadata, and can only be attached to a model field using `Annotated` metadata or by assignment. This may have happened because an `Annotated` type alias using the `type` statement was used, or if the `Field()` function was attached to a single member of a union type.
+2025-10-24T01:50:24.301513305Z [err]    warnings.warn(
+2025-10-24T01:50:25.021654792Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T01:50:25.021664589Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:25.021665667Z [err]      run(
+2025-10-24T01:50:25.021673502Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T01:50:25.021677318Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T01:50:25.021682718Z [err]      server.run()
+2025-10-24T01:50:25.021686803Z [err]      sys.exit(main())
+2025-10-24T01:50:25.021691421Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T01:50:25.021696932Z [err]               ^^^^^^
+2025-10-24T01:50:25.021703426Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T01:50:25.021705591Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T01:50:25.021715391Z [err]      return self.main(*args, **kwargs)
+2025-10-24T01:50:25.021722049Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.021728607Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T01:50:25.021734870Z [err]      rv = self.invoke(ctx)
+2025-10-24T01:50:25.021741227Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.021747073Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T01:50:25.021754550Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T01:50:25.021761284Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.021768111Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T01:50:25.021774899Z [err]      return callback(*args, **kwargs)
+2025-10-24T01:50:25.021781270Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.023911705Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.023923843Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T01:50:25.023988151Z [err]      return runner.run(main)
+2025-10-24T01:50:25.023997399Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.024004606Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T01:50:25.024011495Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T01:50:25.024023937Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.024031563Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T01:50:25.024038536Z [err]      return future.result()
+2025-10-24T01:50:25.024045929Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.024052541Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T01:50:25.024059621Z [err]      await self._serve(sockets)
+2025-10-24T01:50:25.024068700Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T01:50:25.024076298Z [err]      config.load()
+2025-10-24T01:50:25.024082825Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T01:50:25.024089491Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T01:50:25.024095346Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.024102694Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T01:50:25.024108985Z [err]      module = importlib.import_module(module_str)
+2025-10-24T01:50:25.024115296Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.024122887Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T01:50:25.026159543Z [err]  ImportError: cannot import name 'BM25Retriever' from 'llama_index.core.retrievers' (/usr/local/lib/python3.11/site-packages/llama_index/core/retrievers/__init__.py)
+2025-10-24T01:50:25.026171862Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T01:50:25.026176008Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:25.026180149Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T01:50:25.026184559Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T01:50:25.026189734Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T01:50:25.026193836Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T01:50:25.026197902Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T01:50:25.026201724Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T01:50:25.026205531Z [err]    File "/app/llama_server.py", line 9, in <module>
+2025-10-24T01:50:25.026209374Z [err]      from llama_index.core.retrievers import BM25Retriever, VectorIndexRetriever, HybridRetriever
+2025-10-24T01:50:25.178377704Z [err]  INFO:__main__:Starting the Google Drive sync worker...
+2025-10-24T01:50:25.178385058Z [err]  INFO:__main__:Running scheduled Google Drive sync...
+2025-10-24T01:50:25.215595139Z [err]  INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+2025-10-24T01:50:25.342686075Z [err]  INFO:httpx:HTTP Request: POST https://tphojwggedgjvchamcfp.supabase.co/rest/v1/rpc/get_all_file_names "HTTP/2 200 OK"
+2025-10-24T01:50:26.367585709Z [inf]  Initializing...
+2025-10-24T01:50:31.382688163Z [inf]  Starting Google Drive sync worker...
+2025-10-24T01:50:31.382693708Z [inf]  Starting ingestion worker...
+2025-10-24T01:50:31.382703287Z [inf]  Starting Uvicorn server...
+2025-10-24T01:50:32.400252010Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:32.400257620Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T01:50:32.400264849Z [err]      from app.tasks.chunk_and_embed_logs import process_unindexed_files
+2025-10-24T01:50:32.400270419Z [err]    File "/app/app/tasks/chunk_and_embed_logs.py", line 29, in <module>
+2025-10-24T01:50:32.400276031Z [err]      .execute()
+2025-10-24T01:50:32.400281970Z [err]       ^^^^^^^^^
+2025-10-24T01:50:32.400287252Z [err]    File "/usr/local/lib/python3.11/site-packages/postgrest/_sync/request_builder.py", line 53, in execute
+2025-10-24T01:50:32.400292333Z [err]      raise APIError(dict(json_obj))
+2025-10-24T01:50:32.400297876Z [err]  postgrest.exceptions.APIError: {'message': "Could not find the table 'public.daily_chat_log' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2025-10-24T01:50:32.520949933Z [err]  /usr/local/lib/python3.11/site-packages/pydantic/_internal/_generate_schema.py:2249: UnsupportedFieldAttributeWarning: The 'validate_default' attribute with value True was provided to the `Field()` function, which has no effect in the context it was used. 'validate_default' is field-specific metadata, and can only be attached to a model field using `Annotated` metadata or by assignment. This may have happened because an `Annotated` type alias using the `type` statement was used, or if the `Field()` function was attached to a single member of a union type.
+2025-10-24T01:50:32.520965016Z [err]    warnings.warn(
+2025-10-24T01:50:32.869106289Z [inf]  [ingestion-worker] 📁 Current Working Directory: /app
+2025-10-24T01:50:32.869112451Z [inf]  [ingestion-worker] 📂 Contents: ['__pycache__', 'app', 'start.sh', 'tests', 'assistant_instructions.md', 'Procfile', 'readme', 'run_gdrive_sync.py', '.env.example', 'Dockerfile', 'run_worker.py', 'llama_server.py', 'REVERT_af74f78a557b975b95f5680ad42f0e17cccc3331.md', 'openapi.json', 'supabase', 'logs.1761258607163.log', 'requirements.txt', '.vscode', '.gitignore']
+2025-10-24T01:50:32.869118432Z [inf]  [ingestion-worker] 📦 sys.path = ['/app', '/app', '/usr/local/lib/python311.zip', '/usr/local/lib/python3.11', '/usr/local/lib/python3.11/lib-dynload', '/usr/local/lib/python3.11/site-packages']
+2025-10-24T01:50:33.366969569Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T01:50:33.366978235Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:33.366984394Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T01:50:33.366989009Z [err]      sys.exit(main())
+2025-10-24T01:50:33.366993617Z [err]               ^^^^^^
+2025-10-24T01:50:33.366997916Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T01:50:33.367002641Z [err]      return self.main(*args, **kwargs)
+2025-10-24T01:50:33.367006790Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.367011548Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T01:50:33.367015671Z [err]      rv = self.invoke(ctx)
+2025-10-24T01:50:33.367019716Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.367024069Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T01:50:33.367028807Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T01:50:33.367032646Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.367036540Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T01:50:33.367041681Z [err]      return callback(*args, **kwargs)
+2025-10-24T01:50:33.367045786Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.367052293Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T01:50:33.367058188Z [err]      run(
+2025-10-24T01:50:33.367063269Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T01:50:33.367068648Z [err]      server.run()
+2025-10-24T01:50:33.367073875Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T01:50:33.368389446Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.368394969Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T01:50:33.368399396Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T01:50:33.368407750Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.368410414Z [err]      return runner.run(main)
+2025-10-24T01:50:33.368417639Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.368418879Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T01:50:33.368424409Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T01:50:33.368429071Z [err]      module = importlib.import_module(module_str)
+2025-10-24T01:50:33.368432279Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T01:50:33.368437302Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.368439625Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.368446504Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T01:50:33.368448729Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T01:50:33.368455902Z [err]      return future.result()
+2025-10-24T01:50:33.368462632Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.368468258Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T01:50:33.368473526Z [err]      await self._serve(sockets)
+2025-10-24T01:50:33.368478533Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T01:50:33.368484036Z [err]      config.load()
+2025-10-24T01:50:33.368491813Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T01:50:33.370063565Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T01:50:33.370071518Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:33.370078375Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T01:50:33.370085681Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T01:50:33.370090867Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T01:50:33.370096335Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T01:50:33.370102346Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T01:50:33.370107889Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T01:50:33.370113999Z [err]    File "/app/llama_server.py", line 9, in <module>
+2025-10-24T01:50:33.370120275Z [err]      from llama_index.core.retrievers import BM25Retriever, VectorIndexRetriever, HybridRetriever
+2025-10-24T01:50:33.370126433Z [err]  ImportError: cannot import name 'BM25Retriever' from 'llama_index.core.retrievers' (/usr/local/lib/python3.11/site-packages/llama_index/core/retrievers/__init__.py)
+2025-10-24T01:50:33.433116702Z [err]  INFO:__main__:Starting the Google Drive sync worker...
+2025-10-24T01:50:33.433123331Z [err]  INFO:__main__:Running scheduled Google Drive sync...
+2025-10-24T01:50:33.480736736Z [err]  INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+2025-10-24T01:50:33.551777865Z [err]  INFO:httpx:HTTP Request: POST https://tphojwggedgjvchamcfp.supabase.co/rest/v1/rpc/get_all_file_names "HTTP/2 200 OK"
+2025-10-24T01:50:34.510893022Z [inf]  Initializing...
+2025-10-24T01:50:39.514866377Z [inf]  Starting Google Drive sync worker...
+2025-10-24T01:50:39.514873990Z [inf]  Starting ingestion worker...
+2025-10-24T01:50:39.514878956Z [inf]  Starting Uvicorn server...
+2025-10-24T01:50:40.377937752Z [err]      .execute()
+2025-10-24T01:50:40.377950494Z [err]       ^^^^^^^^^
+2025-10-24T01:50:40.377958377Z [err]    File "/usr/local/lib/python3.11/site-packages/postgrest/_sync/request_builder.py", line 53, in execute
+2025-10-24T01:50:40.377966367Z [err]      raise APIError(dict(json_obj))
+2025-10-24T01:50:40.377973529Z [err]  postgrest.exceptions.APIError: {'message': "Could not find the table 'public.daily_chat_log' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2025-10-24T01:50:40.378014545Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:40.378021753Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T01:50:40.378028674Z [err]      from app.tasks.chunk_and_embed_logs import process_unindexed_files
+2025-10-24T01:50:40.378037048Z [err]    File "/app/app/tasks/chunk_and_embed_logs.py", line 29, in <module>
+2025-10-24T01:50:40.558167350Z [inf]  [ingestion-worker] 📁 Current Working Directory: /app
+2025-10-24T01:50:40.558174489Z [inf]  [ingestion-worker] 📂 Contents: ['__pycache__', 'app', 'start.sh', 'tests', 'assistant_instructions.md', 'Procfile', 'readme', 'run_gdrive_sync.py', '.env.example', 'Dockerfile', 'run_worker.py', 'llama_server.py', 'REVERT_af74f78a557b975b95f5680ad42f0e17cccc3331.md', 'openapi.json', 'supabase', 'logs.1761258607163.log', 'requirements.txt', '.vscode', '.gitignore']
+2025-10-24T01:50:40.558182398Z [inf]  [ingestion-worker] 📦 sys.path = ['/app', '/app', '/usr/local/lib/python311.zip', '/usr/local/lib/python3.11', '/usr/local/lib/python3.11/lib-dynload', '/usr/local/lib/python3.11/site-packages']
+2025-10-24T01:50:40.613483057Z [err]  /usr/local/lib/python3.11/site-packages/pydantic/_internal/_generate_schema.py:2249: UnsupportedFieldAttributeWarning: The 'validate_default' attribute with value True was provided to the `Field()` function, which has no effect in the context it was used. 'validate_default' is field-specific metadata, and can only be attached to a model field using `Annotated` metadata or by assignment. This may have happened because an `Annotated` type alias using the `type` statement was used, or if the `Field()` function was attached to a single member of a union type.
+2025-10-24T01:50:40.613490174Z [err]    warnings.warn(
+2025-10-24T01:50:41.557891836Z [err]  INFO:__main__:Starting the Google Drive sync worker...
+2025-10-24T01:50:41.557900232Z [err]  INFO:__main__:Running scheduled Google Drive sync...
+2025-10-24T01:50:41.609120466Z [err]  INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+2025-10-24T01:50:42.088256477Z [err]      server.run()
+2025-10-24T01:50:42.088260284Z [err]      return self.main(*args, **kwargs)
+2025-10-24T01:50:42.088266250Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T01:50:42.088271360Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.088273919Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T01:50:42.088278857Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T01:50:42.088284600Z [err]      rv = self.invoke(ctx)
+2025-10-24T01:50:42.088288498Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.088296382Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T01:50:42.088303633Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T01:50:42.088310670Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.088331947Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T01:50:42.088344996Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T01:50:42.088345273Z [err]      run(
+2025-10-24T01:50:42.088354324Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T01:50:42.088357782Z [err]      return callback(*args, **kwargs)
+2025-10-24T01:50:42.088368294Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.088473712Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:42.088481796Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T01:50:42.088489281Z [err]      sys.exit(main())
+2025-10-24T01:50:42.088495898Z [err]               ^^^^^^
+2025-10-24T01:50:42.088503010Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T01:50:42.093445389Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.093451564Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T01:50:42.093458103Z [err]      return runner.run(main)
+2025-10-24T01:50:42.093463973Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.093470311Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T01:50:42.093478531Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T01:50:42.093486351Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.093491695Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T01:50:42.093496858Z [err]      return future.result()
+2025-10-24T01:50:42.093504506Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.093539926Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T01:50:42.093544703Z [err]      await self._serve(sockets)
+2025-10-24T01:50:42.093548810Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T01:50:42.093558234Z [err]      config.load()
+2025-10-24T01:50:42.093564032Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T01:50:42.093569792Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T01:50:42.093575340Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.093580882Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T01:50:42.093586794Z [err]      module = importlib.import_module(module_str)
+2025-10-24T01:50:42.093592468Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.093598808Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T01:50:42.093925370Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T01:50:42.093929199Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:42.093933077Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T01:50:42.093936819Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T01:50:42.093942075Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T01:50:42.093946061Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T01:50:42.093950246Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T01:50:42.093954165Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T01:50:42.093958137Z [err]    File "/app/llama_server.py", line 9, in <module>
+2025-10-24T01:50:42.093962119Z [err]      from llama_index.core.retrievers import BM25Retriever, VectorIndexRetriever, HybridRetriever
+2025-10-24T01:50:42.093966177Z [err]  ImportError: cannot import name 'BM25Retriever' from 'llama_index.core.retrievers' (/usr/local/lib/python3.11/site-packages/llama_index/core/retrievers/__init__.py)
+2025-10-24T01:50:42.093971068Z [err]  INFO:httpx:HTTP Request: POST https://tphojwggedgjvchamcfp.supabase.co/rest/v1/rpc/get_all_file_names "HTTP/2 200 OK"
+2025-10-24T01:50:42.093995042Z [err]  INFO:__main__:Google Drive sync finished: {'status': 'success', 'new_files_processed': 0, 'files_deleted': 0}
+2025-10-24T01:50:42.093999688Z [err]  INFO:__main__:Google Drive sync worker sleeping for 15 minutes...
+2025-10-24T01:50:43.124952887Z [inf]  Initializing...
+2025-10-24T01:50:48.124185678Z [inf]  Starting Google Drive sync worker...
+2025-10-24T01:50:48.124192270Z [inf]  Starting ingestion worker...
+2025-10-24T01:50:48.124197820Z [inf]  Starting Uvicorn server...
+2025-10-24T01:50:49.183831136Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:49.183836771Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T01:50:49.183844404Z [err]      from app.tasks.chunk_and_embed_logs import process_unindexed_files
+2025-10-24T01:50:49.183852091Z [err]    File "/app/app/tasks/chunk_and_embed_logs.py", line 29, in <module>
+2025-10-24T01:50:49.183858037Z [err]      .execute()
+2025-10-24T01:50:49.183864477Z [err]       ^^^^^^^^^
+2025-10-24T01:50:49.183870826Z [err]    File "/usr/local/lib/python3.11/site-packages/postgrest/_sync/request_builder.py", line 53, in execute
+2025-10-24T01:50:49.183879915Z [err]      raise APIError(dict(json_obj))
+2025-10-24T01:50:49.183886130Z [err]  postgrest.exceptions.APIError: {'message': "Could not find the table 'public.daily_chat_log' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2025-10-24T01:50:49.266535540Z [err]  /usr/local/lib/python3.11/site-packages/pydantic/_internal/_generate_schema.py:2249: UnsupportedFieldAttributeWarning: The 'validate_default' attribute with value True was provided to the `Field()` function, which has no effect in the context it was used. 'validate_default' is field-specific metadata, and can only be attached to a model field using `Annotated` metadata or by assignment. This may have happened because an `Annotated` type alias using the `type` statement was used, or if the `Field()` function was attached to a single member of a union type.
+2025-10-24T01:50:49.266549619Z [err]    warnings.warn(
+2025-10-24T01:50:49.474980168Z [inf]  [ingestion-worker] 📁 Current Working Directory: /app
+2025-10-24T01:50:49.474985195Z [inf]  [ingestion-worker] 📂 Contents: ['__pycache__', 'app', 'start.sh', 'tests', 'assistant_instructions.md', 'Procfile', 'readme', 'run_gdrive_sync.py', '.env.example', 'Dockerfile', 'run_worker.py', 'llama_server.py', 'REVERT_af74f78a557b975b95f5680ad42f0e17cccc3331.md', 'openapi.json', 'supabase', 'logs.1761258607163.log', 'requirements.txt', '.vscode', '.gitignore']
+2025-10-24T01:50:49.474989279Z [inf]  [ingestion-worker] 📦 sys.path = ['/app', '/app', '/usr/local/lib/python311.zip', '/usr/local/lib/python3.11', '/usr/local/lib/python3.11/lib-dynload', '/usr/local/lib/python3.11/site-packages']
+2025-10-24T01:50:50.385413871Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.385425246Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T01:50:50.385438299Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T01:50:50.385443072Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:50.385452476Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.385456986Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T01:50:50.385461644Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T01:50:50.385466921Z [err]      sys.exit(main())
+2025-10-24T01:50:50.385471030Z [err]      return callback(*args, **kwargs)
+2025-10-24T01:50:50.385478762Z [err]               ^^^^^^
+2025-10-24T01:50:50.385482504Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.385491688Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T01:50:50.385496001Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T01:50:50.385504134Z [err]      return self.main(*args, **kwargs)
+2025-10-24T01:50:50.385518716Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.385523317Z [err]      run(
+2025-10-24T01:50:50.385532822Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T01:50:50.385536231Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T01:50:50.385546860Z [err]      server.run()
+2025-10-24T01:50:50.385547141Z [err]      rv = self.invoke(ctx)
+2025-10-24T01:50:50.385555405Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T01:50:50.385562179Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T01:50:50.385792102Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.385799951Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T01:50:50.385807603Z [err]      return runner.run(main)
+2025-10-24T01:50:50.390436483Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T01:50:50.390460757Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.390473303Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T01:50:50.390482407Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T01:50:50.390483914Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T01:50:50.390491471Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.390495250Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T01:50:50.390500939Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T01:50:50.390501851Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T01:50:50.390508583Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T01:50:50.390511139Z [err]      return future.result()
+2025-10-24T01:50:50.390519435Z [err]    File "/app/llama_server.py", line 9, in <module>
+2025-10-24T01:50:50.390519504Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.390527133Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T01:50:50.390532824Z [err]      await self._serve(sockets)
+2025-10-24T01:50:50.390540383Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T01:50:50.390547034Z [err]      config.load()
+2025-10-24T01:50:50.390553261Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T01:50:50.390559337Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T01:50:50.390565229Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.390571530Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T01:50:50.390576798Z [err]      module = importlib.import_module(module_str)
+2025-10-24T01:50:50.390583621Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.390591589Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T01:50:50.390695586Z [err]      from llama_index.core.retrievers import BM25Retriever, VectorIndexRetriever, HybridRetriever
+2025-10-24T01:50:50.390708848Z [err]  ImportError: cannot import name 'BM25Retriever' from 'llama_index.core.retrievers' (/usr/local/lib/python3.11/site-packages/llama_index/core/retrievers/__init__.py)
+2025-10-24T01:50:50.390715279Z [err]  INFO:__main__:Starting the Google Drive sync worker...
+2025-10-24T01:50:50.390730046Z [err]  INFO:__main__:Running scheduled Google Drive sync...
+2025-10-24T01:50:50.390736857Z [err]  INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+2025-10-24T01:50:50.391148425Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T01:50:50.391154814Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:50.391161130Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T01:50:50.475319250Z [err]  INFO:httpx:HTTP Request: POST https://tphojwggedgjvchamcfp.supabase.co/rest/v1/rpc/get_all_file_names "HTTP/2 200 OK"
+2025-10-24T01:50:51.451683222Z [inf]  Initializing...
+2025-10-24T01:50:56.450860815Z [inf]  Starting Google Drive sync worker...
+2025-10-24T01:50:56.450866168Z [inf]  Starting ingestion worker...
+2025-10-24T01:50:56.450871335Z [inf]  Starting Uvicorn server...
+2025-10-24T01:50:57.529473952Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:57.529491015Z [err]    File "/app/run_worker.py", line 3, in <module>
+2025-10-24T01:50:57.529500732Z [err]      from app.tasks.chunk_and_embed_logs import process_unindexed_files
+2025-10-24T01:50:57.529507625Z [err]    File "/app/app/tasks/chunk_and_embed_logs.py", line 29, in <module>
+2025-10-24T01:50:57.529515768Z [err]      .execute()
+2025-10-24T01:50:57.529523542Z [err]       ^^^^^^^^^
+2025-10-24T01:50:57.529531743Z [err]    File "/usr/local/lib/python3.11/site-packages/postgrest/_sync/request_builder.py", line 53, in execute
+2025-10-24T01:50:57.529541093Z [err]      raise APIError(dict(json_obj))
+2025-10-24T01:50:57.529549149Z [err]  postgrest.exceptions.APIError: {'message': "Could not find the table 'public.daily_chat_log' in the schema cache", 'code': 'PGRST205', 'hint': None, 'details': None}
+2025-10-24T01:50:57.679592538Z [err]  /usr/local/lib/python3.11/site-packages/pydantic/_internal/_generate_schema.py:2249: UnsupportedFieldAttributeWarning: The 'validate_default' attribute with value True was provided to the `Field()` function, which has no effect in the context it was used. 'validate_default' is field-specific metadata, and can only be attached to a model field using `Annotated` metadata or by assignment. This may have happened because an `Annotated` type alias using the `type` statement was used, or if the `Field()` function was attached to a single member of a union type.
+2025-10-24T01:50:57.679607705Z [err]    warnings.warn(
+2025-10-24T01:50:58.458408547Z [inf]  [ingestion-worker] 📁 Current Working Directory: /app
+2025-10-24T01:50:58.458421222Z [inf]  [ingestion-worker] 📂 Contents: ['__pycache__', 'app', 'start.sh', 'tests', 'assistant_instructions.md', 'Procfile', 'readme', 'run_gdrive_sync.py', '.env.example', 'Dockerfile', 'run_worker.py', 'llama_server.py', 'REVERT_af74f78a557b975b95f5680ad42f0e17cccc3331.md', 'openapi.json', 'supabase', 'logs.1761258607163.log', 'requirements.txt', '.vscode', '.gitignore']
+2025-10-24T01:50:58.458428615Z [inf]  [ingestion-worker] 📦 sys.path = ['/app', '/app', '/usr/local/lib/python311.zip', '/usr/local/lib/python3.11', '/usr/local/lib/python3.11/lib-dynload', '/usr/local/lib/python3.11/site-packages']
+2025-10-24T01:50:58.686396697Z [err]  Traceback (most recent call last):
+2025-10-24T01:50:58.686403609Z [err]    File "/usr/local/bin/uvicorn", line 8, in <module>
+2025-10-24T01:50:58.686408050Z [err]      sys.exit(main())
+2025-10-24T01:50:58.686412532Z [err]               ^^^^^^
+2025-10-24T01:50:58.686417642Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1462, in __call__
+2025-10-24T01:50:58.686423930Z [err]      return self.main(*args, **kwargs)
+2025-10-24T01:50:58.686429457Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.686435297Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1383, in main
+2025-10-24T01:50:58.686442947Z [err]      rv = self.invoke(ctx)
+2025-10-24T01:50:58.686448456Z [err]           ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.686453435Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 1246, in invoke
+2025-10-24T01:50:58.686459045Z [err]      return ctx.invoke(self.callback, **ctx.params)
+2025-10-24T01:50:58.686464642Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.686471080Z [err]    File "/usr/local/lib/python3.11/site-packages/click/core.py", line 814, in invoke
+2025-10-24T01:50:58.686476860Z [err]      return callback(*args, **kwargs)
+2025-10-24T01:50:58.686482730Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.686488713Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 423, in main
+2025-10-24T01:50:58.686494472Z [err]      run(
+2025-10-24T01:50:58.686500294Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/main.py", line 593, in run
+2025-10-24T01:50:58.686504817Z [err]      server.run()
+2025-10-24T01:50:58.686508972Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 67, in run
+2025-10-24T01:50:58.686513236Z [err]      return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+2025-10-24T01:50:58.690673806Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.690680271Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/_compat.py", line 30, in asyncio_run
+2025-10-24T01:50:58.690687649Z [err]      return runner.run(main)
+2025-10-24T01:50:58.690693984Z [err]             ^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.690700615Z [err]    File "/usr/local/lib/python3.11/asyncio/runners.py", line 118, in run
+2025-10-24T01:50:58.690706746Z [err]      return self._loop.run_until_complete(task)
+2025-10-24T01:50:58.690712859Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.690730130Z [err]    File "/usr/local/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+2025-10-24T01:50:58.690737188Z [err]      return future.result()
+2025-10-24T01:50:58.690743783Z [err]             ^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.690750329Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 71, in serve
+2025-10-24T01:50:58.690756309Z [err]      await self._serve(sockets)
+2025-10-24T01:50:58.690764488Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/server.py", line 78, in _serve
+2025-10-24T01:50:58.690770810Z [err]      config.load()
+2025-10-24T01:50:58.690777367Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/config.py", line 439, in load
+2025-10-24T01:50:58.690789312Z [err]      self.loaded_app = import_from_string(self.app)
+2025-10-24T01:50:58.690801948Z [err]                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.690809830Z [err]    File "/usr/local/lib/python3.11/site-packages/uvicorn/importer.py", line 19, in import_from_string
+2025-10-24T01:50:58.690817595Z [err]      module = importlib.import_module(module_str)
+2025-10-24T01:50:58.690823116Z [err]               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.690854354Z [err]    File "/usr/local/lib/python3.11/importlib/__init__.py", line 126, in import_module
+2025-10-24T01:50:58.693093177Z [err]      return _bootstrap._gcd_import(name[level:], package, level)
+2025-10-24T01:50:58.693104004Z [err]             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2025-10-24T01:50:58.693112188Z [err]    File "<frozen importlib._bootstrap>", line 1204, in _gcd_import
+2025-10-24T01:50:58.693119421Z [err]    File "<frozen importlib._bootstrap>", line 1176, in _find_and_load
+2025-10-24T01:50:58.693125919Z [err]    File "<frozen importlib._bootstrap>", line 1147, in _find_and_load_unlocked
+2025-10-24T01:50:58.693134565Z [err]    File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
+2025-10-24T01:50:58.693141692Z [err]    File "<frozen importlib._bootstrap_external>", line 940, in exec_module
+2025-10-24T01:50:58.693149305Z [err]    File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+2025-10-24T01:50:58.693155851Z [err]    File "/app/llama_server.py", line 9, in <module>
+2025-10-24T01:50:58.693162313Z [err]      from llama_index.core.retrievers import BM25Retriever, VectorIndexRetriever, HybridRetriever
+2025-10-24T01:50:58.693169108Z [err]  ImportError: cannot import name 'BM25Retriever' from 'llama_index.core.retrievers' (/usr/local/lib/python3.11/site-packages/llama_index/core/retrievers/__init__.py)
+2025-10-24T01:50:59.299138244Z [err]  INFO:__main__:Starting the Google Drive sync worker...
+2025-10-24T01:50:59.299142958Z [err]  INFO:__main__:Running scheduled Google Drive sync...
+2025-10-24T01:50:59.299148414Z [err]  INFO:googleapiclient.discovery_cache:file_cache is only supported with oauth2client<4.0.0
+2025-10-24T01:50:59.299154671Z [err]  INFO:httpx:HTTP Request: POST https://tphojwggedgjvchamcfp.supabase.co/rest/v1/rpc/get_all_file_names "HTTP/2 200 OK"
+2025-10-24T01:51:00.518612914Z [inf]  Initializing...
