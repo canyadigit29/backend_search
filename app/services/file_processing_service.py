@@ -106,10 +106,10 @@ class FileProcessingService:
             return
 
         logger.info(f"Generated {len(chunks)} chunks. Now embedding.")
-        embed_chunks(chunks, file_name=file_record["file_name"])
+        embed_chunks(chunks)
 
         supabase.table("files").update(
-            {"ingested": True, "ingested_at": datetime.utcnow().isoformat()}
+            {"ingested": True}
         ).eq("id", file_id).execute()
         
         logger.info(f"✅ Successfully ingested file: {file_record['file_name']} (ID: {file_id})")

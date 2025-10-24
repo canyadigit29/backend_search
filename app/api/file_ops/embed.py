@@ -56,58 +56,51 @@ def retry_embed_text(text, retries=3, delay=1.5):
 def embed_and_store_chunk(chunk):
     chunk_text = chunk["content"]
     if not chunk_text.strip():
-        logging.warning(f"⚠️ Skipping empty chunk {chunk.get('chunk_index')} for file {chunk.get('file_name')}")
-        return {"skipped": True}
+        logging.warning(f"⚠️ Skipping empty chunk {chunk.get('chunk_index')} for file {chunk.get('file_id')}")
+        return
 
     try:
         embedding = retry_embed_text(chunk_text)
-        # Embedding quality checks
         norm = np.linalg.norm(embedding)
         if norm < 0.1 or np.allclose(embedding, 0):
-            logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {chunk.get('chunk_index')} of {chunk.get('file_name')}")
-            return {"skipped": True, "reason": "low-quality embedding", "norm": float(norm)}
-        timestamp = datetime.utcnow().isoformat()
+            logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {chunk.get('chunk_index')} of file {chunk.get('file_id')}")
+            return
 
-        # Prepare data for insert, including all original chunk fields
-        data = dict(chunk)  # Copy all fields from chunk
-        data["openai_embedding"] = embedding
-        # Do NOT write to 'embedding' column anymore
-        data["timestamp"] = timestamp
-        # Ensure id is present
+        # Prepare data for insert, ensuring it matches the schema
+        data = chunk.copy()
+        data["embedding"] = embedding # Use the 'embedding' column
+        
+        # Remove fields that are not in the document_chunks table
+        data.pop('file_extension', None)
+        data.pop('misc_title', None)
+        data.pop('meeting_month_name', None)
+        
+        # Ensure required fields are present
         if "id" not in data:
             data["id"] = str(uuid.uuid4())
+        if "created_at" not in data:
+            data["created_at"] = datetime.utcnow().isoformat()
 
-        print(f"[DEBUG] Inserting chunk {data.get('chunk_index')} with metadata: "
-              f"document_type={data.get('document_type')}, meeting_year={data.get('meeting_year')}, "
-              f"meeting_month={data.get('meeting_month')}, meeting_day={data.get('meeting_day')}, "
-              f"ordinance_title={data.get('ordinance_title')}, file_extension={data.get('file_extension')}")
-        result = supabase.table("document_chunks").insert(data).execute()
-        if getattr(result, "error", None):
-            logging.error(f"Supabase insert failed: {result.error.message}")
-            return {"error": result.error.message}
+        # This is a critical change: we are now raising an exception on failure
+        supabase.table("document_chunks").insert(data).execute(raise_on_failure=True)
 
         logging.info(
-            f"✅ Stored chunk {data.get('chunk_index')} of {data.get('file_name')} (section: {data.get('section_header')}, page: {data.get('page_number')})"
+            f"✅ Stored chunk {data.get('chunk_index')} for file {data.get('file_id')} "
+            f"(page: {data.get('page_number')})"
         )
-        return {"success": True}
 
     except Exception as e:
-        logging.exception(f"Unexpected error during embed/store: {e}")
-        return {"error": str(e)}
+        logging.exception(f"Unexpected error during embed/store for chunk of file {chunk.get('file_id')}: {e}")
+        # Re-raise the exception to signal failure to the caller
+        raise
 
-def embed_chunks(chunks, file_name: str = None):
+def embed_chunks(chunks):
     if not chunks:
         logging.warning("⚠️ No chunks to embed.")
-        return []
+        return
 
-    results = []
     for chunk in chunks:
-        # Optionally set file_name if not present
-        if file_name and not chunk.get("file_name"):
-            chunk["file_name"] = file_name
-        result = embed_and_store_chunk(chunk)
-        results.append(result)
-    return results
+        embed_and_store_chunk(chunk)
 
 def remove_embeddings_for_file(file_id: str):
     try:
