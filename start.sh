@@ -23,4 +23,4 @@ python run_worker.py | awk '{ print "[ingestion-worker] " $0 }' &
 
 # Start the Uvicorn server in the foreground. This must be the last command.
 echo "Starting Uvicorn server..."
-uvicorn llama_server:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8000
