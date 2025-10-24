@@ -51,10 +51,12 @@ class MainWorker:
             
             logger.info(f"Ingestion Task: Found {len(files_to_ingest.data)} file(s) to ingest.")
             for file in files_to_ingest.data:
-                # We need to double-check that the file is not still pending OCR
-                file_details = supabase.table("files").select("id, ocr_needed").eq("id", file['id']).single().execute().data
-                if file_details and file_details.get('ocr_needed'):
-                    logger.info(f"Ingestion Task: Skipping file {file['id']} because it is pending OCR.")
+                # We need to double-check the OCR status of the file
+                file_details = supabase.table("files").select("id, ocr_needed, ocr_scanned").eq("id", file['id']).single().execute().data
+                
+                # Skip if OCR is needed but not yet complete
+                if file_details and file_details.get('ocr_needed') and not file_details.get('ocr_scanned'):
+                    logger.info(f"Ingestion Task: Skipping file {file['id']} because it is pending OCR completion.")
                     continue
 
                 try:
