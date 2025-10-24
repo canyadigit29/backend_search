@@ -172,6 +172,8 @@ def chunk_file(file_id: str):
                 "chunk_index": i,
                 **db_metadata,
             }
+            # Ensure file_name is not in the chunk dictionary
+            chunk.pop('file_name', None)
             db_chunks.append(chunk)
 
         print(f"🧹 Got {len(db_chunks)} fixed-size chunks from {file_path}")

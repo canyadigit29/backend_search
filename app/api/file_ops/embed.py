@@ -71,6 +71,7 @@ def embed_and_store_chunk(chunk):
         data["embedding"] = embedding # Use the 'embedding' column
         
         # Remove fields that are not in the document_chunks table
+        data.pop('file_name', None) # Explicitly remove file_name
         data.pop('file_extension', None)
         data.pop('misc_title', None)
         data.pop('meeting_month_name', None)
@@ -104,28 +105,16 @@ def embed_chunks(chunks):
 
 def remove_embeddings_for_file(file_id: str):
     try:
-        file_result = (
-            supabase.table("files")
-            .select("file_name")
-            .eq("id", file_id)
-            .maybe_single()
-            .execute()
-        )
-        file_data = getattr(file_result, "data", None)
-        if not file_data or "file_name" not in file_data:
-            raise Exception(f"File not found for ID: {file_id}")
-
-        file_name = file_data["file_name"]
-        print(f"🧹 Removing all embeddings for file: {file_name}")
+        print(f"🧹 Removing all embeddings for file ID: {file_id}")
 
         delete_result = (
             supabase.table("document_chunks")
             .delete()
-            .eq("file_name", file_name)
+            .eq("file_id", file_id)
             .execute()
         )
         print(f"🧾 Vector delete response: {delete_result}")
-        return {"status": "success", "deleted": delete_result.data}
+        return {"status": "success", "deleted_count": len(delete_result.data)}
 
     except Exception as e:
         print(f"❌ Failed to remove embeddings: {e}")
