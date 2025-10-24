@@ -15,9 +15,9 @@ async def main():
         except Exception as e:
             logger.error(f"An error occurred in the Google Drive sync worker loop: {e}")
         
-        # Wait for 15 minutes (900 seconds) before syncing again
-        logger.info("Google Drive sync worker sleeping for 15 minutes...")
-        await asyncio.sleep(900)
+        # Wait for 60 seconds before syncing again
+        logger.info("Google Drive sync worker sleeping for 60 seconds...")
+        await asyncio.sleep(60)
 
 if __name__ == "__main__":
     asyncio.run(main())
