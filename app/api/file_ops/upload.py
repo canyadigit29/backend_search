@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    user_id: str = Form(...),
 ):
     try:
         contents = await file.read()
@@ -20,7 +19,6 @@ async def upload_file(
         result = await upload_and_ingest_file(
             file_content=contents,
             file_name=file.filename,
-            user_id=user_id,
             content_type=file.content_type
         )
 

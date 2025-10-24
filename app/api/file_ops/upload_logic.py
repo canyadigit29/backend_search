@@ -22,13 +22,15 @@ async def upload_and_ingest_file(
         file_path = f"{uuid.uuid4()}{file_extension}"
 
         # Step 1: Insert metadata into the 'files' table
-        inserted_file = supabase.table("files").insert({
+        insert_data = {
             "file_name": file_name,
             "file_path": file_path,
             "file_type": content_type,
             "created_at": datetime.utcnow().isoformat(),
             "ingested": False, # Set to False to be picked up by the worker
-        }).execute()
+        }
+        
+        inserted_file = supabase.table("files").insert(insert_data).execute()
 
         if not inserted_file.data:
             raise HTTPException(status_code=500, detail="Failed to create file record in database.")

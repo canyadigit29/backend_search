@@ -17,12 +17,12 @@ logging.basicConfig(level=logging.INFO)
 client = OpenAI()
 
 @router.post("/process")
-def api_process_file(file_path: str, file_id: str, user_id: str = None):
-    process_file(file_path, file_id, user_id)
+def api_process_file(file_path: str, file_id: str):
+    process_file(file_path, file_id)
     return {"status": "processing started"}
 
-def process_file(file_path: str, file_id: str, user_id: str = None):
-    logging.info(f"⚙️ Processing file: {file_path} (ID: {file_id}, User: {user_id})")
+def process_file(file_path: str, file_id: str):
+    logging.info(f"⚙️ Processing file: {file_path} (ID: {file_id})")
     max_retries = 24
     retry_interval = 5.0
     file_record = None
@@ -83,7 +83,7 @@ def process_file(file_path: str, file_id: str, user_id: str = None):
 
     # --- Improved chunking: sentence-aware, overlap, structure-aware ---
     # Use chunk_file to get semantic chunks with metadata
-    chunks = chunk_file(file_id, user_id)
+    chunks = chunk_file(file_id)
     if not chunks or len(chunks) == 0:
         logging.warning(f"⚠️ No valid chunks generated for {file_path}; ingestion skipped.")
         return

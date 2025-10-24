@@ -28,9 +28,8 @@ async def run_ingestion_once():
         for file in files_to_ingest.data:
             file_path = file.get("file_path")
             file_id = file.get("id")
-            user_id = file.get("user_id")
-            print(f"[DEBUG] Processing file: {file_path}, id: {file_id}, user: {user_id}")
-            if not file_path or not user_id or not file_id:
+            print(f"[DEBUG] Processing file: {file_path}, id: {file_id}")
+            if not file_path or not file_id:
                 logger.warning(f"⚠️ Skipping invalid row: {file}")
                 print(f"[DEBUG] Skipping invalid row: {file}")
                 continue
@@ -49,7 +48,7 @@ async def run_ingestion_once():
             logger.info(f"🧾 Ingesting: {file_path}")
             print(f"[DEBUG] Ingesting: {file_path}")
             try:
-                process_file(file_path=file_path, file_id=file_id, user_id=user_id)
+                process_file(file_path=file_path, file_id=file_id)
                 print(f"[DEBUG] process_file completed for {file_path}")
             except Exception as e:
                 logger.error(f"[ERROR] Exception during process_file: {e}")
