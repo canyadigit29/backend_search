@@ -2,6 +2,7 @@
 import os
 import uuid
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -116,8 +117,11 @@ class FileProcessingService:
             return
 
         logger.info(f"Text extracted successfully. Length: {len(text)} chars. Now chunking.")
-        # Pass the extracted text directly to the chunking function
-        chunking_result = chunk_file(file_id, text=text)
+        chunking_result = chunk_file(
+            file_id=file_id,
+            file_name=file_record["file_name"],
+            text=text
+        )
         chunks = chunking_result.get("chunks")
 
         if not chunks:
