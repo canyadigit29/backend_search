@@ -90,7 +90,11 @@ def fixed_size_chunk(text, max_tokens=1200, overlap_tokens=120):
         start += max_tokens - overlap_tokens
     return list(zip(chunks, chunk_meta))
 
-def chunk_file(file_id: str):
+def chunk_file(file_id: str, text: str = None):
+    """
+    Chunks a file into smaller pieces. If text is provided, it chunks the text directly.
+    Otherwise, it downloads the file, extracts the text, and then chunks it.
+    """
     print(f"🔍 Starting chunking for file_id: {file_id}")
     try:
         # First, delete any existing chunks for this file to prevent stale data
@@ -110,30 +114,40 @@ def chunk_file(file_id: str):
             print(f"❌ No file found for identifier: {file_id}")
             return {"error": "File not found."}
 
-        file_path = file_entry["file_path"]
-        file_name = file_entry.get("file_name") or file_entry.get("name") or file_path
-        # ... (rest of the setup is the same)
-        bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
-        print(f"📄 Filepath: {file_path}")
+        file_name = file_entry.get("file_name") or file_entry.get("name") or file_entry.get("file_path")
 
-        response = supabase.storage.from_(bucket).download(file_path)
-        if not response:
-            print(f"❌ Could not download file from Supabase: {file_path}")
-            return {"error": "Failed to download file from storage."}
+        # If text is not provided, download and extract it.
+        if text is None:
+            print("📜 Text not provided, extracting from file...")
+            file_path = file_entry["file_path"]
+            bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "files")
+            print(f"📄 Filepath: {file_path}")
 
-        local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
-        with open(local_temp_path, "wb") as f:
-            f.write(response)
+            response = supabase.storage.from_(bucket).download(file_path)
+            if not response:
+                print(f"❌ Could not download file from Supabase: {file_path}")
+                return {"error": "Failed to download file from storage."}
 
-        try:
-            text = extract_text(local_temp_path)
-            print(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
-        except TextExtractionError as e:
-            print(f"❌ Failed to extract text from {file_path}: {str(e)}")
-            return {"error": str(e)}
-        except Exception as e:
-            print(f"❌ An unexpected error occurred during text extraction: {str(e)}")
-            return {"error": "An unexpected error occurred during file processing."}
+            local_temp_path = "/tmp/tempfile" + Path(file_path).suffix
+            with open(local_temp_path, "wb") as f:
+                f.write(response)
+
+            try:
+                text = extract_text(local_temp_path)
+                print(f"📜 Extracted text length: {len(text.strip())} characters from {file_path}")
+            except TextExtractionError as e:
+                print(f"❌ Failed to extract text from {file_path}: {str(e)}")
+                return {"error": str(e)}
+            except Exception as e:
+                print(f"❌ An unexpected error occurred during text extraction: {str(e)}")
+                return {"error": "An unexpected error occurred during file processing."}
+            finally:
+                if os.path.exists(local_temp_path):
+                    os.remove(local_temp_path)
+        
+        if not text or not text.strip():
+            print("🤷 No text available to chunk.")
+            return {"chunks": []}
 
         # ... (the rest of the chunking logic is the same)
         filename_meta = extract_metadata_from_filename(Path(file_name).name)

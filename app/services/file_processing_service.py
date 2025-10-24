@@ -101,7 +101,8 @@ class FileProcessingService:
             return
 
         logger.info(f"Text extracted successfully. Length: {len(text)} chars. Now chunking.")
-        chunking_result = chunk_file(file_id)
+        # Pass the extracted text directly to the chunking function
+        chunking_result = chunk_file(file_id, text=text)
         chunks = chunking_result.get("chunks")
 
         if not chunks:
