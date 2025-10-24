@@ -35,6 +35,9 @@ When calling `searchDocumentsAssistant`:
 }
 ```
 
+### **Manual Sync Trigger:**
+If the user asks to "check for new files", "scan Google Drive", "sync documents", or a similar phrase, you MUST use the `triggerGoogleDriveSync` function. This is an asynchronous call; inform the user that the process has started and they can search for the new content in a few moments.
+
 ### **Adaptive Fallback Logic:**
 
 * If **no summary or sources:** lower threshold by `0.2` and rerun once.

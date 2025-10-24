@@ -44,6 +44,35 @@
           }
         }
       }
+    },
+    "/api/gdrive/sync": {
+      "post": {
+        "operationId": "triggerGoogleDriveSync",
+        "summary": "Trigger Google Drive Sync",
+        "description": "Triggers a background task to find new files in the configured Google Drive folder, ingest them, and make them available for search. This is an asynchronous operation.",
+        "x-oai-meta": {
+          "name": "triggerGoogleDriveSync",
+          "isUserFacing": true
+        },
+        "responses": {
+          "202": {
+            "description": "Sync process started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Google Drive sync process has been started in the background."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
