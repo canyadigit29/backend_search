@@ -343,27 +343,27 @@ async def api_search_docs(request: Request):
     return await assistant_search_docs(request)
 
 
-from app.api.assistant.schemas import AssistantSearchRequest
 
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
 @router.post("/assistant/search_docs")
-async def assistant_search_docs(payload: AssistantSearchRequest):
+async def assistant_search_docs(request: Request):
     """
     Accepts a payload from an OpenAI assistant, normalizes fields, and forwards
     to the perform_search flow.
     """
+    payload = await request.json()
     # Timer no longer controls batching; kept available if needed elsewhere
     sw = None
 
     # Data is now a validated Pydantic model, access attributes directly
-    user_prompt = payload.query or payload.user_prompt
+    user_prompt = payload.get("query") or payload.get("user_prompt")
     if not user_prompt:
         return JSONResponse({"error": "Missing query in payload"}, status_code=400)
 
     # Optional resume mode: summarize only specific chunk IDs provided by the caller
-    resume_chunk_ids = payload.resume_chunk_ids
+    resume_chunk_ids = payload.get("resume_chunk_ids")
 
-    relevance_threshold = payload.relevance_threshold
+    relevance_threshold = payload.get("relevance_threshold")
     if relevance_threshold is None:
         relevance_threshold = 0.4 # Default if not provided by assistant
 
@@ -385,21 +385,21 @@ async def assistant_search_docs(payload: AssistantSearchRequest):
     else:
         tool_args = {
             "embedding": embedding,
-            "file_name_filter": search_filters.get("file_name") or payload.file_name_filter,
-            "description_filter": search_filters.get("description") or payload.description_filter,
-            "start_date": payload.start_date,
-            "end_date": payload.end_date,
+            "file_name_filter": search_filters.get("file_name") or payload.get("file_name_filter"),
+            "description_filter": search_filters.get("description") or payload.get("description_filter"),
+            "start_date": payload.get("start_date"),
+            "end_date": payload.get("end_date"),
             "user_prompt": user_prompt,
             "search_query": search_query,
             "relevance_threshold": relevance_threshold,
-            "max_results": payload.max_results
+            "max_results": payload.get("max_results")
         }
         for meta_field in ["document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"]:
             if search_filters.get(meta_field) is not None:
                 tool_args[meta_field] = search_filters[meta_field]
         
         # Optional OR-terms merging: if provided, or inferred from inline "OR"s, run per-term searches and merge by ID using max score
-        provided_or_terms = payload.or_terms if isinstance(payload.or_terms, list) else []
+        provided_or_terms = payload.get("or_terms") if isinstance(payload.get("or_terms"), list) else []
         inline_or_terms = _parse_inline_or_terms(user_prompt)
         or_terms = provided_or_terms or inline_or_terms
         if or_terms and isinstance(or_terms, list):
@@ -425,7 +425,7 @@ async def assistant_search_docs(payload: AssistantSearchRequest):
                         merged_by_id[mid] = m
             matches = sorted(merged_by_id.values(), key=lambda x: x.get("score", 0), reverse=True)
             # Apply max_results cap if provided
-            max_results = payload.max_results or 100
+            max_results = payload.get("max_results") or 100
             matches = matches[:max_results]
         else:
             search_result = perform_search(tool_args)
@@ -482,8 +482,8 @@ async def assistant_search_docs(payload: AssistantSearchRequest):
                         r["keyword_score_norm"] = 0.0
                 
                 # Blend: prefer explicit weights if provided, else use smart heuristic
-                if isinstance(payload.search_weights, dict):
-                    weights = payload.search_weights
+                if isinstance(payload.get("search_weights"), dict):
+                    weights = payload.get("search_weights")
                     alpha_sem = float(weights.get("semantic", sem_w))
                     beta_kw = float(weights.get("keyword", kw_w))
                 else:
