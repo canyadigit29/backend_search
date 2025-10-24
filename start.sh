@@ -22,5 +22,6 @@ echo "Starting ingestion worker..."
 python run_worker.py | awk '{ print "[ingestion-worker] " $0 }' &
 
 # Start the Uvicorn server in the foreground. This must be the last command.
-echo "Starting Uvicorn server..."
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+PORT_TO_USE="${PORT:-8000}"
+echo "Starting Uvicorn server on port ${PORT_TO_USE}..."
+uvicorn app.main:app --host 0.0.0.0 --port "${PORT_TO_USE}"
