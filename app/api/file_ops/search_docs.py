@@ -548,7 +548,7 @@ async def assistant_search_docs(request: Request):
         included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
         # Guardrail: trim each chunk to avoid exceeding model context (hard-coded)
-        per_chunk_char_limit = 2500
+        per_chunk_char_limit = 3000
         def _trim(s: str, n: int) -> str:
             if not s:
                 return ""
@@ -570,8 +570,8 @@ async def assistant_search_docs(request: Request):
             body = _trim(chunk.get("content", ""), per_chunk_char_limit)
             if body:
                 annotated_texts.append(f"{header}\n{body}")
-        # Token-aware cap across all included texts (hard-coded): assume ~200k token context, leave headroom
-        MAX_INPUT_TOKENS = 260_000
+        # Token-aware cap across all included texts (hard-coded): assume ~220k token context, leave headroom
+        MAX_INPUT_TOKENS = 220_000
         top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
 
         if top_text.strip():
@@ -598,7 +598,7 @@ async def assistant_search_docs(request: Request):
                 },
             ]
             # No time cap: complete the summary for this batch; constrain output tokens (hard-coded)
-            MAX_OUTPUT_TOKENS = 100_000
+            MAX_OUTPUT_TOKENS = 120_000
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
