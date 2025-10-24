@@ -1,0 +1,56 @@
+# GPT-5 Prompting & RAG Guide
+
+## 1. GPT-5 Overview
+GPT-5 is OpenAI’s latest reasoning-capable large language model. It supports multimodal inputs (text and image) and introduces new control parameters for reasoning and verbosity, as well as extended tool-calling capabilities.
+
+### Key Specs
+• Context Window: 400K tokens
+• Max Output: 128K tokens
+• Reasoning Effort: 'minimal', 'low', 'medium', 'high'
+• Verbosity: 'low', 'auto', 'high'
+• Supports structured JSON output and function calling
+• Multimodal (text + image) support
+
+### Pricing (per 1M tokens)
+• GPT-5: $1.25 input / $10.00 output
+• GPT-5 Mini: $0.25 input / $2.00 output
+• GPT-5 Nano: $0.05 input / $0.40 output
+
+## 2. Building a RAG System with GPT-5
+Retrieval-Augmented Generation (RAG) combines vector search and GPT-5 for grounded, up-to-date responses. You can build a RAG pipeline using the OpenAI Responses API and embedding models.
+
+### RAG Architecture Steps
+1. Embed documents using `text-embedding-3-large` and store in a vector DB (Pinecone, Weaviate, etc.)
+2. On query, retrieve top-k relevant chunks.
+3. Pass retrieved context + user query to GPT-5 via the Responses API.
+4. Optionally use structured outputs for reliability.
+5. Evaluate answer quality (faithfulness, relevance).
+
+### Official Resources
+• OpenAI Cookbook: https://cookbook.openai.com/examples/gpt-5/gpt-5_prompting_guide
+• Responses API Docs: https://platform.openai.com/docs/guides/responses
+• RAG with Multiple Tools Guide: https://cookbook.openai.com/examples/gpt-5/rag_with_multiple_tools
+• Multimodal RAG Guide: https://cookbook.openai.com/examples/gpt-5/multimodal_rag
+
+### Example API Usage
+POST https://api.openai.com/v1/responses
+{
+  "model": "gpt-5",
+  "input": [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "Answer based on the retrieved documents."}
+  ],
+  "reasoning_effort": "minimal",
+  "verbosity": "auto",
+  "response_format": {"type": "json_schema", "schema": {...}}
+}
+
+## 3. Tips for Production RAG
+• Chunk documents around 800-1200 tokens for optimal embedding quality.
+• Include metadata like source and timestamps in context.
+• Tune 'reasoning_effort' for latency/cost balance.
+• Use structured JSON outputs when possible for downstream automation.
+
+## 4. References
+OpenAI Cookbook and API Docs provide official and reproducible examples.
+All URLs included here are from public OpenAI documentation.
