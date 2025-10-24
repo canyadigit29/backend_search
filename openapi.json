@@ -49,7 +49,7 @@
       "post": {
         "operationId": "triggerGoogleDriveSync",
         "summary": "Sync, OCR, and Ingest New Files from Google Drive",
-        "description": "Triggers a complete, end-to-end background process to find new files in the configured Google Drive folder. For each new file, the system will download it, perform OCR if necessary, and then chunk and embed the content to make it available for search. This is a single command to start the entire ingestion pipeline.",
+        "description": "Triggers a background job to sync new files from Google Drive. The process includes downloading, performing OCR on documents, and embedding their content to make them available for search. This command starts the full ingestion pipeline.",
         "x-oai-meta": {
           "name": "triggerGoogleDriveSync",
           "isUserFacing": true
