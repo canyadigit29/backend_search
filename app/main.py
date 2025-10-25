@@ -13,6 +13,7 @@ from app.api.project_ops import project, session_log
 from app.api.NerdGPT import code_chat, github_api
 from app.api.writing_ops import report
 from app.api.gdrive_ops import router as gdrive_router
+from app.api.assistant import document_index
 from app.core.config import settings
 
 app = FastAPI(
@@ -58,3 +59,4 @@ app.include_router(enrich_agenda.router, prefix=settings.API_PREFIX)
 app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)
 app.include_router(item_history.router, prefix=f"{settings.API_PREFIX}/file_ops")
 app.include_router(gdrive_router.router, prefix=f"{settings.API_PREFIX}/gdrive")
+app.include_router(document_index.router, prefix=f"{settings.API_PREFIX}/assistant")

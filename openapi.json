@@ -73,6 +73,55 @@
           }
         }
       }
+    },
+    "/api/assistant/generate_document_index": {
+      "get": {
+        "operationId": "generateDocumentIndex",
+        "summary": "Generate Document Corpus Index for Enhanced Search Planning",
+        "description": "Generates a comprehensive index of the document corpus including metadata, search effectiveness data, topic taxonomy, and optimization tips. Returns a downloadable JSON file that can be uploaded to improve the Custom GPT's search strategy and user guidance capabilities.",
+        "x-oai-meta": {
+          "name": "generateDocumentIndex",
+          "isUserFacing": true
+        },
+        "responses": {
+          "200": {
+            "description": "Document index generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "generated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "corpus_summary": {
+                      "type": "object",
+                      "description": "Overview of document corpus statistics"
+                    },
+                    "search_strategy_guide": {
+                      "type": "object", 
+                      "description": "Data-driven recommendations for search parameters"
+                    },
+                    "topic_taxonomy": {
+                      "type": "object",
+                      "description": "Hierarchical organization of topics and document types"
+                    },
+                    "document_catalog": {
+                      "type": "object",
+                      "description": "Structured catalog of available documents and entities"
+                    },
+                    "usage_instructions": {
+                      "type": "object",
+                      "description": "Guidelines for using the index to improve search quality"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

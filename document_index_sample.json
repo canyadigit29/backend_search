@@ -1,0 +1,549 @@
+{
+  "generated_at": "2025-10-25T15:52:59.843360",
+  "corpus_summary": {
+    "total_files": 121,
+    "total_chunks": 820,
+    "document_types": {
+      "Minutes": 380,
+      "Ordinance": 245,
+      "Misc": 195
+    },
+    "file_types": {
+      "application/pdf": 115,
+      "text/plain": 6
+    },
+    "date_coverage": {
+      "earliest_meeting": "2018-05-01",
+      "latest_meeting": "2025-04-01",
+      "total_meetings": 76,
+      "years_covered": [
+        "2022",
+        "2021",
+        "2020",
+        "2023",
+        "2019",
+        "2024",
+        "2018",
+        "2025"
+      ]
+    },
+    "metadata_status": "extracted_from_content"
+  },
+  "content_analysis": {
+    "key_terms_found": 100,
+    "common_participants": {
+      "Mr": 295,
+      "Mrs": 243,
+      "Mrs. Colebank": 172,
+      "Mr. Siwula": 166,
+      "Mr. Close": 90,
+      "Mrs. Robson": 73,
+      "Mr. Pinskey": 71,
+      "Mr. Davis": 57,
+      "Mr. Stansak": 46,
+      "Mr. Chronowski": 33
+    },
+    "financial_references_count": 1297,
+    "addresses_found": 125,
+    "ordinance_references": 134,
+    "sample_ordinances": [
+      "2019-11",
+      "2019-03",
+      "1143",
+      "2020-10",
+      "2020-05",
+      "2019-01",
+      "2020-08",
+      "2021-02",
+      "2107",
+      "2025-03"
+    ]
+  },
+  "search_strategy_guide": {
+    "effective_terms": {
+      "Mrs": {
+        "result_count": 50,
+        "confidence": "high",
+        "sample_files": [
+          "January 2024 Minutes Reorg.pdf",
+          "May 2024 Minutes.pdf",
+          "February 2024 Minutes.pdf"
+        ]
+      },
+      "Colebank": {
+        "result_count": 50,
+        "confidence": "high",
+        "sample_files": [
+          "January 2022 Minutes Reorg.pdf",
+          "April 2021 Minutes.pdf",
+          "February 2022 Minutes.pdf"
+        ]
+      },
+      "Council": {
+        "result_count": 50,
+        "confidence": "high",
+        "sample_files": [
+          "August 2018 Minutes.pdf",
+          "May 2023 Minutes Special D.pdf",
+          "February 2019 Minutes.pdf"
+        ]
+      },
+      "Motion": {
+        "result_count": 50,
+        "confidence": "high",
+        "sample_files": [
+          "April 2025 Minutes.pdf",
+          "July 2024 Minutes.pdf",
+          "August 2024 Minutes.pdf"
+        ]
+      },
+      "Siwula": {
+        "result_count": 50,
+        "confidence": "high",
+        "sample_files": [
+          "February 2023 Minutes.pdf",
+          "January 2024 Minutes Reorg.pdf",
+          "March 2024 Minutes.pdf"
+        ]
+      }
+    },
+    "recommended_weights": {
+      "semantic_heavy_queries": {
+        "description": "Conceptual questions, explanations, broad topics",
+        "weights": {
+          "semantic": 0.75,
+          "keyword": 0.25
+        },
+        "threshold": 0.4,
+        "examples": [
+          "explain budget process",
+          "describe zoning policies"
+        ]
+      },
+      "keyword_heavy_queries": {
+        "description": "Specific entities, numbers, exact phrases",
+        "weights": {
+          "semantic": 0.3,
+          "keyword": 0.7
+        },
+        "threshold": 0.6,
+        "examples": [
+          "Ordinance 1045",
+          "CDBG funding",
+          "ADA compliance"
+        ]
+      },
+      "balanced_queries": {
+        "description": "Mixed entity + concept queries",
+        "weights": {
+          "semantic": 0.5,
+          "keyword": 0.5
+        },
+        "threshold": 0.45,
+        "examples": [
+          "storm sewer maintenance on Main Street"
+        ]
+      }
+    }
+  },
+  "topic_taxonomy": {
+    "governance": {
+      "description": "Municipal governance, meetings, decisions",
+      "document_types": [
+        "meeting_minutes",
+        "transcripts",
+        "agendas"
+      ],
+      "key_terms": [
+        "council",
+        "mayor",
+        "vote",
+        "motion",
+        "resolution"
+      ],
+      "search_tips": "Use meeting dates, specific council member names, or motion topics"
+    },
+    "ordinances": {
+      "description": "Local laws, regulations, and legal documents",
+      "document_types": [
+        "ordinance",
+        "code",
+        "regulation"
+      ],
+      "key_terms": [
+        "title",
+        "section",
+        "ordinance",
+        "code",
+        "violation"
+      ],
+      "search_tips": "Search by ordinance number, title reference, or specific code section"
+    },
+    "finance": {
+      "description": "Budget, funding, financial matters",
+      "document_types": [
+        "budget",
+        "financial_report",
+        "audit"
+      ],
+      "key_terms": [
+        "budget",
+        "fund",
+        "revenue",
+        "expense",
+        "CDBG",
+        "ARPA"
+      ],
+      "search_tips": "Use specific fund names, dollar amounts, or fiscal years"
+    },
+    "infrastructure": {
+      "description": "Public works, utilities, maintenance",
+      "document_types": [
+        "engineering_report",
+        "project_plan",
+        "inspection"
+      ],
+      "key_terms": [
+        "sewer",
+        "water",
+        "road",
+        "bridge",
+        "maintenance",
+        "ADA"
+      ],
+      "search_tips": "Include street names, project types, or infrastructure categories"
+    },
+    "development": {
+      "description": "Planning, zoning, building permits",
+      "document_types": [
+        "permit",
+        "zoning",
+        "planning"
+      ],
+      "key_terms": [
+        "zoning",
+        "permit",
+        "development",
+        "planning",
+        "variance"
+      ],
+      "search_tips": "Use property addresses, applicant names, or zoning classifications"
+    }
+  },
+  "document_catalog": {
+    "by_type": {
+      "Minutes": {
+        "count": 380,
+        "description": "Documents of type: Minutes",
+        "sample_search_terms": []
+      },
+      "Ordinance": {
+        "count": 245,
+        "description": "Documents of type: Ordinance",
+        "sample_search_terms": []
+      },
+      "Misc": {
+        "count": 195,
+        "description": "Documents of type: Misc",
+        "sample_search_terms": []
+      }
+    },
+    "ordinances": [
+      {
+        "title": null,
+        "number": "2023-15",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2023-15' for best results"
+      },
+      {
+        "title": null,
+        "number": "2023-13",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2023-13' for best results"
+      },
+      {
+        "title": null,
+        "number": "2023-13",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2023-13' for best results"
+      },
+      {
+        "title": null,
+        "number": "2118",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2118' for best results"
+      },
+      {
+        "title": null,
+        "number": "211",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '211' for best results"
+      },
+      {
+        "title": null,
+        "number": "2023-19",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2023-19' for best results"
+      },
+      {
+        "title": null,
+        "number": "2023-19",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2023-19' for best results"
+      },
+      {
+        "title": null,
+        "number": "2023-20",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2023-20' for best results"
+      },
+      {
+        "title": null,
+        "number": "2023-20",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2023-20' for best results"
+      },
+      {
+        "title": null,
+        "number": "1104",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '1104' for best results"
+      },
+      {
+        "title": null,
+        "number": "1104",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '1104' for best results"
+      },
+      {
+        "title": null,
+        "number": "1104",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '1104' for best results"
+      },
+      {
+        "title": null,
+        "number": "2023-07",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2023-07' for best results"
+      },
+      {
+        "title": null,
+        "number": "2023-07",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2023-07' for best results"
+      },
+      {
+        "title": null,
+        "number": "2104",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2104' for best results"
+      },
+      {
+        "title": null,
+        "number": "2104",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2104' for best results"
+      },
+      {
+        "title": null,
+        "number": "2105",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2105' for best results"
+      },
+      {
+        "title": null,
+        "number": "2105",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2105' for best results"
+      },
+      {
+        "title": null,
+        "number": "2019-08",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2019-08' for best results"
+      },
+      {
+        "title": null,
+        "number": "2019-08",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2019-08' for best results"
+      },
+      {
+        "title": null,
+        "number": "2019-06",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2019-06' for best results"
+      },
+      {
+        "title": null,
+        "number": "2019-06",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2019-06' for best results"
+      },
+      {
+        "title": null,
+        "number": "2104",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2104' for best results"
+      },
+      {
+        "title": null,
+        "number": "2104",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2104' for best results"
+      },
+      {
+        "title": "Zoning Part 1",
+        "number": "27",
+        "source": "database",
+        "search_hint": "Use exact number '27' for best results"
+      },
+      {
+        "title": null,
+        "number": "461",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '461' for best results"
+      },
+      {
+        "title": null,
+        "number": "2022-10",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2022-10' for best results"
+      },
+      {
+        "title": null,
+        "number": "2022-10",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2022-10' for best results"
+      },
+      {
+        "title": null,
+        "number": "2022-11",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2022-11' for best results"
+      },
+      {
+        "title": null,
+        "number": "2022-11",
+        "source": "content_extracted",
+        "search_hint": "Use exact number '2022-11' for best results"
+      }
+    ],
+    "key_entities": [
+      "Mrs",
+      "Colebank",
+      "Council",
+      "Motion",
+      "Siwula",
+      "Moved",
+      "Scottdale",
+      "Stansak",
+      "President",
+      "---PAGE",
+      "Robson",
+      "Pinskey",
+      "Manager",
+      "Falatovich",
+      "Chronowski",
+      "Solicitor",
+      "SCOTTDALE",
+      "Mayor",
+      "Pallone",
+      "King",
+      "Eby",
+      "Ordinance",
+      "Engineer",
+      "Street",
+      "Commission",
+      "MEETING",
+      "2023",
+      "Hovis",
+      "WHEREAS",
+      "Donald",
+      "Secretary",
+      "00",
+      "Close",
+      "1---",
+      "ROLL",
+      "Bell",
+      "Washington",
+      "PUBLIC",
+      "CALL",
+      "Treasurer",
+      "County",
+      "Department",
+      "Davis",
+      "30",
+      "Resolution",
+      "2020",
+      "CDBG",
+      "Pennsylvania",
+      "Code",
+      "COUNCIL"
+    ],
+    "common_people": [
+      "Mr",
+      "Mr. Chronowski",
+      "Mr. Siwula",
+      "Mrs. Colebank",
+      "Mrs",
+      "Mrs.Colebank",
+      "Mr. Pinskey",
+      "Mr. Bell",
+      "Mr. Davis",
+      "Mrs. Robson",
+      "Mr. Stansak",
+      "Mr. Close",
+      "Mr.Pinskey",
+      "Mr. Piriskey",
+      "Mrs. Yeager"
+    ],
+    "sample_addresses": [
+      "4 Aiea St",
+      "333 Market St",
+      "11 Fourth Avenue",
+      "206 Park Street",
+      "300 Walnut Ave",
+      "216 Market Street",
+      "1909 Loucks Avenue",
+      "307 Mulberry Street",
+      "242 Hunter Drive",
+      "1954 Park Avenue"
+    ]
+  },
+  "search_optimization_tips": {
+    "high_precision_needed": [
+      "Use quoted phrases for exact matches",
+      "Include document type filters when known",
+      "Specify date ranges for time-sensitive queries",
+      "Use ordinance numbers or titles for legal documents"
+    ],
+    "broad_exploration": [
+      "Use semantic-heavy weights for conceptual queries",
+      "Try multiple related terms with OR logic",
+      "Lower relevance threshold for comprehensive coverage",
+      "Use topic-based terms from the taxonomy"
+    ],
+    "when_no_results": [
+      "Try alternative terminology or synonyms",
+      "Broaden the query to related concepts",
+      "Check if the topic might be in a different document type",
+      "Consider if the information might be too recent/old for the corpus"
+    ]
+  },
+  "usage_instructions": {
+    "before_each_search": [
+      "Check if the topic exists in the document catalog",
+      "Choose appropriate search weights based on query type",
+      "Consider using effective terms from the search guide",
+      "Set relevance threshold based on precision needs"
+    ],
+    "query_enhancement": [
+      "Add related terms from topic taxonomy",
+      "Include entity names when relevant",
+      "Use OR logic for term variations",
+      "Consider document type context"
+    ]
+  }
+}
