@@ -9,10 +9,17 @@ from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
 from app.core.openai_client import chat_completion, stream_chat_completion
 from app.core.token_utils import trim_texts_to_token_limit
+from sentence_transformers import CrossEncoder
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import time
+
+
+# Load the Cross-Encoder model once when the module is loaded
+# This is a lightweight model optimized for performance
+cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+
 
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -506,6 +513,31 @@ async def assistant_search_docs(request: Request):
                     kw = v.get("keyword_score_norm", 0.0) or 0.0
                     v["combined_score"] = alpha_sem * sem + beta_kw * kw
                 matches = sorted(merged_by_id.values(), key=lambda x: (x.get("combined_score", 0.0) or 0.0), reverse=True)
+        
+        # --- Rerank the top N results using a Cross-Encoder model ---
+        # We only rerank the top 50 results for performance
+        top_k_for_rerank = 50
+        if matches and len(matches) > 1:
+            # Prepare pairs of [query, passage] for the Cross-Encoder
+            passages = [chunk.get("content", "") for chunk in matches[:top_k_for_rerank]]
+            query_passage_pairs = [[user_prompt, passage] for passage in passages]
+
+            # Get scores from the Cross-Encoder
+            rerank_scores = cross_encoder.predict(query_passage_pairs)
+
+            # Add rerank scores to the top matches
+            for i, score in enumerate(rerank_scores):
+                matches[i]["rerank_score"] = score
+
+            # Separate the reranked and non-reranked chunks
+            reranked_matches = matches[:top_k_for_rerank]
+            remaining_matches = matches[top_k_for_rerank:]
+
+            # Sort the top matches by the new rerank_score
+            reranked_matches.sort(key=lambda x: x.get("rerank_score", 0.0), reverse=True)
+
+            # Combine the reranked and remaining matches
+            matches = reranked_matches + remaining_matches
     
     # --- OPTIMIZED: Neighbor retrieval and summary using the simplified results ---
     chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}
