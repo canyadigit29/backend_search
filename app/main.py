@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.workers.main_worker import MainWorker
 
 # Import existing, still-needed routers
-from app.api.file_ops import upload, download, search_docs, embed_api, enrich_agenda, extract_text_api, item_history
+from app.api.file_ops import upload, search_docs, embed_api, extract_text_api
 from app.api.gdrive_ops import router as gdrive_router
 from app.core.config import settings
 
@@ -41,10 +41,7 @@ async def run_worker_manually(background_tasks: BackgroundTasks):
 
 # Mount all the necessary routers
 app.include_router(upload.router, prefix=settings.API_PREFIX)
-app.include_router(download.router, prefix=settings.API_PREFIX)
 app.include_router(search_docs.router, prefix=settings.API_PREFIX)
 app.include_router(embed_api.router, prefix="/api")
-app.include_router(enrich_agenda.router, prefix=settings.API_PREFIX)
 app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)
-app.include_router(item_history.router, prefix=f"{settings.API_PREFIX}/file_ops")
 app.include_router(gdrive_router.router, prefix=f"{settings.API_PREFIX}/gdrive")

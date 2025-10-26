@@ -4,11 +4,6 @@
 # and because 'ingest' no longer exists.
 # from . import ingest, upload, enrich_agenda, item_history
 
-from . import enrich_agenda, item_history
-
-enrich_agenda = enrich_agenda
-item_history = item_history
-
 
 def load_upload():
     from . import upload
