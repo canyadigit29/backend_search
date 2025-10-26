@@ -68,7 +68,7 @@ class MainWorker:
             logger.error(f"Ingestion Task: Error fetching files for ingestion: {e}")
 
     @staticmethod
-    async def run_main_loop(interval_seconds=60):
+    async def run_main_loop(interval_seconds=3600):
         """
         The main loop for the background worker.
         """
