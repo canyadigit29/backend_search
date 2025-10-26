@@ -533,14 +533,18 @@ async def assistant_search_docs(request: Request):
     else:
         included_limit = 25
 
-    summary = None
-    summary_was_partial = False
-    pending_chunk_ids = []
-    included_chunk_ids = []
     included_chunks = []
+    pending_chunk_ids = []
 
-    # Select the chunks to be included in the response
-    included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=included_limit)
+    if resume_chunk_ids:
+        # In resume mode, the included chunks are exactly those specified by the caller.
+        # No further selection or batching is needed.
+        included_chunks = matches
+        pending_chunk_ids = [] # A resume call is the final batch.
+    else:
+        # For a new search, select the top chunks for the first batch.
+        included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=included_limit)
+
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
     # If the mode is 'summary', generate a summary. Otherwise, skip this step.
