@@ -45,7 +45,6 @@ async def run_google_drive_sync():
     """
     Main function to sync files from a Google Drive folder to Supabase storage.
     """
-    print("Starting Google Drive sync...")
     try:
         drive_service = get_google_drive_service()
 
@@ -58,7 +57,6 @@ async def run_google_drive_sync():
 
         supabase_files_map = {file['name']: {'id': file['id'], 'file_path': file['file_path']} for file in rpc_response.data}
         supabase_file_names = set(supabase_files_map.keys())
-        print(f"Found {len(supabase_file_names)} files in Supabase DB.")
 
         # 2. Get list of files from Google Drive folder, handling pagination
         query = f"'{settings.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false"
@@ -78,7 +76,6 @@ async def run_google_drive_sync():
             page_token = results.get('nextPageToken')
             if not page_token:
                 break
-        print(f"Found {len(drive_files)} files in Google Drive folder after checking all pages.")
 
         drive_file_names = {file['name'] for file in drive_files}
 
@@ -86,25 +83,18 @@ async def run_google_drive_sync():
         new_files_to_upload_names = drive_file_names - supabase_file_names
         files_to_delete_names = supabase_file_names - drive_file_names
 
-        print(f"Found {len(new_files_to_upload_names)} new files to upload.")
-        print(f"Found {len(files_to_delete_names)} files to delete.")
-
         # 4. Process deletions
         for file_name in files_to_delete_names:
             file_info = supabase_files_map[file_name]
             file_id = file_info['id']
             file_path = file_info['file_path']
             
-            print(f"Deleting file: {file_name} (ID: {file_id})")
-
             try:
                 # Delete from storage first
                 supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).remove([file_path])
-                print(f"Successfully deleted {file_name} from storage.")
                 
                 # Then delete from the database table
                 supabase.table("files").delete().eq("id", file_id).execute()
-                print(f"Successfully deleted {file_name} record from database.")
 
             except Exception as e:
                 print(f"Error deleting file {file_name}: {e}")

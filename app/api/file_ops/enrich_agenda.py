@@ -41,7 +41,6 @@ def extract_sections(text):
     ]
     try:
         llm_response = chat_completion(prompt)
-        print(f"[extract_sections] LLM raw response: {llm_response}")
         header_lines = json.loads(llm_response)
         if not isinstance(header_lines, list):
             raise ValueError("LLM did not return a list")
@@ -60,7 +59,6 @@ def extract_sections(text):
             raise ValueError("No sections found by LLM")
         return sections
     except Exception as e:
-        print(f"[extract_sections] LLM section header detection failed: {e}. Falling back to heuristic.")
         # Fallback to previous heuristic
         sections = {}
         current = None

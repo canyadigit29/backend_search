@@ -315,7 +315,6 @@ def keyword_search(
     endpoint = f"{supabase_url}/rest/v1/rpc/match_documents_fts_v3"
 
     try:
-        print(f"[DEBUG] Keyword search: attempting endpoint {endpoint} with args {list(rpc_args.keys())}")
         response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
         
         if response.status_code >= 400:
@@ -327,7 +326,6 @@ def keyword_search(
             response.raise_for_status()
 
         results = response.json() or []
-        print(f"[DEBUG] Keyword search: successfully called {endpoint}, found {len(results)} results.")
         for r in results:
             r["keyword_score"] = r.get("ts_rank", 0)
         return results
@@ -352,16 +350,11 @@ async def assistant_search_docs(request: Request):
     to the perform_search flow.
     """
     payload = await request.json()
-    try:
-        print("[DEBUG] assistant_search_docs: payload keys", sorted(payload.keys()))
-    except Exception:
-        print("[DEBUG] assistant_search_docs: payload type", type(payload))
     # Timer no longer controls batching; kept available if needed elsewhere
     sw = None
 
     # Data is now a validated Pydantic model, access attributes directly
     user_prompt = payload.get("query") or payload.get("user_prompt")
-    print("[DEBUG] assistant_search_docs: user_prompt", (user_prompt or "")[:120])
     if not user_prompt:
         return JSONResponse({"error": "Missing query in payload"}, status_code=400)
 
@@ -377,9 +370,7 @@ async def assistant_search_docs(request: Request):
     search_filters = query_obj.get("filters") or {}
 
     try:
-        print("[DEBUG] assistant_search_docs: generating embedding for", (search_query or "")[:120])
         embedding = embed_text(search_query)
-        print("[DEBUG] assistant_search_docs: embedding generated")
     except Exception as e:
         return JSONResponse({"error": f"Failed to generate embedding: {e}"}, status_code=500)
 
@@ -434,12 +425,9 @@ async def assistant_search_docs(request: Request):
             # Apply max_results cap if provided
             max_results = payload.get("max_results") or 100
             matches = matches[:max_results]
-            print("[DEBUG] assistant_search_docs: merged OR-term matches", len(matches))
         else:
-            print("[DEBUG] assistant_search_docs: calling perform_search with max_results", tool_args.get("max_results"))
             search_result = perform_search(tool_args)
             matches = search_result.get("retrieved_chunks", [])
-            print("[DEBUG] assistant_search_docs: semantic matches", len(matches))
 
         # Smart hybrid: decide weights and when to bring in FTS based on lexical cues
         sem_w, kw_w = _decide_weighting(user_prompt or "", or_terms if isinstance(or_terms, list) else [])
@@ -524,8 +512,6 @@ async def assistant_search_docs(request: Request):
                     kw = v.get("keyword_score_norm", 0.0) or 0.0
                     v["combined_score"] = alpha_sem * sem + beta_kw * kw
                 matches = sorted(merged_by_id.values(), key=lambda x: (x.get("combined_score", 0.0) or 0.0), reverse=True)
-                print("[DEBUG] assistant_search_docs: hybrid matches", len(matches))
-    print("[DEBUG] assistant_search_docs: total matches after retrieval", len(matches))
     
     # --- OPTIMIZED: Neighbor retrieval and summary using the simplified results ---
     chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}

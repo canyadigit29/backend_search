@@ -37,12 +37,10 @@ async def api_extract_text(file_path: str = Query(...)):
             print(f"[ERROR] File not found in storage: {file_path}")
             raise HTTPException(status_code=404, detail="File not found in storage.")
         file_bytes = file_response  # FIX: supabase-py returns bytes, not a file-like object
-        print(f"[DEBUG] Downloaded {len(file_bytes)} bytes from Supabase for {file_path}")
         # Always save as .pdf
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
             tmp_file.write(file_bytes)
             tmp_file_path = tmp_file.name
-        print(f"[DEBUG] Temp file path: {tmp_file_path}")
         # Extract text
         text = extract_text(tmp_file_path)
         file_name = os.path.basename(file_path)
