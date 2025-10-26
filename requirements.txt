@@ -20,4 +20,5 @@ google-auth-httplib2
 google-auth-oauthlib
 pypdf
 sentence-transformers
+python-docx
 
