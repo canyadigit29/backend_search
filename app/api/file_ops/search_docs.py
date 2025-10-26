@@ -106,44 +106,19 @@ def _fetch_chunks_by_ids(ids: list[str]):
     except Exception:
         return []
 
-def _select_included_and_pending(matches: list[dict], included_limit: int = 25, per_file_cap: int = 2):
+def _select_included_and_pending(matches: list[dict], included_limit: int = 25):
     """
-    From a score-sorted list of matches, select up to `included_limit` items with a
-    per-file cap of `per_file_cap` to promote diversity. Operates over the top-50 only.
-    Returns (included_chunks, pending_chunk_ids) where pending are the remaining items
-    from the top-50 that were not included this pass, preserving order.
+    From a score-sorted list of matches, select the top `included_limit` items.
+    The rest of the top 50 are considered pending. This is a simple split,
+    ignoring file diversity, to send the most relevant chunks first.
     """
-    top50 = matches[:50]
-    included = []
-    included_ids = set()
-    per_file_counts = defaultdict(int)
-
-    # First pass: enforce per-file cap while filling included list
-    for c in top50:
-        if len(included) >= included_limit:
-            break
-        fid = c.get("file_id")
-        cid = c.get("id")
-        if not cid:
-            continue
-        if per_file_counts[fid] < per_file_cap:
-            included.append(c)
-            included_ids.add(cid)
-            per_file_counts[fid] += 1
-
-    # Second pass: if fewer than included_limit, fill from remaining without cap
-    if len(included) < included_limit:
-        for c in top50:
-            if len(included) >= included_limit:
-                break
-            cid = c.get("id")
-            if not cid or cid in included_ids:
-                continue
-            included.append(c)
-            included_ids.add(cid)
-
-    # Pending are the rest of top50 not included
-    pending_ids = [c.get("id") for c in top50 if c.get("id") and c.get("id") not in included_ids]
+    top_50 = matches[:50]
+    included = top_50[:included_limit]
+    included_ids = {c.get("id") for c in included}
+    
+    # Pending are the rest of top 50 not included in the first batch
+    pending_ids = [c.get("id") for c in top_50 if c.get("id") and c.get("id") not in included_ids]
+    
     return included, pending_ids
 
 def perform_search(tool_args):
@@ -559,7 +534,7 @@ async def assistant_search_docs(request: Request):
     included_chunks = []
 
     # Select the chunks to be included in the response
-    included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=50, per_file_cap=3)
+    included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=15, per_file_cap=2)
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
     # If the mode is 'summary', generate a summary. Otherwise, skip this step.
