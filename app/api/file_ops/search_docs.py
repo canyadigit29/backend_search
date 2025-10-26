@@ -527,6 +527,12 @@ async def assistant_search_docs(request: Request):
     # Determine the response mode from the payload, defaulting to 'summary'
     response_mode = payload.get("response_mode", "summary")
 
+    # Set the included limit based on the response mode
+    if response_mode == "structured_results":
+        included_limit = 10
+    else:
+        included_limit = 25
+
     summary = None
     summary_was_partial = False
     pending_chunk_ids = []
@@ -534,7 +540,7 @@ async def assistant_search_docs(request: Request):
     included_chunks = []
 
     # Select the chunks to be included in the response
-    included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=25)
+    included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=included_limit)
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
     # If the mode is 'summary', generate a summary. Otherwise, skip this step.
