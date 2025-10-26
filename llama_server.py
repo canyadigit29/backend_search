@@ -6,7 +6,9 @@ from pydantic import BaseModel
 from llama_index.core import VectorStoreIndex, ServiceContext
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.query_engine import RetrieverQueryEngine
-from llama_index.core.retrievers import BM25Retriever, VectorIndexRetriever, HybridRetriever
+from llama_index.core.retrievers import VectorIndexRetriever
+from llama_index.retrievers.bm25 import BM25Retriever
+from llama_index.core.retrievers import HybridRetriever
 from llama_index.core.llms import OpenAI
 from llama_index.vector_stores.pgvector import PGVectorStore
 import os

@@ -19,6 +19,11 @@ class Settings:
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "").strip()
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-ada-002"
 
+    # 📄 Google Drive
+    GOOGLE_CREDENTIALS_BASE64: str = os.getenv("GOOGLE_CREDENTIALS_BASE64", "").strip()
+    GOOGLE_ADMIN_EMAIL: str = os.getenv("GOOGLE_ADMIN_EMAIL", "").strip()
+    GOOGLE_DRIVE_FOLDER_ID: str = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+
     # ⚙️ Env
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").strip()
     DEBUG: bool = os.getenv("DEBUG", "True").strip() == "True"

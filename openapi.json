@@ -15,8 +15,8 @@
     "/api/assistant/search_docs": {
       "post": {
         "operationId": "searchDocumentsAssistant",
-    "summary": "Search documents via assistant",
-  "description": "Performs a semantic search and returns a summary plus sources. Uses fixed batching: summarizes a diversified set of 25 from the top-50 (capped per file to improve breadth) and returns the remaining top-50 as pending via resume_chunk_ids.",
+        "summary": "Search documents via assistant",
+        "description": "Performs a semantic search and returns a summary plus sources. Uses fixed batching: summarizes a diversified set of 25 from the top-50 (capped per file to improve breadth) and returns the remaining top-50 as pending via resume_chunk_ids.",
         "x-oai-meta": {
           "name": "searchDocumentsAssistant",
           "isUserFacing": true
@@ -44,6 +44,35 @@
           }
         }
       }
+    },
+    "/api/gdrive/sync": {
+      "post": {
+        "operationId": "triggerGoogleDriveSync",
+        "summary": "Sync, OCR, and Ingest New Files from Google Drive",
+        "description": "Triggers a background job to sync new files from Google Drive. The process includes downloading, performing OCR on documents, and embedding their content to make them available for search. This command starts the full ingestion pipeline.",
+        "x-oai-meta": {
+          "name": "triggerGoogleDriveSync",
+          "isUserFacing": true
+        },
+        "responses": {
+          "202": {
+            "description": "Sync and ingestion process started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "The Google Drive sync and ingestion process has been started in the background. New files will be available for search shortly."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -56,16 +85,6 @@
         "properties": {
           "query": {
             "type": "string"
-          },
-          "user": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"],
-            "description": "Static user identifier required by the backend."
           },
           "relevance_threshold": {
             "type": "number",
@@ -93,7 +112,9 @@
           },
           "or_terms": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Optional alternate phrasings or synonyms. Results from each term are merged by chunk id using the best (max) score before ranking."
           },
           "resume_chunk_ids": {
@@ -170,7 +191,6 @@
               "format": "uuid"
             }
           },
-          
           "error": {
             "type": "string"
           }

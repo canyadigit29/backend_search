@@ -4,13 +4,20 @@ WORKDIR /app
 
 # Install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y gawk poppler-utils tesseract-ocr && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy project files
 COPY . .
 
+# Convert line endings to Unix format to prevent script errors
+RUN sed -i 's/\r$//' start.sh
+
+# Make start script executable
+RUN chmod +x start.sh
+
 # Expose port for local use (optional)
 ENV PORT=8000
 
-# Run FastAPI server
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT"]
+# Run start script
+CMD ["./start.sh"]

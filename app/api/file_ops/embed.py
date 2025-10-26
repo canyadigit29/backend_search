@@ -56,83 +56,74 @@ def retry_embed_text(text, retries=3, delay=1.5):
 def embed_and_store_chunk(chunk):
     chunk_text = chunk["content"]
     if not chunk_text.strip():
-        logging.warning(f"⚠️ Skipping empty chunk {chunk.get('chunk_index')} for file {chunk.get('file_name')}")
-        return {"skipped": True}
+        logging.warning(f"⚠️ Skipping empty chunk {chunk.get('chunk_index')} for file {chunk.get('file_id')}")
+        return
 
     try:
         embedding = retry_embed_text(chunk_text)
-        # Embedding quality checks
         norm = np.linalg.norm(embedding)
         if norm < 0.1 or np.allclose(embedding, 0):
-            logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {chunk.get('chunk_index')} of {chunk.get('file_name')}")
-            return {"skipped": True, "reason": "low-quality embedding", "norm": float(norm)}
-        timestamp = datetime.utcnow().isoformat()
+            logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {chunk.get('chunk_index')} of file {chunk.get('file_id')}")
+            return
 
-        # Prepare data for insert, including all original chunk fields
-        data = dict(chunk)  # Copy all fields from chunk
-        data["openai_embedding"] = embedding
-        # Do NOT write to 'embedding' column anymore
-        data["timestamp"] = timestamp
-        # Ensure id is present
-        if "id" not in data:
-            data["id"] = str(uuid.uuid4())
+        # Define the structured columns that have dedicated fields in the DB
+        structured_keys = [
+            "id", "file_id", "user_id", "content", "embedding", "chunk_index", 
+            "page_number", "document_type", "meeting_date", "ordinance_title", 
+            "ordinance_number", "content_tsv", "created_at", "section_header"
+        ]
 
-        print(f"[DEBUG] Inserting chunk {data.get('chunk_index')} with metadata: "
-              f"document_type={data.get('document_type')}, meeting_year={data.get('meeting_year')}, "
-              f"meeting_month={data.get('meeting_month')}, meeting_day={data.get('meeting_day')}, "
-              f"ordinance_title={data.get('ordinance_title')}, file_extension={data.get('file_extension')}")
-        result = supabase.table("document_chunks").insert(data).execute()
-        if getattr(result, "error", None):
-            logging.error(f"Supabase insert failed: {result.error.message}")
-            return {"error": result.error.message}
+        # Prepare data for insert
+        data_to_insert = {k: v for k, v in chunk.items() if k in structured_keys}
+        
+        # All other keys are collected into the 'metadata' JSONB field
+        misc_metadata = {k: v for k, v in chunk.items() if k not in structured_keys}
+        data_to_insert["metadata"] = misc_metadata
+        
+        data_to_insert["embedding"] = embedding
+
+        # Ensure required fields are present
+        if "id" not in data_to_insert:
+            data_to_insert["id"] = str(uuid.uuid4())
+        if "created_at" not in data_to_insert:
+            data_to_insert["created_at"] = datetime.utcnow().isoformat()
+
+        print(f"[DEBUG] Data to be inserted: {data_to_insert}")
+        # Manually check for an error and raise an exception on failure
+        result = supabase.table("document_chunks").insert(data_to_insert).execute()
+        if hasattr(result, 'error') and result.error:
+            raise Exception(f"Supabase insert failed: {result.error.message}")
 
         logging.info(
-            f"✅ Stored chunk {data.get('chunk_index')} of {data.get('file_name')} (section: {data.get('section_header')}, page: {data.get('page_number')})"
+            f"✅ Stored chunk {data_to_insert.get('chunk_index')} for file {data_to_insert.get('file_id')} "
+            f"(page: {data_to_insert.get('page_number')})"
         )
-        return {"success": True}
 
     except Exception as e:
-        logging.exception(f"Unexpected error during embed/store: {e}")
-        return {"error": str(e)}
+        logging.exception(f"Unexpected error during embed/store for chunk of file {chunk.get('file_id')}: {e}")
+        # Re-raise the exception to signal failure to the caller
+        raise
 
-def embed_chunks(chunks, file_name: str = None):
+def embed_chunks(chunks):
     if not chunks:
         logging.warning("⚠️ No chunks to embed.")
-        return []
+        return
 
-    results = []
     for chunk in chunks:
-        # Optionally set file_name if not present
-        if file_name and not chunk.get("file_name"):
-            chunk["file_name"] = file_name
-        result = embed_and_store_chunk(chunk)
-        results.append(result)
-    return results
+        embed_and_store_chunk(chunk)
 
 def remove_embeddings_for_file(file_id: str):
     try:
-        file_result = (
-            supabase.table("files")
-            .select("file_name")
-            .eq("id", file_id)
-            .maybe_single()
-            .execute()
-        )
-        file_data = getattr(file_result, "data", None)
-        if not file_data or "file_name" not in file_data:
-            raise Exception(f"File not found for ID: {file_id}")
-
-        file_name = file_data["file_name"]
-        print(f"🧹 Removing all embeddings for file: {file_name}")
+        print(f"🧹 Removing all embeddings for file ID: {file_id}")
 
         delete_result = (
             supabase.table("document_chunks")
             .delete()
-            .eq("file_name", file_name)
+            .eq("file_id", file_id)
             .execute()
         )
         print(f"🧾 Vector delete response: {delete_result}")
-        return {"status": "success", "deleted": delete_result.data}
+        return {"status": "success", "deleted_count": len(delete_result.data)}
 
     except Exception as e:
         print(f"❌ Failed to remove embeddings: {e}")

@@ -8,6 +8,7 @@ python-docx
 python-dotenv
 python-multipart
 pytesseract
+pdf2image
 requests
 striprtf
 supabase
@@ -23,3 +24,8 @@ mammoth
 fpdf
 pymupdf
 llama-index[pgvector]
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
+pypdf
+

@@ -148,7 +148,6 @@ def perform_search(tool_args):
     description_filter = tool_args.get("description_filter")
     start_date = tool_args.get("start_date")
     end_date = tool_args.get("end_date")
-    user_id_filter = tool_args.get("user_id_filter")
     user_prompt = tool_args.get("user_prompt")
     search_query = tool_args.get("search_query")
     
@@ -164,8 +163,6 @@ def perform_search(tool_args):
         from app.api.file_ops.embed import embed_text
         query_embedding = embed_text(text_to_embed)
 
-    if not user_id_filter:
-        return {"error": "user_id must be provided to perform search."}
     try:
         # --- ALIGNMENT: Pass the relevance_threshold from the assistant directly to the DB ---
         # The 'relevance_threshold' from the assistant is a SIMILARITY score (0 to 1).
@@ -175,13 +172,12 @@ def perform_search(tool_args):
         # Semantic search
         rpc_args = {
             "query_embedding": query_embedding,
-            "user_id_filter": user_id_filter,
             "file_name_filter": file_name_filter,
             "description_filter": description_filter,
             "start_date": start_date,
             "end_date": end_date,
             "match_threshold": db_match_threshold, # Use the calculated distance threshold
-            "match_count": 150
+            "match_count": max_results
         }
         # Add metadata filters
         metadata_fields = [
@@ -262,7 +258,6 @@ router = APIRouter()
 
 def keyword_search(
     keywords,
-    user_id_filter=None,
     file_name_filter=None,
     description_filter=None,
     start_date=None,
@@ -296,7 +291,6 @@ def keyword_search(
     # Arguments for match_documents_fts_v3, aligned with its SQL definition
     rpc_args = {
         "keyword_query": keyword_query,
-        "user_id_filter": user_id_filter,
         "file_name_filter": file_name_filter,
         "description_filter": description_filter,
         "start_date": start_date,
@@ -349,6 +343,7 @@ async def api_search_docs(request: Request):
     return await assistant_search_docs(request)
 
 
+
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
 @router.post("/assistant/search_docs")
 async def assistant_search_docs(request: Request):
@@ -356,26 +351,24 @@ async def assistant_search_docs(request: Request):
     Accepts a payload from an OpenAI assistant, normalizes fields, and forwards
     to the perform_search flow.
     """
+    payload = await request.json()
+    try:
+        print("[DEBUG] assistant_search_docs: payload keys", sorted(payload.keys()))
+    except Exception:
+        print("[DEBUG] assistant_search_docs: payload type", type(payload))
     # Timer no longer controls batching; kept available if needed elsewhere
     sw = None
 
-    try:
-        data = await request.json()
-    except Exception as e:
-        return JSONResponse({"error": f"Invalid JSON payload: {e}"}, status_code=400)
-
-    user_prompt = data.get("query") or data.get("user_prompt")
+    # Data is now a validated Pydantic model, access attributes directly
+    user_prompt = payload.get("query") or payload.get("user_prompt")
+    print("[DEBUG] assistant_search_docs: user_prompt", (user_prompt or "")[:120])
     if not user_prompt:
         return JSONResponse({"error": "Missing query in payload"}, status_code=400)
 
-    user_id = (data.get("user", {}).get("id") or 
-               os.environ.get("ASSISTANT_DEFAULT_USER_ID") or 
-               "4a867500-7423-4eaa-bc79-94e368555e05")
-
     # Optional resume mode: summarize only specific chunk IDs provided by the caller
-    resume_chunk_ids = data.get("resume_chunk_ids")
+    resume_chunk_ids = payload.get("resume_chunk_ids")
 
-    relevance_threshold = data.get("relevance_threshold")
+    relevance_threshold = payload.get("relevance_threshold")
     if relevance_threshold is None:
         relevance_threshold = 0.4 # Default if not provided by assistant
 
@@ -384,7 +377,9 @@ async def assistant_search_docs(request: Request):
     search_filters = query_obj.get("filters") or {}
 
     try:
+        print("[DEBUG] assistant_search_docs: generating embedding for", (search_query or "")[:120])
         embedding = embed_text(search_query)
+        print("[DEBUG] assistant_search_docs: embedding generated")
     except Exception as e:
         return JSONResponse({"error": f"Failed to generate embedding: {e}"}, status_code=500)
 
@@ -397,22 +392,21 @@ async def assistant_search_docs(request: Request):
     else:
         tool_args = {
             "embedding": embedding,
-            "user_id_filter": user_id,
-            "file_name_filter": search_filters.get("file_name") or data.get("file_name_filter"),
-            "description_filter": search_filters.get("description") or data.get("description_filter"),
-            "start_date": data.get("start_date"),
-            "end_date": data.get("end_date"),
+            "file_name_filter": search_filters.get("file_name") or payload.get("file_name_filter"),
+            "description_filter": search_filters.get("description") or payload.get("description_filter"),
+            "start_date": payload.get("start_date"),
+            "end_date": payload.get("end_date"),
             "user_prompt": user_prompt,
             "search_query": search_query,
             "relevance_threshold": relevance_threshold,
-            "max_results": data.get("max_results")
+            "max_results": payload.get("max_results")
         }
         for meta_field in ["document_type", "meeting_year", "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"]:
             if search_filters.get(meta_field) is not None:
                 tool_args[meta_field] = search_filters[meta_field]
         
         # Optional OR-terms merging: if provided, or inferred from inline "OR"s, run per-term searches and merge by ID using max score
-        provided_or_terms = data.get("or_terms") if isinstance(data.get("or_terms"), list) else []
+        provided_or_terms = payload.get("or_terms") if isinstance(payload.get("or_terms"), list) else []
         inline_or_terms = _parse_inline_or_terms(user_prompt)
         or_terms = provided_or_terms or inline_or_terms
         if or_terms and isinstance(or_terms, list):
@@ -438,18 +432,24 @@ async def assistant_search_docs(request: Request):
                         merged_by_id[mid] = m
             matches = sorted(merged_by_id.values(), key=lambda x: x.get("score", 0), reverse=True)
             # Apply max_results cap if provided
-            max_results = data.get("max_results") or 100
+            max_results = payload.get("max_results") or 100
             matches = matches[:max_results]
+            print("[DEBUG] assistant_search_docs: merged OR-term matches", len(matches))
         else:
+            print("[DEBUG] assistant_search_docs: calling perform_search with max_results", tool_args.get("max_results"))
             search_result = perform_search(tool_args)
             matches = search_result.get("retrieved_chunks", [])
+            print("[DEBUG] assistant_search_docs: semantic matches", len(matches))
 
-        # Fallback: If semantic/OR-merged results are sparse, run a keyword FTS search and merge
+        # Smart hybrid: decide weights and when to bring in FTS based on lexical cues
+        sem_w, kw_w = _decide_weighting(user_prompt or "", or_terms if isinstance(or_terms, list) else [])
+        # Trigger FTS if results are sparse OR query looks lexical (quotes, digits, acronyms, OR terms)
         try:
-            should_fallback = len(matches) < 5
+            sparse = len(matches) < 5
         except Exception:
-            should_fallback = True
-        if should_fallback:
+            sparse = True
+        looks_lexical = kw_w >= 0.5 or (or_terms and len(or_terms) > 0)
+        if sparse or looks_lexical:
             # Build keyword list: prefer explicit or_terms or inline OR-parsed terms; avoid treating the entire query as one phrase
             keyword_terms = []
             if or_terms:
@@ -466,7 +466,6 @@ async def assistant_search_docs(request: Request):
             if keyword_terms:
                 fts_results = keyword_search(
                     keywords=keyword_terms,
-                    user_id_filter=user_id,
                     file_name_filter=tool_args.get("file_name_filter"),
                     description_filter=tool_args.get("description_filter"),
                     start_date=tool_args.get("start_date"),
@@ -492,10 +491,13 @@ async def assistant_search_docs(request: Request):
                     else:
                         r["keyword_score_norm"] = 0.0
                 
-                # Let the assistant decide the blend, otherwise default to 50/50
-                weights = data.get("search_weights", {"semantic": 0.5, "keyword": 0.5})
-                alpha_sem = weights.get("semantic", 0.5)
-                beta_kw = weights.get("keyword", 0.5)
+                # Blend: prefer explicit weights if provided, else use smart heuristic
+                if isinstance(payload.get("search_weights"), dict):
+                    weights = payload.get("search_weights")
+                    alpha_sem = float(weights.get("semantic", sem_w))
+                    beta_kw = float(weights.get("keyword", kw_w))
+                else:
+                    alpha_sem, beta_kw = sem_w, kw_w
 
                 merged_by_id = {}
                 for m in matches:
@@ -522,6 +524,8 @@ async def assistant_search_docs(request: Request):
                     kw = v.get("keyword_score_norm", 0.0) or 0.0
                     v["combined_score"] = alpha_sem * sem + beta_kw * kw
                 matches = sorted(merged_by_id.values(), key=lambda x: (x.get("combined_score", 0.0) or 0.0), reverse=True)
+                print("[DEBUG] assistant_search_docs: hybrid matches", len(matches))
+    print("[DEBUG] assistant_search_docs: total matches after retrieval", len(matches))
     
     # --- OPTIMIZED: Neighbor retrieval and summary using the simplified results ---
     chunk_map = {(c.get("file_id"), c.get("chunk_index")): c for c in matches}
@@ -540,11 +544,11 @@ async def assistant_search_docs(request: Request):
     included_chunks = []
     try:
         # Fixed batching with diversification: select included with per-file cap, pending is the rest of top 50
-        included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=25, per_file_cap=2)
+        included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=20, per_file_cap=3)
         included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
         # Guardrail: trim each chunk to avoid exceeding model context (hard-coded)
-        per_chunk_char_limit = 2500
+        per_chunk_char_limit = 3000
         def _trim(s: str, n: int) -> str:
             if not s:
                 return ""
@@ -566,8 +570,8 @@ async def assistant_search_docs(request: Request):
             body = _trim(chunk.get("content", ""), per_chunk_char_limit)
             if body:
                 annotated_texts.append(f"{header}\n{body}")
-        # Token-aware cap across all included texts (hard-coded): assume ~200k token context, leave headroom
-        MAX_INPUT_TOKENS = 260_000
+        # Token-aware cap across all included texts (hard-coded): assume ~220k token context, leave headroom
+        MAX_INPUT_TOKENS = 220_000
         top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
 
         if top_text.strip():
@@ -594,8 +598,8 @@ async def assistant_search_docs(request: Request):
                 },
             ]
             # No time cap: complete the summary for this batch; constrain output tokens (hard-coded)
-            MAX_OUTPUT_TOKENS = 100_000
-            content, was_partial = stream_chat_completion(summary_prompt, model=None, max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
+            MAX_OUTPUT_TOKENS = 120_000
+            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
             # Even if partial occurs due to upstream issues, we still return pending based on batch remainder
