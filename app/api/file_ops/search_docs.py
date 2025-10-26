@@ -527,6 +527,10 @@ async def assistant_search_docs(request: Request):
     # Determine the response mode from the payload, defaulting to 'summary'
     response_mode = payload.get("response_mode", "summary")
 
+    # Initialize summary variables to ensure they are always defined
+    summary = None
+    summary_was_partial = False
+
     # Set the included limit based on the response mode
     if response_mode == "structured_results":
         included_limit = 10
