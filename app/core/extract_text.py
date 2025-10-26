@@ -60,7 +60,7 @@ def extract_text_from_docx(path):
 
 def extract_text_from_txt(path):
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
             return clean_text(f.read())
     except Exception as e:
         raise TextExtractionError(f"Failed to read text file: {e}")
@@ -75,4 +75,6 @@ def extract_text(path):
     elif file_extension == '.txt':
         return extract_text_from_txt(path)
     else:
-        raise TextExtractionError(f"Unsupported file type: {file_extension}")
+        # For any other file type, attempt to read as plain text.
+        # This will handle .md, .py, .html, etc.
+        return extract_text_from_txt(path)
