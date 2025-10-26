@@ -525,9 +525,9 @@ async def assistant_search_docs(request: Request):
             # Get scores from the Cross-Encoder
             rerank_scores = cross_encoder.predict(query_passage_pairs)
 
-            # Add rerank scores to the top matches
+            # Add rerank scores to the top matches, ensuring they are standard floats
             for i, score in enumerate(rerank_scores):
-                matches[i]["rerank_score"] = score
+                matches[i]["rerank_score"] = float(score)
 
             # Separate the reranked and non-reranked chunks
             reranked_matches = matches[:top_k_for_rerank]
