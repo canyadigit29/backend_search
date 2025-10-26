@@ -534,7 +534,7 @@ async def assistant_search_docs(request: Request):
     included_chunks = []
 
     # Select the chunks to be included in the response
-    included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=15, per_file_cap=2)
+    included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=25)
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
     # If the mode is 'summary', generate a summary. Otherwise, skip this step.
