@@ -8,14 +8,11 @@ import httpx
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
 from app.core.openai_client import chat_completion, stream_chat_completion
-from app.core.query_understanding import extract_search_filters
-from app.core.llama_query_transform import llama_query_transform
 from app.core.token_utils import trim_texts_to_token_limit
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import time
-from app.core.stopwatch import Stopwatch
 
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
@@ -350,9 +347,6 @@ async def assistant_search_docs(request: Request):
     to the perform_search flow.
     """
     payload = await request.json()
-    # Timer no longer controls batching; kept available if needed elsewhere
-    sw = None
-
     # Data is now a validated Pydantic model, access attributes directly
     user_prompt = payload.get("query") or payload.get("user_prompt")
     if not user_prompt:
@@ -365,9 +359,9 @@ async def assistant_search_docs(request: Request):
     if relevance_threshold is None:
         relevance_threshold = 0.4 # Default if not provided by assistant
 
-    query_obj = llama_query_transform(user_prompt)
-    search_query = query_obj.get("query") or user_prompt
-    search_filters = query_obj.get("filters") or {}
+    # Use the query directly since ChatGPT assistant already optimizes it
+    search_query = user_prompt
+    search_filters = {}  # Filters are passed directly in payload if needed
 
     try:
         embedding = embed_text(search_query)
