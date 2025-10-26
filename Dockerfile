@@ -10,6 +10,10 @@ RUN apt-get update && apt-get install -y gawk poppler-utils tesseract-ocr && \
 # Copy project files
 COPY . .
 
+# Pre-cache the sentence-transformer model
+# This runs the script to download the model during the build
+RUN python precache_model.py
+
 # Convert line endings to Unix format to prevent script errors
 RUN sed -i 's/\r$//' start.sh
 
