@@ -18,8 +18,6 @@ tiktoken>=0.5.1
 pdfdocument
 nltk
 pdfplumber
-rq
-redis
 mammoth
 fpdf
 pymupdf

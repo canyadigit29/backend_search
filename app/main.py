@@ -7,11 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.workers.main_worker import MainWorker
 
 # Import existing, still-needed routers
-from app.api.chat_ops import chat
 from app.api.file_ops import upload, download, search_docs, embed_api, enrich_agenda, extract_text_api, item_history
-from app.api.project_ops import project, session_log
-from app.api.NerdGPT import code_chat, github_api
-from app.api.writing_ops import report
 from app.api.gdrive_ops import router as gdrive_router
 from app.core.config import settings
 
@@ -48,12 +44,6 @@ app.include_router(upload.router, prefix=settings.API_PREFIX)
 app.include_router(download.router, prefix=settings.API_PREFIX)
 app.include_router(search_docs.router, prefix=settings.API_PREFIX)
 app.include_router(embed_api.router, prefix="/api")
-app.include_router(chat.router, prefix=settings.API_PREFIX)
-app.include_router(project.router, prefix=settings.API_PREFIX)
-app.include_router(session_log.router, prefix=settings.API_PREFIX)
-app.include_router(code_chat.router, prefix=settings.API_PREFIX)
-app.include_router(github_api.router, prefix=settings.API_PREFIX)
-app.include_router(report.router, prefix=settings.API_PREFIX)
 app.include_router(enrich_agenda.router, prefix=settings.API_PREFIX)
 app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)
 app.include_router(item_history.router, prefix=f"{settings.API_PREFIX}/file_ops")
