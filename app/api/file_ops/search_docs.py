@@ -549,76 +549,77 @@ async def assistant_search_docs(request: Request):
             next_chunk = chunk_map.get((file_id, chunk_index + 1))
             if next_chunk: chunk["next_chunk"] = {k: next_chunk[k] for k in ("content", "page_number") if k in next_chunk}
 
+    # Determine the response mode from the payload, defaulting to 'summary'
+    response_mode = payload.get("response_mode", "summary")
+
     summary = None
     summary_was_partial = False
     pending_chunk_ids = []
     included_chunk_ids = []
     included_chunks = []
-    try:
-        # Fixed batching with diversification: select included with per-file cap, pending is the rest of top 50
-        included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=20, per_file_cap=3)
-        included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
-        # Guardrail: trim each chunk to avoid exceeding model context (hard-coded)
-        per_chunk_char_limit = 3000
-        def _trim(s: str, n: int) -> str:
-            if not s:
-                return ""
-            return s[:n]
-        # Build structured search results block with metadata headers per chunk
-        annotated_texts = []
-        for idx, chunk in enumerate(included_chunks, start=1):
-            # Prefer combined_score if available, else semantic score, else normalized keyword
-            disp = chunk.get("combined_score")
-            if disp is None:
-                disp = chunk.get("score")
-            if disp is None:
-                disp = chunk.get("keyword_score_norm")
-            try:
-                disp_val = round(float(disp or 0), 4)
-            except Exception:
-                disp_val = 0
-            header = f"[#{{idx}} id={chunk.get('id')} file={chunk.get('file_name')} page={chunk.get('page_number')} score={disp_val}]"
-            body = _trim(chunk.get("content", ""), per_chunk_char_limit)
-            if body:
-                annotated_texts.append(f"{header}\n{body}")
-        # Token-aware cap across all included texts (hard-coded): assume ~220k token context, leave headroom
-        MAX_INPUT_TOKENS = 220_000
-        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
+    # Select the chunks to be included in the response
+    included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=20, per_file_cap=3)
+    included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
-        if top_text.strip():
-            summary_prompt = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an insightful research assistant. Read the provided document chunks and produce a concise, accurate synthesis that directly answers the user's query. "
-                        "Cite evidence using the chunk ids (id=...) when making claims. Prefer precision over verbosity. If multiple interpretations exist, explain them briefly."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"User query: {user_prompt}\n\n"
-                        "Search results (each chunk starts with a metadata header):\n"
-                        f"{top_text}\n\n"
-                        "Please respond with the following structure:\n"
-                        "1) Key findings (with inline citations like [id=...])\n"
-                        "2) Evidence by chunk (grouped by id, 1-3 bullets each)\n"
-                        "3) Important names/aliases/variants\n"
-                        "4) Suggested follow-up questions"
-                    ),
-                },
-            ]
-            # No time cap: complete the summary for this batch; constrain output tokens (hard-coded)
-            MAX_OUTPUT_TOKENS = 120_000
-            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
-            summary = content if content else None
-            summary_was_partial = bool(was_partial)
-            # Even if partial occurs due to upstream issues, we still return pending based on batch remainder
-    except Exception:
-        summary = None
-        summary_was_partial = False
-        # Keep pending/included as computed if any
+    # If the mode is 'summary', generate a summary. Otherwise, skip this step.
+    if response_mode == "summary":
+        try:
+            # Guardrail: trim each chunk to avoid exceeding model context (hard-coded)
+            per_chunk_char_limit = 3000
+            def _trim(s: str, n: int) -> str:
+                if not s:
+                    return ""
+                return s[:n]
+            # Build structured search results block with metadata headers per chunk
+            annotated_texts = []
+            for idx, chunk in enumerate(included_chunks, start=1):
+                # Determine the display score based on availability
+                disp = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("score") or chunk.get("keyword_score_norm")
+                try:
+                    disp_val = round(float(disp or 0), 4)
+                except Exception:
+                    disp_val = 0
+                header = f"[#{{idx}} id={chunk.get('id')} file={chunk.get('file_name')} page={chunk.get('page_number')} score={disp_val}]"
+                body = _trim(chunk.get("content", ""), per_chunk_char_limit)
+                if body:
+                    annotated_texts.append(f"{header}\n{body}")
+            
+            # Token-aware cap across all included texts
+            MAX_INPUT_TOKENS = 220_000
+            top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-4-turbo-preview", separator="\n\n")
+
+            if top_text.strip():
+                summary_prompt = [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an insightful research assistant. Read the provided document chunks and produce a concise, accurate synthesis that directly answers the user's query. "
+                            "Cite evidence using the chunk ids (id=...) when making claims. Prefer precision over verbosity. If multiple interpretations exist, explain them briefly."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"User query: {user_prompt}\n\n"
+                            "Search results (each chunk starts with a metadata header):\n"
+                            f"{top_text}\n\n"
+                            "Please respond with the following structure:\n"
+                            "1) Key findings (with inline citations like [id=...])\n"
+                            "2) Evidence by chunk (grouped by id, 1-3 bullets each)\n"
+                            "3) Important names/aliases/variants\n"
+                            "4) Suggested follow-up questions"
+                        ),
+                    },
+                ]
+                # Constrain output tokens
+                MAX_OUTPUT_TOKENS = 120_000
+                content, was_partial = stream_chat_completion(summary_prompt, model="gpt-4-turbo-preview", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
+                summary = content if content else None
+                summary_was_partial = bool(was_partial)
+        except Exception:
+            summary = None
+            summary_was_partial = False
     
     # --- Build sources without clickable links (no signed URLs) ---
     excerpt_length = 300
@@ -632,21 +633,27 @@ async def assistant_search_docs(request: Request):
             "id": c.get("id"),
             "file_name": file_name,
             "page_number": c.get("page_number"),
-            "score": c.get("score"),
+            "score": c.get("rerank_score") or c.get("combined_score") or c.get("score"),
             "excerpt": excerpt
         })
 
     # Resume is offered when there are remainder chunks in the top-50 (batch 2)
     can_resume = bool(pending_chunk_ids)
-    return JSONResponse({
+    
+    response_data = {
         "summary": summary,
         "summary_was_partial": summary_was_partial,
         "sources": sources,
         "can_resume": can_resume,
         "pending_chunk_ids": pending_chunk_ids,
         "included_chunk_ids": included_chunk_ids,
-        # Timing metrics removed for batch-based flow
-    })
+    }
+
+    # If structured results are requested, include the full chunk data
+    if response_mode == "structured_results":
+        response_data["retrieved_chunks"] = included_chunks
+
+    return JSONResponse(response_data)
 
 
 # Legacy endpoint maintained for backward compatibility

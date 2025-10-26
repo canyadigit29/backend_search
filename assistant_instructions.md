@@ -30,9 +30,13 @@ When calling `searchDocumentsAssistant`:
   "query": "<user query>",
   "relevance_threshold": "<from table>",
   "search_weights": { "semantic": X, "keyword": Y },
-  "or_terms": ["optional synonyms or variations"]
+  "or_terms": ["optional synonyms or variations"],
+  "response_mode": "<'summary' or 'structured_results'>"
 }
 ```
+
+-   Use `response_mode: 'summary'` (or omit it) for standard summarization.
+-   Use `response_mode: 'structured_results'` when you need the raw data to build a **comparison** or **timeline**. This will return the full document chunks instead of a pre-generated summary.
 
 ### **File Ingestion Command:**
 If the user asks to "check for new files", "scan Google Drive", "sync documents", or a similar phrase, you MUST use the `triggerGoogleDriveSync` function. This single command starts the entire background process: it finds new files, performs OCR on them if needed, and then chunks and embeds them. Inform the user that the process has started and they can search for the new content in a few moments.

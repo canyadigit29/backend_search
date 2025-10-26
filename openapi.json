@@ -124,6 +124,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          "response_mode": {
+            "type": "string",
+            "description": "Controls the output format. 'summary' returns a generated summary. 'structured_results' returns the raw, un-summarized document chunks for client-side processing (e.g., for comparisons or timelines).",
+            "enum": [
+              "summary",
+              "structured_results"
+            ],
+            "default": "summary"
           }
         }
       },
@@ -149,6 +158,38 @@
             "type": "string",
             "format": "uri",
             "description": "A temporary, signed URL to download the source file."
+          }
+        }
+      },
+      "RetrievedChunk": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "page_number": {
+            "type": "integer"
+          },
+          "chunk_index": {
+            "type": "integer"
+          },
+          "content": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number"
+          },
+          "combined_score": {
+            "type": "number"
+          },
+          "rerank_score": {
+            "type": "number"
           }
         }
       },
@@ -189,6 +230,13 @@
             "items": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          "retrieved_chunks": {
+            "type": "array",
+            "description": "The full, un-summarized chunk data. Only returned when response_mode is 'structured_results'.",
+            "items": {
+              "$ref": "#/components/schemas/RetrievedChunk"
             }
           },
           "error": {
