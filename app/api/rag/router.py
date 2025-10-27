@@ -12,8 +12,7 @@ from app.core.openai_client import chat_completion, stream_chat_completion
 from app.core.token_utils import trim_texts_to_token_limit
 from sentence_transformers import CrossEncoder
 
-# Local modules for classification and search logic
-from .classifier import classify_query, get_search_parameters
+# Local modules for search logic
 from ..file_ops.search_docs import perform_search, keyword_search, _parse_inline_or_terms, _fetch_chunks_by_ids, _select_included_and_pending
 
 router = APIRouter()
@@ -48,11 +47,9 @@ async def rag_search(request: RagSearchRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     try:
-        # 1. Classify Query and Get Parameters
-        classification = await classify_query(user_prompt)
-        search_params = get_search_parameters(classification.query_type)
-        relevance_threshold = search_params["relevance_threshold"]
-        search_weights = search_params["search_weights"]
+        # 1. Set default search parameters (since classifier is removed)
+        relevance_threshold = 0.5  # Default relevance threshold
+        search_weights = {"semantic": 0.6, "keyword": 0.4}  # Default search weights
 
         # 2. Generate Embedding for the main query
         try:
