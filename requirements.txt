@@ -21,4 +21,7 @@ google-auth-oauthlib
 pypdf
 sentence-transformers
 python-docx
+fastapi
+pydantic
+openai
 
