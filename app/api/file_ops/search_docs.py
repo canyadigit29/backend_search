@@ -147,7 +147,7 @@ def perform_search(tool_args):
             "query_embedding": query_embedding,
             "match_threshold": db_match_threshold,
             "match_count": max_results,
-            "file_ids": tool_args.get("file_ids")
+            "file_ids": tool_args.get("file_ids") or None # Ensure NULL is sent for empty lists
         }
         # Add metadata filters from tool_args
         metadata_fields = [
