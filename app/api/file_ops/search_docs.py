@@ -313,39 +313,77 @@ async def api_search_docs(request: Request):
 
 
 
+def plan_search_query(user_prompt: str) -> dict:
+    """
+    Uses an LLM to decompose a user query into a structured search plan.
+    Returns a JSON object like: {"operator": "OR", "terms": ["term1", "term2"]}.
+    """
+    system_prompt = (
+        "You are a search query planner. Your task is to analyze the user's request and convert it into a structured JSON object representing the search logic. "
+        "Identify distinct search terms and the boolean operators connecting them. "
+        "The output must be a single JSON object with two keys: 'operator' (which can be 'AND' or 'OR') and 'terms' (a list of strings). "
+        "If there is only one logical concept, use the 'AND' operator with a single term in the list. "
+        "Prioritize breaking down queries with explicit 'OR' clauses. "
+        "Do not include conversational phrases or explanations in the terms.\n\n"
+        "Examples:\n"
+        'User: find documents about "Mennonite Publishing House" OR "Herald Press"\n'
+        'JSON: {"operator": "OR", "terms": ["Mennonite Publishing House", "Herald Press"]}\n\n'
+        'User: what are the rules for zoning and code enforcement\n'
+        'JSON: {"operator": "AND", "terms": ["zoning rules", "code enforcement"]}\n\n'
+        'User: reports on infrastructure spending in 2022\n'
+        'JSON: {"operator": "AND", "terms": ["infrastructure spending 2022"]}\n'
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+    
+    try:
+        result = chat_completion(messages)
+        plan = json.loads(result)
+        if isinstance(plan, dict) and "operator" in plan and "terms" in plan:
+            return plan
+    except (json.JSONDecodeError, TypeError):
+        # Fallback for non-JSON responses or errors
+        pass
+    
+    # Default fallback plan if LLM fails
+    return {"operator": "AND", "terms": [user_prompt]}
+
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
 @router.post("/assistant/search_docs")
 async def assistant_search_docs(request: Request):
     """
-    Accepts a payload from an OpenAI assistant, normalizes fields, and forwards
-    to the perform_search flow.
+    Accepts a payload, plans the search using an LLM, executes the plan,
+    and returns a summary or structured results.
     """
     payload = await request.json()
     user_prompt = payload.get("query") or payload.get("user_prompt")
     if not user_prompt:
         return JSONResponse({"error": "Missing query in payload"}, status_code=400)
 
-    resume_chunk_ids = payload.get("resume_chunk_ids")
-    relevance_threshold = payload.get("relevance_threshold", 0.4)
-    search_query = user_prompt
+    # --- 1. Plan the Search using LLM ---
+    search_plan = plan_search_query(user_prompt)
+    search_terms = search_plan.get("terms", [user_prompt])
+    
+    all_matches = {}
 
-    try:
-        embedding = embed_text(search_query)
-    except Exception as e:
-        return JSONResponse({"error": f"Failed to generate embedding: {e}"}, status_code=500)
+    # --- 2. Execute the Search Plan ---
+    for term in search_terms:
+        # Each term gets its own hybrid search
+        try:
+            embedding = embed_text(term)
+        except Exception as e:
+            # If one term fails to embed, skip it but continue with others
+            print(f"Warning: Failed to generate embedding for term '{term}': {e}")
+            continue
 
-    matches = []
-    if resume_chunk_ids:
-        fetched = _fetch_chunks_by_ids(resume_chunk_ids)
-        by_id = {c.get("id"): c for c in fetched}
-        matches = [by_id[i] for i in resume_chunk_ids if by_id.get(i)]
-    else:
         tool_args = {
             "embedding": embedding,
-            "user_prompt": user_prompt,
-            "search_query": search_query,
-            "relevance_threshold": relevance_threshold,
-            "max_results": payload.get("max_results"),
+            "user_prompt": term,
+            "search_query": term,
+            "relevance_threshold": payload.get("relevance_threshold", 0.4),
+            "max_results": payload.get("max_results", 100),
             "file_ids": payload.get("file_ids"),
             "file_name": payload.get("file_name"),
             "description": payload.get("description"),
@@ -357,80 +395,89 @@ async def assistant_search_docs(request: Request):
             "ordinance_title": payload.get("ordinance_title"),
         }
         
+        # Perform semantic search for the current term
         search_result = perform_search(tool_args)
-        matches = search_result.get("retrieved_chunks", [])
+        term_matches = search_result.get("retrieved_chunks", [])
 
-        sem_w, kw_w = _decide_weighting(user_prompt or "", [])
-        sparse = len(matches) < 5
-        looks_lexical = kw_w >= 0.5
-        if sparse or looks_lexical:
-            keyword_terms = [user_prompt.strip()]
-            if keyword_terms:
-                fts_results = keyword_search(
-                    keywords=keyword_terms,
-                    file_ids=tool_args.get("file_ids"),
-                    match_count=150,
-                    file_name_filter=tool_args.get("file_name"),
-                    description_filter=tool_args.get("description"),
-                    document_type=tool_args.get("document_type"),
-                    meeting_year=tool_args.get("meeting_year"),
-                    meeting_month=tool_args.get("meeting_month"),
-                    meeting_month_name=tool_args.get("meeting_month_name"),
-                    meeting_day=tool_args.get("meeting_day"),
-                    ordinance_title=tool_args.get("ordinance_title"),
-                ) or []
-                kw_scores = [r.get("keyword_score") or 0.0 for r in fts_results]
-                if kw_scores:
-                    kmin, kmax = min(kw_scores), max(kw_scores)
-                else:
-                    kmin, kmax = (0.0, 0.0)
-                for r in fts_results:
-                    ks = r.get("keyword_score") or 0.0
-                    r["keyword_score_norm"] = (ks - kmin) / (kmax - kmin) if kmax > kmin else 0.0
-                
-                alpha_sem, beta_kw = sem_w, kw_w
-                merged_by_id = {m.get("id"): m for m in matches if m.get("id")}
-                for r in fts_results:
-                    rid = r.get("id")
-                    if not rid: continue
-                    if rid in merged_by_id:
-                        merged_by_id[rid]["keyword_score_norm"] = max(
-                            merged_by_id[rid].get("keyword_score_norm", 0.0),
-                            r.get("keyword_score_norm", 0.0)
-                        )
-                    else:
-                        merged_by_id[rid] = r
-                
-                for v in merged_by_id.values():
-                    sem = v.get("similarity", 0.0) or 0.0
-                    kw = v.get("keyword_score_norm", 0.0) or 0.0
-                    v["combined_score"] = alpha_sem * sem + beta_kw * kw
-                matches = sorted(merged_by_id.values(), key=lambda x: x.get("combined_score", 0.0), reverse=True)
+        # Perform keyword search for the current term
+        sem_w, kw_w = _decide_weighting(term, [])
+        fts_results = keyword_search(
+            keywords=[term.strip()],
+            file_ids=tool_args.get("file_ids"),
+            match_count=150,
+            # Pass through all filters
+            file_name_filter=tool_args.get("file_name"),
+            description_filter=tool_args.get("description"),
+            document_type=tool_args.get("document_type"),
+            meeting_year=tool_args.get("meeting_year"),
+            meeting_month=tool_args.get("meeting_month"),
+            meeting_month_name=tool_args.get("meeting_month_name"),
+            meeting_day=tool_args.get("meeting_day"),
+            ordinance_title=tool_args.get("ordinance_title"),
+        ) or []
+
+        # --- Merge and Score results for the current term ---
+        kw_scores = [r.get("keyword_score") or 0.0 for r in fts_results]
+        kmin, kmax = (min(kw_scores), max(kw_scores)) if kw_scores else (0.0, 0.0)
+        for r in fts_results:
+            ks = r.get("keyword_score") or 0.0
+            r["keyword_score_norm"] = (ks - kmin) / (kmax - kmin) if kmax > kmin else 0.0
         
-        top_k_for_rerank = 50
-        if matches and len(matches) > 1:
-            passages = [chunk.get("content", "") for chunk in matches[:top_k_for_rerank]]
-            query_passage_pairs = [[user_prompt, passage] for passage in passages]
-            rerank_scores = cross_encoder.predict(query_passage_pairs)
-            for i, score in enumerate(rerank_scores):
-                matches[i]["rerank_score"] = float(score)
-            
-            reranked_matches = sorted(matches[:top_k_for_rerank], key=lambda x: x.get("rerank_score", 0.0), reverse=True)
-            matches = reranked_matches + matches[top_k_for_rerank:]
+        merged_by_id = {m.get("id"): m for m in term_matches if m.get("id")}
+        for r in fts_results:
+            rid = r.get("id")
+            if not rid: continue
+            if rid in merged_by_id:
+                merged_by_id[rid]["keyword_score_norm"] = max(
+                    merged_by_id[rid].get("keyword_score_norm", 0.0),
+                    r.get("keyword_score_norm", 0.0)
+                )
+            else:
+                merged_by_id[rid] = r
+        
+        for v in merged_by_id.values():
+            sem = v.get("similarity", 0.0) or 0.0
+            kw = v.get("keyword_score_norm", 0.0) or 0.0
+            v["combined_score"] = sem_w * sem + kw_w * kw
+        
+        # Add the results for this term to the overall collection
+        for chunk_id, chunk_data in merged_by_id.items():
+            if chunk_id not in all_matches:
+                all_matches[chunk_id] = chunk_data
+            else:
+                # If chunk already found, update its score to be the max of its previous score and the new one
+                all_matches[chunk_id]["combined_score"] = max(
+                    all_matches[chunk_id].get("combined_score", 0.0),
+                    chunk_data.get("combined_score", 0.0)
+                )
 
+    # --- 3. Rerank the Final Combined List ---
+    matches = sorted(all_matches.values(), key=lambda x: x.get("combined_score", 0.0), reverse=True)
+    
+    top_k_for_rerank = 50
+    if matches and len(matches) > 1:
+        passages = [chunk.get("content", "") for chunk in matches[:top_k_for_rerank]]
+        # Use the original, full user prompt for reranking to capture the complete intent
+        query_passage_pairs = [[user_prompt, passage] for passage in passages]
+        rerank_scores = cross_encoder.predict(query_passage_pairs)
+        for i, score in enumerate(rerank_scores):
+            matches[i]["rerank_score"] = float(score)
+        
+        reranked_matches = sorted(matches[:top_k_for_rerank], key=lambda x: x.get("rerank_score", 0.0), reverse=True)
+        matches = reranked_matches + matches[top_k_for_rerank:]
+
+    # --- 4. Prepare and Send the Response ---
     response_mode = payload.get("response_mode", "summary")
     summary = None
     summary_was_partial = False
     
-    # Take the top 50 reranked matches for processing.
-    included_chunks = matches[:50]
+    included_chunks = matches[:50] # Use up to the top 50 reranked results
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
     if response_mode == "summary":
         try:
             per_chunk_char_limit = 3000
-            def _trim(s: str, n: int) -> str:
-                return s[:n] if s else ""
+            def _trim(s: str, n: int) -> str: return s[:n] if s else ""
             annotated_texts = []
             for idx, chunk in enumerate(included_chunks, start=1):
                 disp = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
@@ -471,14 +518,11 @@ async def assistant_search_docs(request: Request):
             "excerpt": excerpt
         })
 
-    # Batch processing is removed, so can_resume is always false.
-    can_resume = False
-    
     response_data = {
         "summary": summary,
         "summary_was_partial": summary_was_partial,
         "sources": sources,
-        "can_resume": can_resume,
+        "can_resume": False, # Batch processing is removed
         "pending_chunk_ids": [],
         "included_chunk_ids": included_chunk_ids,
     }
