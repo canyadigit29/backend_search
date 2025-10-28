@@ -103,7 +103,15 @@ class FileProcessingService:
         try:
             sig = inspect.signature(chunk_file)
             params = sig.parameters
-            if "file_name" in params:
+            if "description" in params:
+                logger.info("Using chunk_file(file_id, file_name, text, description) signature.")
+                chunking_result = chunk_file(
+                    file_id=file_id,
+                    file_name=file_record["name"],
+                    text=text,
+                    description=file_record["description"],
+                )
+            elif "file_name" in params:
                 logger.info("Using chunk_file(file_id, file_name, text) signature.")
                 chunking_result = chunk_file(
                     file_id=file_id,
