@@ -115,6 +115,8 @@ def chunk_file(file_id: str, file_name: str, text: str):
             chunk = {
                 "id": chunk_id,
                 "file_id": file_id,
+                "user_id": "773e2630-2cca-44c3-957c-0cf5ccce7411",
+                "sharing": "public",
                 "content": chunk_text,
                 "chunk_index": i,
                 **db_metadata,

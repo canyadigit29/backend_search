@@ -122,9 +122,11 @@ async def run_google_drive_sync():
             
             # We pass the content as bytes, the filename, and the content_type
             await FileProcessingService.upload_and_register_file(
+                user_id='773e2630-2cca-44c3-957c-0cf5ccce7411',
                 file_content=fh.getvalue(), 
                 file_name=file_name,
-                content_type=content_type
+                content_type=content_type,
+                sharing='public'
             )
             print(f"Successfully uploaded {file_name} to Supabase and triggered ingestion.")
 

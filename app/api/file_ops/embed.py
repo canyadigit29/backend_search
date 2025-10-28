@@ -90,7 +90,7 @@ def embed_and_store_chunk(chunk):
 
         print(f"[DEBUG] Data to be inserted: {data_to_insert}")
         # Manually check for an error and raise an exception on failure
-        result = supabase.table("document_chunks").insert(data_to_insert).execute()
+        result = supabase.table("file_items").insert(data_to_insert).execute()
         if hasattr(result, 'error') and result.error:
             raise Exception(f"Supabase insert failed: {result.error.message}")
 
@@ -117,7 +117,7 @@ def remove_embeddings_for_file(file_id: str):
         print(f"🧹 Removing all embeddings for file ID: {file_id}")
 
         delete_result = (
-            supabase.table("document_chunks")
+            supabase.table("file_items")
             .delete()
             .eq("file_id", file_id)
             .execute()

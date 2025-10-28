@@ -18,14 +18,16 @@ logger = logging.getLogger(__name__)
 class FileProcessingService:
     
     @staticmethod
-    async def upload_and_register_file(file_content: bytes, file_name: str, content_type: str):
+    async def upload_and_register_file(user_id: str, file_content: bytes, file_name: str, content_type: str, sharing: str = "private"):
         try:
             file_extension = os.path.splitext(file_name)[1]
             file_path = f"{uuid.uuid4()}{file_extension}"
             insert_data = {
+                "user_id": user_id,
                 "name": file_name,
                 "file_path": file_path,
                 "type": content_type,
+                "sharing": sharing,
                 "created_at": datetime.utcnow().isoformat(),
                 "ingested": False,
                 "ocr_needed": False,
