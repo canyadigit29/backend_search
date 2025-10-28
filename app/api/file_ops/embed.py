@@ -56,19 +56,19 @@ def retry_embed_text(text, retries=3, delay=1.5):
 def embed_and_store_chunk(chunk):
     chunk_text = chunk["content"]
     if not chunk_text.strip():
-        logging.warning(f"⚠️ Skipping empty chunk {chunk.get('chunk_index')} for file {chunk.get('file_id')}")
+        logging.warning(f"⚠️ Skipping empty chunk for file {chunk.get('file_id')}")
         return
 
     try:
         embedding = retry_embed_text(chunk_text)
         norm = np.linalg.norm(embedding)
         if norm < 0.1 or np.allclose(embedding, 0):
-            logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk {chunk.get('chunk_index')} of file {chunk.get('file_id')}")
+            logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk of file {chunk.get('file_id')}")
             return
 
         # Define the structured columns that have dedicated fields in the DB
         structured_keys = [
-            "id", "file_id", "user_id", "content", "embedding", "chunk_index", 
+            "id", "file_id", "user_id", "content", "embedding", 
             "page_number", "document_type", "meeting_date", "ordinance_title", 
             "ordinance_number", "content_tsv", "created_at", "section_header"
         ]
@@ -95,7 +95,7 @@ def embed_and_store_chunk(chunk):
             raise Exception(f"Supabase insert failed: {result.error.message}")
 
         logging.info(
-            f"✅ Stored chunk {data_to_insert.get('chunk_index')} for file {data_to_insert.get('file_id')} "
+            f"✅ Stored chunk for file {data_to_insert.get('file_id')} "
             f"(page: {data_to_insert.get('page_number')})"
         )
 
