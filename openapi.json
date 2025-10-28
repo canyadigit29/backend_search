@@ -22,7 +22,35 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RagSearchRequest"
+                "title": "RagSearchRequest",
+                "required": [
+                  "query"
+                ],
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "title": "Query",
+                    "type": "string",
+                    "description": "The user's search query."
+                  },
+                  "response_mode": {
+                    "title": "Response Mode",
+                    "type": "string",
+                    "description": "Response mode: 'summary' or 'structured_results'.",
+                    "default": "summary"
+                  },
+                  "file_name_filter": {
+                    "title": "File Name Filter",
+                    "type": "string",
+                    "description": "Filter results by a specific file name."
+                  },
+                  "document_type": {
+                    "title": "Document Type",
+                    "type": "string",
+                    "description": "Filter by document type (e.g., 'ordinance', 'minutes')."
+                  }
+                },
+                "description": "The request model for the RAG search endpoint."
               }
             }
           }
@@ -33,7 +61,62 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RagSearchResponse"
+                  "title": "RagSearchResponse",
+                  "required": [
+                    "summary",
+                    "summary_was_partial",
+                    "sources",
+                    "can_resume",
+                    "pending_chunk_ids",
+                    "included_chunk_ids"
+                  ],
+                  "type": "object",
+                  "properties": {
+                    "summary": {
+                      "title": "Summary",
+                      "type": "string",
+                      "description": "The generated summary of the search results."
+                    },
+                    "summary_was_partial": {
+                      "title": "Summary Was Partial",
+                      "type": "boolean"
+                    },
+                    "sources": {
+                      "title": "Sources",
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of source documents for the summary."
+                    },
+                    "can_resume": {
+                      "title": "Can Resume",
+                      "type": "boolean",
+                      "description": "Indicates if there are more results to process."
+                    },
+                    "pending_chunk_ids": {
+                      "title": "Pending Chunk Ids",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "included_chunk_ids": {
+                      "title": "Included Chunk Ids",
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "retrieved_chunks": {
+                      "title": "Retrieved Chunks",
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Full data for retrieved chunks, only included if response_mode is 'structured_results'."
+                    }
+                  }
                 }
               }
             }
@@ -73,96 +156,6 @@
     }
   },
   "components": {
-    "schemas": {
-      "RagSearchRequest": {
-        "title": "RagSearchRequest",
-        "required": [
-          "query"
-        ],
-        "type": "object",
-        "properties": {
-          "query": {
-            "title": "Query",
-            "type": "string",
-            "description": "The user's search query."
-          },
-          "response_mode": {
-            "title": "Response Mode",
-            "type": "string",
-            "description": "Response mode: 'summary' or 'structured_results'.",
-            "default": "summary"
-          },
-          "file_name_filter": {
-            "title": "File Name Filter",
-            "type": "string",
-            "description": "Filter results by a specific file name."
-          },
-          "document_type": {
-            "title": "Document Type",
-            "type": "string",
-            "description": "Filter by document type (e.g., 'ordinance', 'minutes')."
-          }
-        },
-        "description": "The request model for the RAG search endpoint."
-      },
-      "RagSearchResponse": {
-        "title": "RagSearchResponse",
-        "required": [
-          "summary",
-          "summary_was_partial",
-          "sources",
-          "can_resume",
-          "pending_chunk_ids",
-          "included_chunk_ids"
-        ],
-        "type": "object",
-        "properties": {
-          "summary": {
-            "title": "Summary",
-            "type": "string",
-            "description": "The generated summary of the search results."
-          },
-          "summary_was_partial": {
-            "title": "Summary Was Partial",
-            "type": "boolean"
-          },
-          "sources": {
-            "title": "Sources",
-            "type": "array",
-            "items": {
-              "type": "object"
-            },
-            "description": "A list of source documents for the summary."
-          },
-          "can_resume": {
-            "title": "Can Resume",
-            "type": "boolean",
-            "description": "Indicates if there are more results to process."
-          },
-          "pending_chunk_ids": {
-            "title": "Pending Chunk Ids",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "included_chunk_ids": {
-            "title": "Included Chunk Ids",
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "retrieved_chunks": {
-            "title": "Retrieved Chunks",
-            "type": "array",
-            "items": {
-              "type": "object"
-            },
-            "description": "Full data for retrieved chunks, only included if response_mode is 'structured_results'."
-          }
-        }
-      }
-    }
+    "schemas": {}
   }
 }
