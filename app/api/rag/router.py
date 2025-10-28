@@ -45,6 +45,7 @@ async def rag_search(request: RagSearchRequest):
     This is the consolidated RAG endpoint. It takes a user query,
     performs a semantic search, and returns a synthesized response.
     """
+    print(f"--- RAG SEARCH REQUEST RECEIVED ---\n{request.dict()}\n---------------------------------")
     user_prompt = request.query
     if not user_prompt:
         raise HTTPException(status_code=400, detail="Query cannot be empty.")

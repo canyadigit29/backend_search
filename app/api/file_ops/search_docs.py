@@ -165,6 +165,7 @@ def perform_search(tool_args):
             value = tool_args.get(tool_key)
             rpc_args[rpc_key] = value if value else None
 
+        print(f"--- RPC ARGS SENT TO SUPABASE ---\n{rpc_args}\n---------------------------------")
         # Exclusively use the new, optimized 'match_file_items_openai' RPC function.
         response = supabase.rpc("match_file_items_openai", rpc_args).execute()
         if getattr(response, "error", None):
