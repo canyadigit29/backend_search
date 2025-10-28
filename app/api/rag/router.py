@@ -20,7 +20,6 @@ router = APIRouter()
 class RagSearchRequest(BaseModel):
     query: str = Field(..., description="The user's search query.")
     query_embedding: Optional[List[float]] = Field(None, description="Optional pre-computed query embedding.")
-    response_mode: str = Field("summary", description="Response mode: 'summary' or 'structured_results'.")
     match_threshold: float = Field(0.2, description="Similarity threshold for matching.")
     match_count: int = Field(100, description="Number of matches to return.")
     file_ids: Optional[List[str]] = Field(None, description="Optional list of file IDs to search within.")

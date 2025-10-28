@@ -33,17 +33,11 @@
                     "type": "string",
                     "description": "The user's search query."
                   },
-                  "response_mode": {
-                    "title": "Response Mode",
-                    "type": "string",
-                    "description": "Response mode: 'summary' or 'structured_results'.",
-                    "default": "summary"
-                  },
                   "match_threshold": {
                     "title": "Match Threshold",
                     "type": "number",
                     "description": "Similarity threshold for matching.",
-                    "default": 0.6
+                    "default": 0.2
                   },
                   "match_count": {
                     "title": "Match Count",

@@ -467,44 +467,42 @@ async def assistant_search_docs(request: Request):
         matches = reranked_matches + matches[top_k_for_rerank:]
 
     # --- 4. Prepare and Send the Response ---
-    response_mode = payload.get("response_mode", "summary")
     summary = None
     summary_was_partial = False
     
     included_chunks = matches[:50] # Use up to the top 50 reranked results
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
-    if response_mode == "summary":
-        try:
-            per_chunk_char_limit = 3000
-            def _trim(s: str, n: int) -> str: return s[:n] if s else ""
-            annotated_texts = []
-            for idx, chunk in enumerate(included_chunks, start=1):
-                disp = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
-                try:
-                    disp_val = round(float(disp or 0), 4)
-                except Exception:
-                    disp_val = 0
-                header = f"[#{{idx}} id={chunk.get('id')} file={chunk.get('file_name')} score={disp_val}]"
-                body = _trim(chunk.get("content", ""), per_chunk_char_limit)
-                if body:
-                    annotated_texts.append(f"{header}\n{body}")
-            
-            MAX_INPUT_TOKENS = 220_000
-            top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-4-turbo-preview", separator="\n\n")
+    try:
+        per_chunk_char_limit = 3000
+        def _trim(s: str, n: int) -> str: return s[:n] if s else ""
+        annotated_texts = []
+        for idx, chunk in enumerate(included_chunks, start=1):
+            disp = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
+            try:
+                disp_val = round(float(disp or 0), 4)
+            except Exception:
+                disp_val = 0
+            header = f"[#{{idx}} id={chunk.get('id')} file={chunk.get('file_name')} score={disp_val}]"
+            body = _trim(chunk.get("content", ""), per_chunk_char_limit)
+            if body:
+                annotated_texts.append(f"{header}\n{body}")
+        
+        MAX_INPUT_TOKENS = 220_000
+        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-4-turbo-preview", separator="\n\n")
 
-            if top_text.strip():
-                summary_prompt = [
-                    {"role": "system", "content": "You are an insightful research assistant..."},
-                    {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}\n\nPlease provide a detailed summary..."}
-                ]
-                MAX_OUTPUT_TOKENS = 120_000
-                content, was_partial = stream_chat_completion(summary_prompt, model="gpt-4-turbo-preview", max_tokens=MAX_OUTPUT_TOKENS)
-                summary = content if content else None
-                summary_was_partial = bool(was_partial)
-        except Exception:
-            summary = None
-            summary_was_partial = False
+        if top_text.strip():
+            summary_prompt = [
+                {"role": "system", "content": "You are an insightful research assistant..."},
+                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}\n\nPlease provide a detailed summary..."}
+            ]
+            MAX_OUTPUT_TOKENS = 120_000
+            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-4-turbo-preview", max_tokens=MAX_OUTPUT_TOKENS)
+            summary = content if content else None
+            summary_was_partial = bool(was_partial)
+    except Exception:
+        summary = None
+        summary_was_partial = False
     
     excerpt_length = 300
     sources = []
@@ -526,9 +524,6 @@ async def assistant_search_docs(request: Request):
         "pending_chunk_ids": [],
         "included_chunk_ids": included_chunk_ids,
     }
-
-    if response_mode == "structured_results":
-        response_data["retrieved_chunks"] = included_chunks
 
     return JSONResponse(response_data)
 
