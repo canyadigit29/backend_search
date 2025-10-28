@@ -5,12 +5,22 @@ import tiktoken
 
 
 def get_encoding(model: Optional[str] = None):
-    """Return a reasonable encoding for chat models; fall back to cl100k_base."""
-    # Map known chat models to encodings if needed; default to cl100k_base
+    """Return a reasonable encoding for chat models; prefer o200k_base for large-context models."""
+    # Heuristic mapping for newer large-context models that tiktoken may not yet recognize by name.
     try:
-        return tiktoken.encoding_for_model(model) if model else tiktoken.get_encoding("cl100k_base")
-    except Exception:
+        if model:
+            lowered = str(model).lower()
+            # Prefer o200k_base for models like gpt-4o and gpt-5 family which commonly use that tokenizer
+            if ("gpt-4o" in lowered) or ("gpt-5" in lowered) or ("o4" in lowered):
+                return tiktoken.get_encoding("o200k_base")
+            return tiktoken.encoding_for_model(model)
         return tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        # Fallback if the specific model tokenizer isn't available
+        try:
+            return tiktoken.get_encoding("o200k_base")
+        except Exception:
+            return tiktoken.get_encoding("cl100k_base")
 
 
 def trim_texts_to_token_limit(texts: List[str], max_tokens: int, model: Optional[str] = None, separator: str = "\n\n") -> str:

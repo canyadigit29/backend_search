@@ -483,12 +483,14 @@ async def assistant_search_docs(request: Request):
                 disp_val = round(float(disp or 0), 4)
             except Exception:
                 disp_val = 0
-            header = f"[#{{idx}} id={chunk.get('id')} file={chunk.get('file_name')} score={disp_val}]"
+            # Fix header index formatting
+            header = f"[#{idx} id={chunk.get('id')} file={chunk.get('file_name')} score={disp_val}]"
             body = _trim(chunk.get("content", ""), per_chunk_char_limit)
             if body:
                 annotated_texts.append(f"{header}\n{body}")
         
-        MAX_INPUT_TOKENS = 220_000
+        # Hard-coded conservative token budgets to avoid 400 invalid_request errors
+        MAX_INPUT_TOKENS = 80_000
         top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
 
         if top_text.strip():
@@ -496,11 +498,18 @@ async def assistant_search_docs(request: Request):
                 {"role": "system", "content": "You are an insightful research assistant..."},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}\n\nPlease provide a detailed summary..."}
             ]
-            MAX_OUTPUT_TOKENS = 120_000
+            # Keep output budget well within typical model limits
+            MAX_OUTPUT_TOKENS = 4_000
+            print(f"[info] Summarization budgets -> input_tokens<=${'{:,}'.format(MAX_INPUT_TOKENS)}, output_tokens<=${'{:,}'.format(MAX_OUTPUT_TOKENS)}")
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
-    except Exception:
+    except Exception as e:
+        # Log summary failures explicitly; this is the step right after reranking
+        try:
+            print(f"[ERROR] Summary generation failed right after rerank: {repr(e)}")
+        except Exception:
+            pass
         summary = None
         summary_was_partial = False
     

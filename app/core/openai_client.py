@@ -73,8 +73,30 @@ def stream_chat_completion(messages: list, model: str = "gpt-5", max_seconds: fl
         # Consider partial if model stopped due to length or content filter
         was_partial = last_finish_reason in ("length", "content_filter")
         return (text, bool(was_partial))
-    except Exception:
-        # If we have partial content, return it as partial; else return error text marked partial
+    except Exception as e:
+        # Log details to help diagnose 4xx errors (e.g., invalid request due to token limits)
+        try:
+            print(f"[ERROR] stream_chat_completion failed: {repr(e)}")
+            # Attempt to extract HTTP status/body if available (SDK dependent)
+            status = getattr(e, "status_code", None) or getattr(getattr(e, "response", None), "status_code", None)
+            if status:
+                print(f"[ERROR] OpenAI API status_code: {status}")
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                try:
+                    # Some SDK versions provide .body or .json()
+                    body = getattr(resp, "body", None)
+                    if body:
+                        print(f"[ERROR] OpenAI API body: {body}")
+                    else:
+                        j = resp.json() if hasattr(resp, "json") else None
+                        if j:
+                            print(f"[ERROR] OpenAI API json: {j}")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # If we have partial content, return it as partial; else return empty marked partial
         text = "".join(content_parts).strip()
         if text:
             return (text, True)
