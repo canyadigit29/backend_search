@@ -19,7 +19,10 @@ router = APIRouter()
 # --- Pydantic Models for Request and Response ---
 class RagSearchRequest(BaseModel):
     query: str = Field(..., description="The user's search query.")
+    query_embedding: Optional[List[float]] = Field(None, description="Optional pre-computed query embedding.")
     response_mode: str = Field("summary", description="Response mode: 'summary' or 'structured_results'.")
+    match_threshold: float = Field(0.6, description="Similarity threshold for matching.")
+    match_count: int = Field(100, description="Number of matches to return.")
     file_ids: Optional[List[str]] = Field(None, description="Optional list of file IDs to search within.")
     file_name: Optional[str] = Field(None, description="Filter by file name.")
     description: Optional[str] = Field(None, description="Filter by description.")
@@ -29,9 +32,9 @@ class RagSearchRequest(BaseModel):
     meeting_month_name: Optional[str] = Field(None, description="Filter by meeting month name.")
     meeting_day: Optional[int] = Field(None, description="Filter by meeting day.")
     ordinance_title: Optional[str] = Field(None, description="Filter by ordinance title.")
-    # Allow other potential fields from the tool definition to be passed through
+
     class Config:
-        extra = 'allow'
+        extra = 'ignore' # Change to ignore to prevent unexpected fields
 
 class RagSearchResponse(BaseModel):
     summary: Optional[str]
@@ -51,16 +54,18 @@ async def rag_search(request: RagSearchRequest):
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     try:
-        # 1. Generate Embedding for the main query
-        try:
-            embedding = embed_text(user_prompt)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {e}")
+        # 1. Get Embedding
+        embedding = request.query_embedding
+        if not embedding:
+            try:
+                embedding = embed_text(request.query)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {e}")
 
         # 2. Perform Semantic Search
         # This logic is simplified to call the updated perform_search function
         tool_args = request.dict()
-        tool_args["embedding"] = embedding
+        tool_args["query_embedding"] = embedding
         
         search_result = perform_search(tool_args)
         matches = search_result.get("retrieved_chunks", [])
