@@ -112,6 +112,9 @@ def chunk_file(file_id: str, file_name: str, text: str, description: str = "", u
                 db_metadata['ordinance_title'] = filename_meta.get('ordinance_title')
             db_metadata.update(meta)
             
+            encoding = tiktoken.get_encoding("cl100k_base")
+            num_tokens = len(encoding.encode(chunk_text))
+
             chunk = {
                 "id": chunk_id,
                 "file_id": file_id,
@@ -120,6 +123,7 @@ def chunk_file(file_id: str, file_name: str, text: str, description: str = "", u
                 "file_name": file_name,
                 "description": description,
                 "user_id": user_id,  # Add user_id to each chunk
+                "tokens": num_tokens, # Add token count to each chunk
                 **db_metadata,
             }
             db_chunks.append(chunk)
