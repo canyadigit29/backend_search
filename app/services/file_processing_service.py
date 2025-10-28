@@ -25,7 +25,7 @@ class FileProcessingService:
             insert_data = {
                 "name": file_name,
                 "file_path": file_path,
-                "file_type": content_type,
+                "type": content_type,
                 "created_at": datetime.utcnow().isoformat(),
                 "ingested": False,
                 "ocr_needed": False,
