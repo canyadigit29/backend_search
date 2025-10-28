@@ -382,7 +382,7 @@ async def assistant_search_docs(request: Request):
             "embedding": embedding,
             "user_prompt": term,
             "search_query": term,
-            "relevance_threshold": payload.get("relevance_threshold", 0.4),
+            "relevance_threshold": 0.2, # Hardcoded to a lower value
             "max_results": payload.get("max_results", 100),
             "file_ids": payload.get("file_ids"),
             "file_name": payload.get("file_name"),
@@ -470,7 +470,7 @@ async def assistant_search_docs(request: Request):
     summary = None
     summary_was_partial = False
     
-    included_chunks = matches[:50] # Use up to the top 50 reranked results
+    included_chunks = matches[:25] # Use up to the top 25 reranked results
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
     try:
