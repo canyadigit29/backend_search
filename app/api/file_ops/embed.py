@@ -66,38 +66,39 @@ def embed_and_store_chunk(chunk):
             logging.warning(f"⚠️ Skipping low-quality embedding (norm={norm:.4f}) for chunk of file {chunk.get('file_id')}")
             return
 
-        # Define the structured columns that have dedicated fields in the DB
-        structured_keys = [
-            "id", "file_id", "user_id", "content", "openai_embedding", "tokens",
-            "file_name", "description", "document_type", "meeting_year", 
-            "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"
-        ]
-
-        # Prepare data for insert
-        data_to_insert = {k: v for k, v in chunk.items() if k in structured_keys}
-        
-        # All other keys are collected into the 'metadata' JSONB field
-        misc_metadata = {k: v for k, v in chunk.items() if k not in structured_keys}
-        if misc_metadata:
-            data_to_insert["metadata"] = misc_metadata
-        
+        # Prepare data for insert by copying the chunk and adding the embedding
+        data_to_insert = chunk.copy()
         data_to_insert["openai_embedding"] = embedding
 
         # Ensure required fields are present
-        if "id" not in data_to_insert:
+        if "id" not in data_to_insert or not is_valid_uuid(data_to_insert["id"]):
             data_to_insert["id"] = str(uuid.uuid4())
         if "created_at" not in data_to_insert:
             data_to_insert["created_at"] = datetime.utcnow().isoformat()
 
-        print(f"[DEBUG] Data to be inserted: {data_to_insert}")
+        # Remove any keys that are not actual columns in the 'file_items' table
+        # This prevents errors if the chunk dictionary contains extra helper fields.
+        allowed_keys = [
+            "id", "file_id", "content", "openai_embedding", "tokens", "chunk_index",
+            "file_name", "description", "document_type", "meeting_year", 
+            "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title",
+            "page_number", "meeting_date", "ordinance_number", "section_header",
+            "created_at", "user_id", "sharing"
+        ]
+        
+        # Filter the dictionary to only include allowed keys
+        filtered_data_to_insert = {k: v for k, v in data_to_insert.items() if k in allowed_keys}
+
+        print(f"[DEBUG] Data to be inserted: {filtered_data_to_insert}")
+        
         # Manually check for an error and raise an exception on failure
-        result = supabase.table("file_items").insert(data_to_insert).execute()
+        result = supabase.table("file_items").insert(filtered_data_to_insert).execute()
         if hasattr(result, 'error') and result.error:
             raise Exception(f"Supabase insert failed: {result.error.message}")
 
         logging.info(
-            f"✅ Stored chunk for file {data_to_insert.get('file_id')} "
-            f"(page: {data_to_insert.get('page_number')})"
+            f"✅ Stored chunk for file {filtered_data_to_insert.get('file_id')} "
+            f"(page: {filtered_data_to_insert.get('page_number')})"
         )
 
     except Exception as e:
