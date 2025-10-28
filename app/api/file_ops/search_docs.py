@@ -383,7 +383,7 @@ async def assistant_search_docs(request: Request):
             "user_prompt": term,
             "search_query": term,
             "relevance_threshold": 0.2, # Hardcoded to a lower value
-            "max_results": payload.get("max_results", 100),
+            "max_results": 50, # Hardcoded value
             "file_ids": payload.get("file_ids"),
             "file_name": payload.get("file_name"),
             "description": payload.get("description"),
