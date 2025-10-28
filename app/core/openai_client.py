@@ -10,7 +10,9 @@ def chat_completion(messages: list, model: str = "gpt-5", max_tokens: int | None
     try:
         kwargs = {"model": model, "messages": messages}
         if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+            # Newer models (e.g., gpt-5) expect 'max_completion_tokens' instead of 'max_tokens'
+            token_key = "max_completion_tokens" if str(model).lower().startswith("gpt-5") else "max_tokens"
+            kwargs[token_key] = max_tokens
         response = client.chat.completions.create(**kwargs)
         return response.choices[0].message.content.strip()
     except Exception as e:
@@ -29,7 +31,9 @@ def stream_chat_completion(messages: list, model: str = "gpt-5", max_seconds: fl
         # include_usage is supported by newer SDK versions; ignore if not available
         kwargs = {"model": model, "messages": messages, "stream": True}
         if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+            # Newer models (e.g., gpt-5) expect 'max_completion_tokens' instead of 'max_tokens'
+            token_key = "max_completion_tokens" if str(model).lower().startswith("gpt-5") else "max_tokens"
+            kwargs[token_key] = max_tokens
         try:
             kwargs["stream_options"] = {"include_usage": True}
         except Exception:
