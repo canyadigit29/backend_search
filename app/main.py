@@ -19,10 +19,13 @@ app = FastAPI(
 )
 
 # CORS middleware
+# Get allowed origins from environment variable, split by comma
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("ALLOWED_ORIGins", "https://maxgptfrontend.vercel.app,http://localhost:3000").split(","),
-    allow_credentials=False,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -44,7 +47,7 @@ async def run_worker_manually(background_tasks: BackgroundTasks):
 # Mount all the necessary routers
 app.include_router(upload.router, prefix=settings.API_PREFIX)
 app.include_router(search_docs.router, prefix=settings.API_PREFIX)
-app.include_router(embed_api.router, prefix="/api")
+app.include_router(embed_api.router, prefix=settings.API_PREFIX)
 app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)
 app.include_router(gdrive_router.router, prefix=f"{settings.API_PREFIX}/gdrive")
 app.include_router(query_analyzer_router.router, prefix=settings.API_PREFIX)
