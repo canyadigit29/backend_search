@@ -142,14 +142,15 @@ def perform_search(tool_args):
         # The DB function 'match_file_items_openai' expects a DISTANCE (1 - similarity).
         db_match_threshold = 1 - threshold
 
-        # Semantic search
+        # Build arguments for the RPC call, ensuring empty values are sent as None (NULL)
         rpc_args = {
             "query_embedding": query_embedding,
             "match_threshold": db_match_threshold,
             "match_count": max_results,
-            "file_ids": tool_args.get("file_ids") or None # Ensure NULL is sent for empty lists
+            "file_ids": tool_args.get("file_ids") or None
         }
-        # Add metadata filters from tool_args
+        
+        # Add metadata filters from tool_args, ensuring empty strings become None
         metadata_fields = [
             ("file_name", "filter_file_name"),
             ("description", "filter_description"),
@@ -161,8 +162,8 @@ def perform_search(tool_args):
             ("ordinance_title", "filter_ordinance_title"),
         ]
         for tool_key, rpc_key in metadata_fields:
-            if tool_args.get(tool_key) is not None:
-                rpc_args[rpc_key] = tool_args[tool_key]
+            value = tool_args.get(tool_key)
+            rpc_args[rpc_key] = value if value else None
 
         # Exclusively use the new, optimized 'match_file_items_openai' RPC function.
         response = supabase.rpc("match_file_items_openai", rpc_args).execute()
