@@ -68,9 +68,9 @@ def embed_and_store_chunk(chunk):
 
         # Define the structured columns that have dedicated fields in the DB
         structured_keys = [
-            "id", "file_id", "user_id", "content", "embedding", 
-            "page_number", "document_type", "meeting_date", "ordinance_title", 
-            "ordinance_number", "content_tsv", "created_at", "section_header"
+            "id", "file_id", "user_id", "content", "openai_embedding", "tokens",
+            "file_name", "description", "document_type", "meeting_year", 
+            "meeting_month", "meeting_month_name", "meeting_day", "ordinance_title"
         ]
 
         # Prepare data for insert
@@ -78,9 +78,10 @@ def embed_and_store_chunk(chunk):
         
         # All other keys are collected into the 'metadata' JSONB field
         misc_metadata = {k: v for k, v in chunk.items() if k not in structured_keys}
-        data_to_insert["metadata"] = misc_metadata
+        if misc_metadata:
+            data_to_insert["metadata"] = misc_metadata
         
-        data_to_insert["embedding"] = embedding
+        data_to_insert["openai_embedding"] = embedding
 
         # Ensure required fields are present
         if "id" not in data_to_insert:
