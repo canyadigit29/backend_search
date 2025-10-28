@@ -74,7 +74,7 @@ def fixed_size_chunk(text, max_tokens=1200, overlap_tokens=120):
         start += max_tokens - overlap_tokens
     return list(zip(chunks, chunk_meta))
 
-def chunk_file(file_id: str, file_name: str, text: str, description: str = ""):
+def chunk_file(file_id: str, file_name: str, text: str, description: str = "", user_id: str = None):
     """
     Chunks the provided text and associates it with the given file_id and file_name.
     This is a pure function that does not perform I/O besides deleting old chunks.
@@ -119,6 +119,7 @@ def chunk_file(file_id: str, file_name: str, text: str, description: str = ""):
                 "chunk_index": i,
                 "file_name": file_name,
                 "description": description,
+                "user_id": user_id,  # Add user_id to each chunk
                 **db_metadata,
             }
             db_chunks.append(chunk)
