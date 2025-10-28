@@ -1,4 +1,5 @@
-# Backend Search - Document Search & RAG System
+# Backend Search - Document Search & RAG System.
+
 
 A production-ready FastAPI backend for document processing, semantic search, and GPT-powered question answering. Built for integration with Custom GPTs and real-world document management workflows.
 

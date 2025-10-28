@@ -22,6 +22,11 @@ class FileProcessingService:
         try:
             file_extension = os.path.splitext(file_name)[1]
             file_path = f"{uuid.uuid4()}{file_extension}"
+            
+            # Override with specified user_id and sharing status
+            user_id = "773e2630-2cca-44c3-957c-0cf5ccce7411"
+            sharing = "public"
+
             insert_data = {
                 "user_id": user_id,
                 "name": file_name,
@@ -103,7 +108,16 @@ class FileProcessingService:
         try:
             sig = inspect.signature(chunk_file)
             params = sig.parameters
-            if "description" in params:
+            if "user_id" in params:
+                logger.info("Using chunk_file with user_id.")
+                chunking_result = chunk_file(
+                    file_id=file_id,
+                    file_name=file_record["name"],
+                    text=text,
+                    description=file_record["description"],
+                    user_id=file_record["user_id"]
+                )
+            elif "description" in params:
                 logger.info("Using chunk_file(file_id, file_name, text, description) signature.")
                 chunking_result = chunk_file(
                     file_id=file_id,
