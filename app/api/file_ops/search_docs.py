@@ -421,7 +421,9 @@ async def assistant_search_docs(request: Request):
     response_mode = payload.get("response_mode", "summary")
     summary = None
     summary_was_partial = False
-    included_chunks, pending_chunk_ids = _select_included_and_pending(matches, included_limit=25)
+    
+    # Take the top 50 reranked matches for processing.
+    included_chunks = matches[:50]
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
     if response_mode == "summary":
@@ -469,14 +471,15 @@ async def assistant_search_docs(request: Request):
             "excerpt": excerpt
         })
 
-    can_resume = bool(pending_chunk_ids)
+    # Batch processing is removed, so can_resume is always false.
+    can_resume = False
     
     response_data = {
         "summary": summary,
         "summary_was_partial": summary_was_partial,
         "sources": sources,
         "can_resume": can_resume,
-        "pending_chunk_ids": pending_chunk_ids,
+        "pending_chunk_ids": [],
         "included_chunk_ids": included_chunk_ids,
     }
 

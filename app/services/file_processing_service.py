@@ -115,7 +115,8 @@ class FileProcessingService:
                     file_name=file_record["name"],
                     text=text,
                     description=file_record["description"],
-                    user_id=file_record["user_id"]
+                    user_id=file_record["user_id"],
+                    sharing=file_record["sharing"]
                 )
             elif "description" in params:
                 logger.info("Using chunk_file(file_id, file_name, text, description) signature.")
