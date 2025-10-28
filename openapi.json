@@ -39,15 +39,65 @@
                     "description": "Response mode: 'summary' or 'structured_results'.",
                     "default": "summary"
                   },
-                  "file_name_filter": {
-                    "title": "File Name Filter",
+                  "match_threshold": {
+                    "title": "Match Threshold",
+                    "type": "number",
+                    "description": "Similarity threshold for matching.",
+                    "default": 0.6
+                  },
+                  "match_count": {
+                    "title": "Match Count",
+                    "type": "integer",
+                    "description": "Number of matches to return.",
+                    "default": 100
+                  },
+                  "file_ids": {
+                    "title": "File IDs",
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Optional list of file IDs to search within."
+                  },
+                  "file_name": {
+                    "title": "File Name",
                     "type": "string",
-                    "description": "Filter results by a specific file name."
+                    "description": "Filter by file name."
+                  },
+                  "description": {
+                    "title": "Description",
+                    "type": "string",
+                    "description": "Filter by description."
                   },
                   "document_type": {
                     "title": "Document Type",
                     "type": "string",
-                    "description": "Filter by document type (e.g., 'ordinance', 'minutes')."
+                    "description": "Filter by document type."
+                  },
+                  "meeting_year": {
+                    "title": "Meeting Year",
+                    "type": "integer",
+                    "description": "Filter by meeting year."
+                  },
+                  "meeting_month": {
+                    "title": "Meeting Month",
+                    "type": "integer",
+                    "description": "Filter by meeting month."
+                  },
+                  "meeting_month_name": {
+                    "title": "Meeting Month Name",
+                    "type": "string",
+                    "description": "Filter by meeting month name."
+                  },
+                  "meeting_day": {
+                    "title": "Meeting Day",
+                    "type": "integer",
+                    "description": "Filter by meeting day."
+                  },
+                  "ordinance_title": {
+                    "title": "Ordinance Title",
+                    "type": "string",
+                    "description": "Filter by ordinance title."
                   }
                 },
                 "description": "The request model for the RAG search endpoint."
@@ -64,11 +114,7 @@
                   "title": "RagSearchResponse",
                   "required": [
                     "summary",
-                    "summary_was_partial",
-                    "sources",
-                    "can_resume",
-                    "pending_chunk_ids",
-                    "included_chunk_ids"
+                    "sources"
                   ],
                   "type": "object",
                   "properties": {
@@ -77,10 +123,6 @@
                       "type": "string",
                       "description": "The generated summary of the search results."
                     },
-                    "summary_was_partial": {
-                      "title": "Summary Was Partial",
-                      "type": "boolean"
-                    },
                     "sources": {
                       "title": "Sources",
                       "type": "array",
@@ -88,25 +130,6 @@
                         "type": "object"
                       },
                       "description": "A list of source documents for the summary."
-                    },
-                    "can_resume": {
-                      "title": "Can Resume",
-                      "type": "boolean",
-                      "description": "Indicates if there are more results to process."
-                    },
-                    "pending_chunk_ids": {
-                      "title": "Pending Chunk Ids",
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "included_chunk_ids": {
-                      "title": "Included Chunk Ids",
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
                     },
                     "retrieved_chunks": {
                       "title": "Retrieved Chunks",

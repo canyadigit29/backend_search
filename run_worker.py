@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 if __name__ == "__main__":
     logging.info("Starting the main background worker...")
     try:
-        asyncio.run(MainWorker.run_main_loop(interval_seconds=60))
+        asyncio.run(MainWorker.run_main_loop(interval_seconds=3600))
     except KeyboardInterrupt:
         logging.info("Worker stopped manually.")
     except Exception as e:
