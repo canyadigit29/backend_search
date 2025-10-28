@@ -97,7 +97,7 @@ def _fetch_chunks_by_ids(ids: list[str]):
         # Fetch fields needed for sources and summary, including new metadata
         res = (
             supabase.table("file_items")
-            .select("*")
+            .select("id,file_id,content,file_name,description,document_type,meeting_year,meeting_month,meeting_month_name,meeting_day,ordinance_title")
             .in_("id", ids)
             .execute()
         )
