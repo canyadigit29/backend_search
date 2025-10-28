@@ -23,7 +23,7 @@ class FileProcessingService:
             file_extension = os.path.splitext(file_name)[1]
             file_path = f"{uuid.uuid4()}{file_extension}"
             insert_data = {
-                "file_name": file_name,
+                "name": file_name,
                 "file_path": file_path,
                 "file_type": content_type,
                 "created_at": datetime.utcnow().isoformat(),
@@ -102,7 +102,7 @@ class FileProcessingService:
                 logger.info("Using chunk_file(file_id, file_name, text) signature.")
                 chunking_result = chunk_file(
                     file_id=file_id,
-                    file_name=file_record["file_name"],
+                    file_name=file_record["name"],
                     text=text,
                 )
             else:
@@ -123,7 +123,7 @@ class FileProcessingService:
             chunks = []
 
         if not chunks:
-            logger.warning(f"No chunks were generated for {file_record['file_name']}. Ingestion skipped.")
+            logger.warning(f"No chunks were generated for {file_record['name']}. Ingestion skipped.")
             return
 
         logger.info(f"Generated {len(chunks)} chunks. Now embedding.")
@@ -131,7 +131,7 @@ class FileProcessingService:
         supabase.table("files").update(
             {"ingested": True}
         ).eq("id", file_id).execute()
-        logger.info(f"✅ Successfully ingested file: {file_record['file_name']} (ID: {file_id})")
+        logger.info(f"✅ Successfully ingested file: {file_record['name']} (ID: {file_id})")
 
     @staticmethod
     def process_file_for_ocr(file_id: str):
@@ -140,4 +140,4 @@ class FileProcessingService:
         if not file_record:
             raise Exception(f"File record not found for ID: {file_id}")
         ocr_pdf(file_path=file_record["file_path"], file_id=file_id)
-        logger.info(f"✅ Successfully performed OCR on file: {file_record['file_name']} (ID: {file_id})")
+        logger.info(f"✅ Successfully performed OCR on file: {file_record['name']} (ID: {file_id})")
