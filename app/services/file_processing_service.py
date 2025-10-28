@@ -29,6 +29,8 @@ class FileProcessingService:
                 "type": content_type,
                 "sharing": sharing,
                 "description": "",
+                "size": len(file_content),
+                "tokens": 0,
                 "created_at": datetime.utcnow().isoformat(),
                 "ingested": False,
                 "ocr_needed": False,
