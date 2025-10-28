@@ -489,7 +489,7 @@ async def assistant_search_docs(request: Request):
                 annotated_texts.append(f"{header}\n{body}")
         
         MAX_INPUT_TOKENS = 220_000
-        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-4-turbo-preview", separator="\n\n")
+        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
 
         if top_text.strip():
             summary_prompt = [
@@ -497,7 +497,7 @@ async def assistant_search_docs(request: Request):
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}\n\nPlease provide a detailed summary..."}
             ]
             MAX_OUTPUT_TOKENS = 120_000
-            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-4-turbo-preview", max_tokens=MAX_OUTPUT_TOKENS)
+            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
     except Exception:
