@@ -79,6 +79,7 @@ The `parameters` object requires two arguments:
 
 **Important Rules for Creating the `search_plan`:**
 *   Deconstruct the user's query into distinct conceptual keywords.
+*   **Be concise. Generate no more than 3-5 distinct search terms. Each term should be a short phrase.**
 *   Do **NOT** use web search syntax like `site:` or `filetype:`. The search is performed on a private set of documents.
 *   Keep search terms concise and focused on nouns, legal terms, and official names.
 
