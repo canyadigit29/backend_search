@@ -367,6 +367,7 @@ async def assistant_search_docs(request: Request):
     search_terms = search_plan.get("terms", [user_prompt])
     
     all_matches = {}
+    print("[METRICS] Search plan:", {"operator": search_plan.get("operator"), "terms": search_terms})
 
     # --- 2. Execute the Search Plan ---
     for term in search_terms:
@@ -395,7 +396,7 @@ async def assistant_search_docs(request: Request):
             "ordinance_title": payload.get("ordinance_title"),
         }
         
-        # Perform semantic search for the current term
+    # Perform semantic search for the current term
         search_result = perform_search(tool_args)
         term_matches = search_result.get("retrieved_chunks", [])
 
@@ -439,6 +440,21 @@ async def assistant_search_docs(request: Request):
             sem = v.get("similarity", 0.0) or 0.0
             kw = v.get("keyword_score_norm", 0.0) or 0.0
             v["combined_score"] = sem_w * sem + kw_w * kw
+
+        # Term-level metrics
+        try:
+            print(
+                "[METRICS] Term results:",
+                {
+                    "term": term,
+                    "semantic_count": len(term_matches or []),
+                    "keyword_count": len(fts_results or []),
+                    "merged_count": len(merged_by_id or {}),
+                    "weights": {"semantic": round(sem_w, 3), "keyword": round(kw_w, 3)},
+                },
+            )
+        except Exception:
+            pass
         
         # Add the results for this term to the overall collection
         for chunk_id, chunk_data in merged_by_id.items():
@@ -452,6 +468,10 @@ async def assistant_search_docs(request: Request):
                 )
 
     # --- 3. Rerank the Final Combined List ---
+    try:
+        print("[METRICS] After merge across terms:", {"unique_candidates": len(all_matches or {})})
+    except Exception:
+        pass
     matches = sorted(all_matches.values(), key=lambda x: x.get("combined_score", 0.0), reverse=True)
     
     top_k_for_rerank = 50
@@ -465,6 +485,24 @@ async def assistant_search_docs(request: Request):
         
         reranked_matches = sorted(matches[:top_k_for_rerank], key=lambda x: x.get("rerank_score", 0.0), reverse=True)
         matches = reranked_matches + matches[top_k_for_rerank:]
+
+        try:
+            rr_scores = [m.get("rerank_score", 0.0) for m in reranked_matches[:5]]
+            print(
+                "[METRICS] Rerank:",
+                {
+                    "applied": True,
+                    "considered": min(len(passages), top_k_for_rerank),
+                    "top5_scores": [round(float(s or 0.0), 4) for s in rr_scores],
+                },
+            )
+        except Exception:
+            pass
+    else:
+        try:
+            print("[METRICS] Rerank:", {"applied": False, "candidates": len(matches or [])})
+        except Exception:
+            pass
 
     # --- 4. Prepare and Send the Response ---
     summary = None
@@ -500,7 +538,7 @@ async def assistant_search_docs(request: Request):
             ]
             # Keep output budget well within typical model limits
             MAX_OUTPUT_TOKENS = 4_000
-            print(f"[info] Summarization budgets -> input_tokens<=${'{:,}'.format(MAX_INPUT_TOKENS)}, output_tokens<=${'{:,}'.format(MAX_OUTPUT_TOKENS)}")
+            print(f"[METRICS] Summarization budgets:", {"input_tokens_lte": MAX_INPUT_TOKENS, "output_tokens_lte": MAX_OUTPUT_TOKENS})
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
@@ -525,6 +563,21 @@ async def assistant_search_docs(request: Request):
             "excerpt": excerpt
         })
 
+    # Emit final-stage metrics
+    try:
+        print(
+            "[METRICS] Final response:",
+            {
+                "included_count": len(included_chunks or []),
+                "included_ids_count": len(included_chunk_ids or []),
+                "has_summary": bool(summary),
+                "summary_len": (len(summary) if isinstance(summary, str) else None),
+                "summary_was_partial": bool(summary_was_partial),
+            },
+        )
+    except Exception:
+        pass
+
     response_data = {
         "summary": summary,
         "summary_was_partial": summary_was_partial,
@@ -533,6 +586,11 @@ async def assistant_search_docs(request: Request):
         "pending_chunk_ids": [],
         "included_chunk_ids": included_chunk_ids,
     }
+
+    try:
+        print("[METRICS] Sources emitted:", {"count": len(sources or [])})
+    except Exception:
+        pass
 
     return JSONResponse(response_data)
 
