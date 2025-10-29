@@ -311,43 +311,6 @@ async def api_search_docs(request: Request):
 
 
 
-def plan_search_query(user_prompt: str) -> dict:
-    """
-    Uses an LLM to decompose a user query into a structured search plan.
-    Returns a JSON object like: {"operator": "OR", "terms": ["term1", "term2"]}.
-    """
-    system_prompt = (
-        "You are a search query planner. Your task is to analyze the user's request and convert it into a structured JSON object representing the search logic. "
-        "Identify distinct search terms and the boolean operators connecting them. "
-        "The output must be a single JSON object with two keys: 'operator' (which can be 'AND' or 'OR') and 'terms' (a list of strings). "
-        "If there is only one logical concept, use the 'AND' operator with a single term in the list. "
-        "Prioritize breaking down queries with explicit 'OR' clauses. "
-        "Do not include conversational phrases or explanations in the terms.\n\n"
-        "Examples:\n"
-        'User: find documents about "Mennonite Publishing House" OR "Herald Press"\n'
-        'JSON: {"operator": "OR", "terms": ["Mennonite Publishing House", "Herald Press"]}\n\n'
-        'User: what are the rules for zoning and code enforcement\n'
-        'JSON: {"operator": "AND", "terms": ["zoning rules", "code enforcement"]}\n\n'
-        'User: reports on infrastructure spending in 2022\n'
-        'JSON: {"operator": "AND", "terms": ["infrastructure spending 2022"]}\n'
-    )
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
-    
-    try:
-        result = chat_completion(messages)
-        plan = json.loads(result)
-        if isinstance(plan, dict) and "operator" in plan and "terms" in plan:
-            return plan
-    except (json.JSONDecodeError, TypeError):
-        # Fallback for non-JSON responses or errors
-        pass
-    
-    # Default fallback plan if LLM fails
-    return {"operator": "AND", "terms": [user_prompt]}
-
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
 @router.post("/assistant/search_docs")
 async def assistant_search_docs(request: Request):
