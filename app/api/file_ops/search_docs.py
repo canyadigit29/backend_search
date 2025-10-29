@@ -478,6 +478,8 @@ async def assistant_search_docs(payload: dict):
         # Join the already-trimmed chunks.
         top_text = "\n\n".join(annotated_texts)
 
+        print(f"--- TEXT FOR SUMMARY ---\n{top_text}\n------------------------")
+
         if top_text.strip():
             summary_prompt = [
                 {
