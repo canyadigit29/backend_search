@@ -505,6 +505,7 @@ async def assistant_search_docs(payload: dict):
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
+            print(f"--- SUMMARY OUTPUT ---\n{summary}\n----------------------")
     except Exception as e:
         # Log summary failures explicitly; this is the step right after reranking
         try:
