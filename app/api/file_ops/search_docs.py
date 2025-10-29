@@ -4,6 +4,7 @@ from collections import defaultdict
 import sys
 import statistics
 import httpx
+import asyncio
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -229,7 +230,8 @@ async def semantic_search(request, payload):
 router = APIRouter()
 
 
-def keyword_search(
+async def keyword_search_async(
+    client: httpx.AsyncClient,
     keywords,
     file_ids=None,
     match_count=150,
@@ -243,24 +245,20 @@ def keyword_search(
     ordinance_title=None,
 ):
     """
-    Keyword search over file_items table using Postgres FTS.
-    This function specifically targets the 'match_file_items_fts' RPC endpoint.
+    Asynchronous keyword search over file_items table using Postgres FTS.
     """
     def _quote_term(t: str) -> str:
         t = (t or "").strip()
         if not t:
             return ""
-        # Escape embedded quotes
         t = t.replace('"', '\\"')
-        # Quote multi-word or non-alnum terms to preserve phrases
         if any(ch.isspace() for ch in t) or not t.isalnum():
             return f'"{t}"'
         return t
-    # Use OR between terms so any term can match
+    
     quoted_terms = [_quote_term(k) for k in keywords if k]
     keyword_query = " OR ".join([qt for qt in quoted_terms if qt])
 
-    # Arguments for match_file_items_fts, aligned with its SQL definition
     rpc_args = {
         "keyword_query": keyword_query,
         "match_count": match_count,
@@ -286,7 +284,7 @@ def keyword_search(
     endpoint = f"{supabase_url}/rest/v1/rpc/match_file_items_fts"
 
     try:
-        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
+        response = await client.post(endpoint, headers=headers, json=rpc_args, timeout=30)
         
         if response.status_code >= 400:
             try:
@@ -354,7 +352,7 @@ def plan_search_query(user_prompt: str) -> dict:
 @router.post("/assistant/search_docs")
 async def assistant_search_docs(request: Request):
     """
-    Accepts a payload, plans the search using an LLM, executes the plan,
+    Accepts a payload, plans the search using an LLM, executes the plan in parallel,
     and returns a summary or structured results.
     """
     payload = await request.json()
@@ -369,94 +367,31 @@ async def assistant_search_docs(request: Request):
     all_matches = {}
     print("[METRICS] Search plan:", {"operator": search_plan.get("operator"), "terms": search_terms})
 
-    # --- 2. Execute the Search Plan ---
-    for term in search_terms:
-        # Each term gets its own hybrid search
-        try:
-            embedding = embed_text(term)
-        except Exception as e:
-            # If one term fails to embed, skip it but continue with others
-            print(f"Warning: Failed to generate embedding for term '{term}': {e}")
-            continue
+    # --- 2. Execute the Search Plan in Parallel ---
+    
+    # Gather all results from parallel searches
+    all_term_results = []
 
-        tool_args = {
-            "embedding": embedding,
-            "user_prompt": term,
-            "search_query": term,
-            "relevance_threshold": 0.2, # Hardcoded to a lower value
-            "max_results": 50, # Hardcoded value
-            "file_ids": payload.get("file_ids"),
-            "file_name": payload.get("file_name"),
-            "description": payload.get("description"),
-            "document_type": payload.get("document_type"),
-            "meeting_year": payload.get("meeting_year"),
-            "meeting_month": payload.get("meeting_month"),
-            "meeting_month_name": payload.get("meeting_month_name"),
-            "meeting_day": payload.get("meeting_day"),
-            "ordinance_title": payload.get("ordinance_title"),
-        }
-        
-    # Perform semantic search for the current term
-        search_result = perform_search(tool_args)
-        term_matches = search_result.get("retrieved_chunks", [])
-
-        # Perform keyword search for the current term
-        sem_w, kw_w = _decide_weighting(term, [])
-        fts_results = keyword_search(
-            keywords=[term.strip()],
-            file_ids=tool_args.get("file_ids"),
-            match_count=150,
-            # Pass through all filters
-            file_name_filter=tool_args.get("file_name"),
-            description_filter=tool_args.get("description"),
-            document_type=tool_args.get("document_type"),
-            meeting_year=tool_args.get("meeting_year"),
-            meeting_month=tool_args.get("meeting_month"),
-            meeting_month_name=tool_args.get("meeting_month_name"),
-            meeting_day=tool_args.get("meeting_day"),
-            ordinance_title=tool_args.get("ordinance_title"),
-        ) or []
-
-        # --- Merge and Score results for the current term ---
-        kw_scores = [r.get("keyword_score") or 0.0 for r in fts_results]
-        kmin, kmax = (min(kw_scores), max(kw_scores)) if kw_scores else (0.0, 0.0)
-        for r in fts_results:
-            ks = r.get("keyword_score") or 0.0
-            r["keyword_score_norm"] = (ks - kmin) / (kmax - kmin) if kmax > kmin else 0.0
-        
-        merged_by_id = {m.get("id"): m for m in term_matches if m.get("id")}
-        for r in fts_results:
-            rid = r.get("id")
-            if not rid: continue
-            if rid in merged_by_id:
-                merged_by_id[rid]["keyword_score_norm"] = max(
-                    merged_by_id[rid].get("keyword_score_norm", 0.0),
-                    r.get("keyword_score_norm", 0.0)
-                )
-            else:
-                merged_by_id[rid] = r
-        
-        for v in merged_by_id.values():
-            sem = v.get("similarity", 0.0) or 0.0
-            kw = v.get("keyword_score_norm", 0.0) or 0.0
-            v["combined_score"] = sem_w * sem + kw_w * kw
-
-        # Term-level metrics
-        try:
-            print(
-                "[METRICS] Term results:",
-                {
-                    "term": term,
-                    "semantic_count": len(term_matches or []),
-                    "keyword_count": len(fts_results or []),
-                    "merged_count": len(merged_by_id or {}),
-                    "weights": {"semantic": round(sem_w, 3), "keyword": round(kw_w, 3)},
-                },
+    # Use a single session for all keyword searches
+    async with httpx.AsyncClient() as client:
+        # Create tasks for all searches
+        search_tasks = []
+        for term in search_terms:
+            search_tasks.append(
+                _perform_hybrid_search_for_term(term, payload, client)
             )
-        except Exception:
-            pass
         
-        # Add the results for this term to the overall collection
+        # Run all tasks concurrently
+        results_from_tasks = await asyncio.gather(*search_tasks)
+
+        # Process results from each task
+        for result in results_from_tasks:
+            if result:
+                all_term_results.append(result)
+
+    # --- 3. Merge and Score results from all terms ---
+    for term_results in all_term_results:
+        merged_by_id = term_results.get("merged_results", {})
         for chunk_id, chunk_data in merged_by_id.items():
             if chunk_id not in all_matches:
                 all_matches[chunk_id] = chunk_data
@@ -467,7 +402,7 @@ async def assistant_search_docs(request: Request):
                     chunk_data.get("combined_score", 0.0)
                 )
 
-    # --- 3. Rerank the Final Combined List ---
+    # --- 4. Rerank the Final Combined List ---
     try:
         print("[METRICS] After merge across terms:", {"unique_candidates": len(all_matches or {})})
     except Exception:
@@ -479,7 +414,10 @@ async def assistant_search_docs(request: Request):
         passages = [chunk.get("content", "") for chunk in matches[:top_k_for_rerank]]
         # Use the original, full user prompt for reranking to capture the complete intent
         query_passage_pairs = [[user_prompt, passage] for passage in passages]
-        rerank_scores = cross_encoder.predict(query_passage_pairs)
+        
+        # Run cross-encoder in a separate thread to avoid blocking the event loop
+        rerank_scores = await asyncio.to_thread(cross_encoder.predict, query_passage_pairs)
+
         for i, score in enumerate(rerank_scores):
             matches[i]["rerank_score"] = float(score)
         
@@ -504,7 +442,7 @@ async def assistant_search_docs(request: Request):
         except Exception:
             pass
 
-    # --- 4. Prepare and Send the Response ---
+    # --- 5. Prepare and Send the Response ---
     summary = None
     summary_was_partial = False
     
@@ -560,17 +498,17 @@ async def assistant_search_docs(request: Request):
         
         # Hard-coded conservative token budgets to avoid 400 invalid_request errors
         MAX_INPUT_TOKENS = 80_000
-        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
+        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-4-turbo", separator="\n\n")
 
         if top_text.strip():
             summary_prompt = [
-                {"role": "system", "content": "You are an insightful research assistant..."},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}\n\nPlease provide a detailed summary..."}
+                {"role": "system", "content": "You are an insightful research assistant. Based on the user's query and the provided search results, generate a comprehensive summary. Synthesize information from multiple sources to provide a detailed answer. For each piece of information, cite the source number(s) (e.g., [#4], [#7, #12]). Ensure the summary is well-structured, coherent, and directly addresses the user's question. Do not invent information not present in the sources."},
+                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}\n\nPlease provide a detailed summary with citations. The user is asking a question, so the summary should be a direct answer."}
             ]
             # Keep output budget well within typical model limits
             MAX_OUTPUT_TOKENS = 4_000
             print(f"[METRICS] Summarization budgets:", {"input_tokens_lte": MAX_INPUT_TOKENS, "output_tokens_lte": MAX_OUTPUT_TOKENS})
-            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_tokens=MAX_OUTPUT_TOKENS)
+            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-4-turbo", max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
     except Exception as e:
@@ -631,3 +569,97 @@ async def assistant_search_docs(request: Request):
 async def api_search_documents(request: Request):
     tool_args = await request.json()
     return perform_search(tool_args)
+
+async def _perform_hybrid_search_for_term(term: str, payload: dict, client: httpx.AsyncClient):
+    """
+    Performs a self-contained hybrid search for a single term.
+    This function is designed to be run concurrently for multiple terms.
+    """
+    try:
+        # Each term gets its own hybrid search
+        embedding = await asyncio.to_thread(embed_text, term)
+    except Exception as e:
+        print(f"Warning: Failed to generate embedding for term '{term}': {e}")
+        return None
+
+    tool_args = {
+        "embedding": embedding,
+        "user_prompt": term,
+        "search_query": term,
+        "relevance_threshold": 0.2,
+        "max_results": 50,
+        "file_ids": payload.get("file_ids"),
+        "file_name": payload.get("file_name"),
+        "description": payload.get("description"),
+        "document_type": payload.get("document_type"),
+        "meeting_year": payload.get("meeting_year"),
+        "meeting_month": payload.get("meeting_month"),
+        "meeting_month_name": payload.get("meeting_month_name"),
+        "meeting_day": payload.get("meeting_day"),
+        "ordinance_title": payload.get("ordinance_title"),
+    }
+    
+    # Perform semantic and keyword searches concurrently
+    semantic_task = asyncio.to_thread(perform_search, tool_args)
+    
+    sem_w, kw_w = _decide_weighting(term, [])
+    keyword_task = keyword_search_async(
+        client=client,
+        keywords=[term.strip()],
+        file_ids=tool_args.get("file_ids"),
+        match_count=150,
+        file_name_filter=tool_args.get("file_name"),
+        description_filter=tool_args.get("description"),
+        document_type=tool_args.get("document_type"),
+        meeting_year=tool_args.get("meeting_year"),
+        meeting_month=tool_args.get("meeting_month"),
+        meeting_month_name=tool_args.get("meeting_month_name"),
+        meeting_day=tool_args.get("meeting_day"),
+        ordinance_title=tool_args.get("ordinance_title"),
+    )
+
+    search_result, fts_results = await asyncio.gather(semantic_task, keyword_task)
+    
+    term_matches = search_result.get("retrieved_chunks", [])
+    fts_results = fts_results or []
+
+    # --- Merge and Score results for the current term ---
+    kw_scores = [r.get("keyword_score") or 0.0 for r in fts_results]
+    kmin, kmax = (min(kw_scores), max(kw_scores)) if kw_scores else (0.0, 0.0)
+    for r in fts_results:
+        ks = r.get("keyword_score") or 0.0
+        r["keyword_score_norm"] = (ks - kmin) / (kmax - kmin) if kmax > kmin else 0.0
+    
+    merged_by_id = {m.get("id"): m for m in term_matches if m.get("id")}
+    for r in fts_results:
+        rid = r.get("id")
+        if not rid: continue
+        if rid in merged_by_id:
+            merged_by_id[rid]["keyword_score_norm"] = max(
+                merged_by_id[rid].get("keyword_score_norm", 0.0),
+                r.get("keyword_score_norm", 0.0)
+            )
+        else:
+            merged_by_id[rid] = r
+    
+    for v in merged_by_id.values():
+        sem = v.get("similarity", 0.0) or 0.0
+        kw = v.get("keyword_score_norm", 0.0) or 0.0
+        v["combined_score"] = sem_w * sem + kw_w * kw
+
+    # Term-level metrics
+    try:
+        print(
+            "[METRICS] Term results:",
+            {
+                "term": term,
+                "semantic_count": len(term_matches or []),
+                "keyword_count": len(fts_results or []),
+                "merged_count": len(merged_by_id or {}),
+                "weights": {"semantic": round(sem_w, 3), "keyword": round(kw_w, 3)},
+            },
+        )
+    except Exception:
+        pass
+    
+    return {"term": term, "merged_results": merged_by_id}
