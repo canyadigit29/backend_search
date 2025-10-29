@@ -480,7 +480,7 @@ async def assistant_search_docs(payload: dict):
 
         if top_text.strip():
             summary_prompt = [
-                {"role": "system", "content": "You are an insightful research assistant. Based on the user's query and the provided search results, generate a comprehensive summary. Synthesize information from multiple sources to provide a detailed answer. For each piece of information, cite the source number(s) (e.g., [#4], [#7, #12]). Ensure the summary is well-structured, coherent, and directly addresses the user's question. Do not invent information not present in the sources."},
+                {"role": "system", "content": "You are a summarization engine. Your ONLY task is to synthesize the provided search results into a coherent answer to the user's query. Your response MUST be based exclusively on the information contained in the search results. Do not add any outside information, opinions, or commentary. If the search results are present, you MUST summarize them. Do not, under any circumstances, claim that no results were found if text is provided. For each piece of information, cite the source number(s) (e.g., [#4], [#7, #12])."},
                 {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}\n\nPlease provide a detailed summary with citations. The user is asking a question, so the summary should be a direct answer."}
             ]
             # Keep output budget well within typical model limits
