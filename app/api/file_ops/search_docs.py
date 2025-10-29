@@ -511,6 +511,37 @@ async def assistant_search_docs(request: Request):
     included_chunks = matches[:25] # Use up to the top 25 reranked results
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
+    # Hydrate missing content for chunks that came from keyword search only
+    try:
+        before_with_content = sum(1 for c in included_chunks if (c.get("content") or "").strip())
+        missing_ids = [cid for cid in included_chunk_ids if cid and not (next((c.get("content") for c in included_chunks if c.get("id") == cid), None) or "").strip()]
+        if missing_ids:
+            fetched = _fetch_chunks_by_ids(missing_ids) or []
+            by_id = {str(x.get("id")): x for x in fetched if x.get("id")}
+            for c in included_chunks:
+                cid = c.get("id")
+                if not cid:
+                    continue
+                has_content = (c.get("content") or "").strip()
+                if not has_content and str(cid) in by_id:
+                    full = by_id[str(cid)]
+                    # Fill in missing fields from the full record
+                    if (full.get("content") or "").strip():
+                        c["content"] = full.get("content")
+                    if not c.get("file_name") and full.get("file_name"):
+                        c["file_name"] = full.get("file_name")
+                    # Optionally merge other useful metadata if absent
+                    for k in ("document_type", "description"):
+                        if not c.get(k) and full.get(k):
+                            c[k] = full.get(k)
+        after_with_content = sum(1 for c in included_chunks if (c.get("content") or "").strip())
+        print("[METRICS] Hydration:", {"included": len(included_chunks or []), "with_content_before": before_with_content, "with_content_after": after_with_content})
+    except Exception as e:
+        try:
+            print(f"[WARN] Hydration step failed: {repr(e)}")
+        except Exception:
+            pass
+
     try:
         per_chunk_char_limit = 3000
         def _trim(s: str, n: int) -> str: return s[:n] if s else ""
