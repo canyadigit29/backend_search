@@ -140,8 +140,8 @@ def perform_search(tool_args):
         query_embedding = embed_text(text_to_embed)
 
     try:
-        # The DB function 'match_file_items_openai' expects a DISTANCE (1 - similarity).
-        db_match_threshold = 1 - threshold
+        # The SQL function expects a similarity threshold directly.
+        db_match_threshold = threshold
 
         # Build arguments for the RPC call, ensuring empty values are sent as None (NULL)
         rpc_args = {
@@ -166,8 +166,8 @@ def perform_search(tool_args):
             value = tool_args.get(tool_key)
             rpc_args[rpc_key] = value if value else None
 
-        print(f"--- RPC ARGS SENT TO SUPABASE ---\n{rpc_args}\n---------------------------------")
         # Exclusively use the new, optimized 'match_file_items_openai' RPC function.
+        # This function is defined in Supabase and only returns metadata, not content.
         response = supabase.rpc("match_file_items_openai", rpc_args).execute()
         if getattr(response, "error", None):
             # If the RPC call itself fails, raise an error to be caught below.
@@ -416,36 +416,28 @@ async def assistant_search_docs(payload: dict):
     included_chunks = matches[:12] # From "Interactive Q&A" profile (Retrieved k)
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
-    # Hydrate missing content for chunks that came from keyword search only
-    try:
-        before_with_content = sum(1 for c in included_chunks if (c.get("content") or "").strip())
-        missing_ids = [cid for cid in included_chunk_ids if cid and not (next((c.get("content") for c in included_chunks if c.get("id") == cid), None) or "").strip()]
-        if missing_ids:
-            fetched = _fetch_chunks_by_ids(missing_ids) or []
-            by_id = {str(x.get("id")): x for x in fetched if x.get("id")}
-            for c in included_chunks:
-                cid = c.get("id")
-                if not cid:
-                    continue
-                has_content = (c.get("content") or "").strip()
-                if not has_content and str(cid) in by_id:
-                    full = by_id[str(cid)]
-                    # Fill in missing fields from the full record
-                    if (full.get("content") or "").strip():
-                        c["content"] = full.get("content")
-                    if not c.get("file_name") and full.get("file_name"):
-                        c["file_name"] = full.get("file_name")
-                    # Optionally merge other useful metadata if absent
-                    for k in ("document_type", "description"):
-                        if not c.get(k) and full.get(k):
-                            c[k] = full.get(k)
-        after_with_content = sum(1 for c in included_chunks if (c.get("content") or "").strip())
-        print("[METRICS] Hydration:", {"included": len(included_chunks or []), "with_content_before": before_with_content, "with_content_after": after_with_content})
-    except Exception as e:
-        try:
-            print(f"[WARN] Hydration step failed: {repr(e)}")
-        except Exception:
-            pass
+    # --- HYDRATION STEP ---
+    # Unconditionally fetch the full content for the final list of chunks.
+    # This is necessary because the search functions only return metadata.
+    if included_chunk_ids:
+        print(f"[METRICS] Hydrating content for {len(included_chunk_ids)} chunks...")
+        hydrated_chunks_data = _fetch_chunks_by_ids(included_chunk_ids)
+        
+        # Create a dictionary for quick lookup of hydrated content
+        hydrated_content_map = {str(chunk.get("id")): chunk for chunk in hydrated_chunks_data}
+        
+        # Replace the content in our working list of chunks
+        for chunk in included_chunks:
+            chunk_id = str(chunk.get("id"))
+            if chunk_id in hydrated_content_map:
+                # Preserve existing scores, but update content and metadata
+                hydrated_chunk = hydrated_content_map[chunk_id]
+                chunk["content"] = hydrated_chunk.get("content")
+                # Also update file_name in case it was missing
+                if not chunk.get("file_name"):
+                    chunk["file_name"] = hydrated_chunk.get("file_name")
+        
+        print("[METRICS] Hydration complete.")
 
     try:
         # From "Interactive Q&A" profile (Per-Chunk Size: 900 tokens)
@@ -659,4 +651,15 @@ async def _perform_hybrid_search_for_term(term: str, payload: dict, client: http
     except Exception:
         pass
     
+    # This debug block is no longer needed as the hydration logic is fixed.
+    # try:
+    #     sorted_merged = sorted(merged_by_id.values(), key=lambda x: x.get('combined_score', 0.0), reverse=True)
+    #     print(f"--- TOP 5 MERGED FOR TERM '{term}' (BEFORE RERANK) ---")
+    #     for i, item in enumerate(sorted_merged[:5]):
+    #         content_preview = (item.get('content') or 'NO CONTENT').strip().replace('\\n', ' ')[:100]
+    #         print(f"  #{i+1}: id={item.get('id')}, score={item.get('combined_score'):.4f}, content='{content_preview}...'")
+    #     print("----------------------------------------------------")
+    # except Exception as e:
+    #     print(f"[WARN] Failed to print top merged results for term '{term}': {e}")
+
     return {"term": term, "merged_results": merged_by_id}
