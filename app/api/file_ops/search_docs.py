@@ -480,12 +480,29 @@ async def assistant_search_docs(payload: dict):
 
         if top_text.strip():
             summary_prompt = [
-                {"role": "system", "content": "You are a summarization engine. Your ONLY task is to synthesize the provided search results into a coherent answer to the user's query. Your response MUST be based exclusively on the information contained in the search results. Do not add any outside information, opinions, or commentary. If the search results are present, you MUST summarize them. Do not, under any circumstances, claim that no results were found if text is provided. For each piece of information, cite the source number(s) (e.g., [#4], [#7, #12])."},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}\n\nPlease provide a detailed summary with citations. The user is asking a question, so the summary should be a direct answer."}
+                {
+                    "role": "system",
+                    "content": ("You are an insightful research assistant. Read the provided document chunks and produce a concise, accurate synthesis that directly answers the user's query. "
+                        "Cite evidence using the chunk ids (id=...) when making claims. Prefer precision over verbosity. If multiple interpretations exist, explain them briefly."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"User query: {user_prompt}\n\n"
+                        "Search results (each chunk starts with a metadata header):\n"
+                        f"{top_text}\n\n"
+                        "Please respond with the following structure:\n"
+                        "1) Key findings (with inline citations like [id=...])\n"
+                        "2) Evidence by chunk (grouped by id, 1-3 bullets each)\n"
+                        "3) Important names/aliases/variants\n"
+                        "4) Suggested follow-up questions"
+                    ),
+                },
             ]
-            # Keep output budget well within typical model limits
-            MAX_OUTPUT_TOKENS = 4_000
-            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-4-turbo", max_tokens=MAX_OUTPUT_TOKENS)
+            # Constrain output tokens
+            MAX_OUTPUT_TOKENS = 120_000
+            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
     except Exception as e:
