@@ -313,15 +313,17 @@ async def api_search_docs(request: Request):
 
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
 @router.post("/assistant/search_docs")
-async def assistant_search_docs(request: Request):
+async def assistant_search_docs(payload: dict):
     """
-    Accepts a payload, plans the search using an LLM, executes the plan in parallel,
+    Accepts a payload containing a search plan, executes the plan in parallel,
     and returns a summary or structured results.
+    The planning is expected to be done by the frontend model or a dedicated planner.
     """
-    payload = await request.json()
-    user_prompt = payload.get("query") or payload.get("user_prompt")
-    if not user_prompt:
-        return JSONResponse({"error": "Missing query in payload"}, status_code=400)
+    user_prompt = payload.get("user_prompt")
+    search_plan = payload.get("search_plan")
+
+    if not user_prompt or not search_plan:
+        return JSONResponse({"error": "Missing user_prompt or search_plan in payload"}, status_code=400)
 
     # --- 1. Plan the Search using LLM ---
     search_plan = plan_search_query(user_prompt)
