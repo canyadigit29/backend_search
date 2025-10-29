@@ -409,7 +409,7 @@ async def assistant_search_docs(request: Request):
         pass
     matches = sorted(all_matches.values(), key=lambda x: x.get("combined_score", 0.0), reverse=True)
     
-    top_k_for_rerank = 50
+    top_k_for_rerank = 24 # From "Interactive Q&A" profile (Rerank Top m)
     if matches and len(matches) > 1:
         passages = [chunk.get("content", "") for chunk in matches[:top_k_for_rerank]]
         # Use the original, full user prompt for reranking to capture the complete intent
@@ -446,7 +446,7 @@ async def assistant_search_docs(request: Request):
     summary = None
     summary_was_partial = False
     
-    included_chunks = matches[:25] # Use up to the top 25 reranked results
+    included_chunks = matches[:12] # From "Interactive Q&A" profile (Retrieved k)
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
     # Hydrate missing content for chunks that came from keyword search only
@@ -481,7 +481,8 @@ async def assistant_search_docs(request: Request):
             pass
 
     try:
-        per_chunk_char_limit = 3000
+        # From "Interactive Q&A" profile (Per-Chunk Size: 900 tokens * 4 chars/token)
+        per_chunk_char_limit = 3600
         def _trim(s: str, n: int) -> str: return s[:n] if s else ""
         annotated_texts = []
         for idx, chunk in enumerate(included_chunks, start=1):
@@ -586,7 +587,7 @@ async def _perform_hybrid_search_for_term(term: str, payload: dict, client: http
         "embedding": embedding,
         "user_prompt": term,
         "search_query": term,
-        "relevance_threshold": 0.2,
+        "relevance_threshold": 0.25, # From "Interactive Q&A" profile
         "max_results": 50,
         "file_ids": payload.get("file_ids"),
         "file_name": payload.get("file_name"),
