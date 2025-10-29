@@ -77,11 +77,13 @@ The `parameters` object requires two arguments:
     *   `"operator"`: Use `"AND"` to find results containing all concepts. Use `"OR"` to find results containing any of the concepts.
     *   `"terms"`: A list of specific, concise keyword strings for the search.
 
-**Important Rules for Creating the `search_plan`:**
-*   Deconstruct the user's query into distinct conceptual keywords.
-*   **Be concise. Generate no more than 3-5 distinct search terms. Each term should be a short phrase.**
-*   Do **NOT** use web search syntax like `site:` or `filetype:`. The search is performed on a private set of documents.
-*   Keep search terms concise and focused on nouns, legal terms, and official names.
+**CRITICAL Rules for Creating the `search_plan`:**
+*   **Your job is to translate the user's query into literal search terms. Be as direct and simple as possible.**
+*   **DO NOT add any context or keywords that are not explicitly present in the user's query.** For example, if the user asks to find "blight", the search term MUST be `"blight"`. Do NOT expand it to `"blight in Scottdale Borough ordinances"`.
+*   Extract the core nouns and phrases from the user's request to form the `terms`.
+*   If the user uses "OR", create separate terms for each part of the "OR" statement.
+*   Generate as few terms as possible. For a simple query like "search for blight", you should generate exactly one term: `["blight"]`.
+*   Do **NOT** use web search syntax like `site:` or `filetype:`.
 
 ### Tool Definition (for API compliance)
 ```json
