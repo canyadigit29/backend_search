@@ -485,7 +485,6 @@ async def assistant_search_docs(payload: dict):
             ]
             # Keep output budget well within typical model limits
             MAX_OUTPUT_TOKENS = 4_000
-            print(f"[METRICS] Summarization budgets:", {"input_tokens_lte": MAX_INPUT_TOKENS, "output_tokens_lte": MAX_OUTPUT_TOKENS})
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-4-turbo", max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
