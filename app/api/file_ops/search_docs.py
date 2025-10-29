@@ -325,9 +325,11 @@ async def assistant_search_docs(payload: dict):
     if not user_prompt or not search_plan:
         return JSONResponse({"error": "Missing user_prompt or search_plan in payload"}, status_code=400)
 
-    # --- 1. Plan the Search using LLM ---
-    search_plan = plan_search_query(user_prompt)
-    search_terms = search_plan.get("terms", [user_prompt])
+    # The plan is now taken from the payload.
+    search_terms = search_plan.get("terms", [])
+    if not search_terms:
+        # Fallback to user_prompt if terms are missing, though the plan should provide them.
+        search_terms = [user_prompt]
     
     all_matches = {}
     print("[METRICS] Search plan:", {"operator": search_plan.get("operator"), "terms": search_terms})
@@ -446,9 +448,17 @@ async def assistant_search_docs(payload: dict):
             pass
 
     try:
-        # From "Interactive Q&A" profile (Per-Chunk Size: 900 tokens * 4 chars/token)
-        per_chunk_char_limit = 3600
-        def _trim(s: str, n: int) -> str: return s[:n] if s else ""
+        # From "Interactive Q&A" profile (Per-Chunk Size: 900 tokens)
+        per_chunk_token_limit = 900
+        
+        # Helper to trim a single text to a token limit.
+        def _trim_to_tokens(text: str, limit: int, model: str) -> str:
+            if not text:
+                return ""
+            # trim_texts_to_token_limit works with a list, so wrap and unwrap.
+            trimmed_list = trim_texts_to_token_limit([text], limit, model=model, separator="")
+            return trimmed_list[0] if trimmed_list else ""
+
         annotated_texts = []
         for idx, chunk in enumerate(included_chunks, start=1):
             disp = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
@@ -458,13 +468,15 @@ async def assistant_search_docs(payload: dict):
                 disp_val = 0
             # Fix header index formatting
             header = f"[#{idx} id={chunk.get('id')} file={chunk.get('file_name')} score={disp_val}]"
-            body = _trim(chunk.get("content", ""), per_chunk_char_limit)
+            
+            # Trim each chunk's content to the token limit before adding it.
+            body = _trim_to_tokens(chunk.get("content", ""), per_chunk_token_limit, model="gpt-4-turbo")
+            
             if body:
                 annotated_texts.append(f"{header}\n{body}")
         
-        # Hard-coded conservative token budgets to avoid 400 invalid_request errors
-        MAX_INPUT_TOKENS = 80_000
-        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-4-turbo", separator="\n\n")
+        # Join the already-trimmed chunks.
+        top_text = "\n\n".join(annotated_texts)
 
         if top_text.strip():
             summary_prompt = [
