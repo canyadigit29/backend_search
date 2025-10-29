@@ -1,64 +1,88 @@
 import os
 import asyncio
+import json
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 
 # Consolidate all necessary imports here
-from app.api.file_ops.embed import embed_text
-from app.core.supabase_client import create_client
-from app.core.openai_client import stream_chat_completion
-from app.core.token_utils import trim_texts_to_token_limit
-
-# Local modules for search logic
-from ..file_ops.search_docs import assistant_search_docs
+from app.core.openai_client import chat_completion
+from app.api.file_ops.search_docs import assistant_search_docs
 
 router = APIRouter()
 
 # --- Pydantic Models for Request and Response ---
 class RagSearchRequest(BaseModel):
     query: str = Field(..., description="The user's search query.")
-    query_embedding: Optional[List[float]] = Field(None, description="Optional pre-computed query embedding.")
-    match_threshold: float = Field(0.2, description="Similarity threshold for matching.")
-    match_count: int = Field(100, description="Number of matches to return.")
-    file_ids: Optional[List[str]] = Field(None, description="Optional list of file IDs to search within.")
-    file_name: Optional[str] = Field(None, description="Filter by file name.")
-    description: Optional[str] = Field(None, description="Filter by description.")
-    document_type: Optional[str] = Field(None, description="Filter by document type.")
-    meeting_year: Optional[int] = Field(None, description="Filter by meeting year.")
-    meeting_month: Optional[int] = Field(None, description="Filter by meeting month.")
-    meeting_month_name: Optional[str] = Field(None, description="Filter by meeting month name.")
-    meeting_day: Optional[int] = Field(None, description="Filter by meeting day.")
-    ordinance_title: Optional[str] = Field(None, description="Filter by ordinance title.")
-
+    # Allow other potential fields from the frontend to be ignored
     class Config:
-        extra = 'ignore' # Change to ignore to prevent unexpected fields
+        extra = 'ignore'
 
-class RagSearchResponse(BaseModel):
-    summary: Optional[str]
-    sources: List[Dict]
-    retrieved_chunks: Optional[List[Dict]] = None
+def plan_search_query(user_prompt: str) -> dict:
+    """
+    Uses an LLM to decompose a user query into a structured search plan.
+    This is the "planner" step in the RAG pipeline.
+    """
+    # This prompt is now centralized here, at the entry point of the RAG system.
+    system_prompt = (
+        "You are a search query planner. Your task is to analyze the user's request and convert it into a structured JSON object representing the search logic. "
+        "The output must be a single JSON object with two keys: 'operator' (which can be 'AND' or 'OR') and 'terms' (a list of strings). "
+        "If there is only one logical concept, use the 'AND' operator with a single term in the list. "
+        "Prioritize breaking down queries with explicit 'OR' clauses. "
+        "Do not include conversational phrases or explanations in the terms. "
+        "Do not use web search syntax like `site:` or `filetype:`."
+        "\n\nExamples:\n"
+        'User: find documents about "Mennonite Publishing House" OR "Herald Press"\n'
+        'JSON: {"operator": "OR", "terms": ["Mennonite Publishing House", "Herald Press"]}\n\n'
+        'User: what are the rules for zoning and code enforcement in the historic district\n'
+        'JSON: {"operator": "AND", "terms": ["zoning rules historic district", "code enforcement historic district"]}\n\n'
+        'User: reports on infrastructure spending in 2022\n'
+        'JSON: {"operator": "AND", "terms": ["infrastructure spending 2022"]}\n'
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+    
+    try:
+        result = chat_completion(messages)
+        plan = json.loads(result)
+        if isinstance(plan, dict) and "operator" in plan and "terms" in plan:
+            return plan
+    except (json.JSONDecodeError, TypeError):
+        # Fallback for non-JSON responses or errors
+        pass
+    
+    # Default fallback plan if LLM fails to produce valid JSON
+    return {"operator": "AND", "terms": [user_prompt]}
+
 
 # --- Main RAG Search Endpoint ---
 @router.post("/rag-search")
-async def rag_search(request: Request):
+async def rag_search(req: RagSearchRequest):
     """
     This is the consolidated RAG endpoint. It takes a user query,
-    performs a semantic search, and returns a synthesized response.
+    plans the search, executes it, and returns a synthesized response.
     """
-    # The request body is read once for logging.
-    # The `assistant_search_docs` function will read it again from the request object.
-    request_json = await request.json()
-    print(f"--- RAG SEARCH REQUEST RECEIVED ---\n{request_json}\n---------------------------------")
-    
     try:
-        # The logic is now deferred to the more capable assistant_search_docs function.
-        # We pass the entire request object to it.
-        return await assistant_search_docs(request)
+        print(f"--- RAG SEARCH REQUEST RECEIVED ---\nQuery: {req.query}\n---------------------------------")
+        
+        # 1. Plan the search based on the user query
+        user_prompt = req.query
+        search_plan = plan_search_query(user_prompt)
+
+        # 2. Prepare the payload for the search executor
+        # We pass the original request dict and add the search plan to it
+        payload = req.dict()
+        payload["user_prompt"] = user_prompt
+        payload["search_plan"] = search_plan
+
+        # 3. Execute the search by calling the decoupled search function
+        return await assistant_search_docs(payload)
         
     except Exception as e:
         # Log the full error for debugging
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred in RAG pipeline: {str(e)}")
