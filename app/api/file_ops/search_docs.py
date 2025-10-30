@@ -4,6 +4,7 @@ import httpx
 import asyncio
 import logging
 import textwrap
+import contextlib
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -65,6 +66,23 @@ def _parse_inline_or_terms(text: str) -> list[str]:
         seen.add(t.lower())
         uniq.append(t)
     return uniq
+
+
+def _collect_assistant_text(message) -> str:
+    """Extract plain text segments from an assistant message returned by the Assistants API."""
+    text_parts: list[str] = []
+    for content in getattr(message, "content", []) or []:
+        content_type = getattr(content, "type", None)
+        if content_type == "text":
+            text_block = getattr(content, "text", None)
+            value = getattr(text_block, "value", None)
+            if value:
+                text_parts.append(value)
+        elif content_type == "output_text":
+            value = getattr(content, "text", None)
+            if value:
+                text_parts.append(value)
+    return "\n".join(part for part in text_parts if part)
 
 def _decide_weighting(user_prompt: str, or_terms: list[str]) -> tuple[float, float]:
     """Decide semantic vs keyword weighting using simple lexical heuristics."""
@@ -697,52 +715,77 @@ async def assistant_search_docs(payload: dict):
                     },
                 }
 
+                thread = None
+                run = None
+                assistant_duration_ms = 0.0
                 try:
                     t_sum0 = time.perf_counter()
-                    response = openai_client.responses.create(
+                    user_message = {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_payload},
+                        ],
+                    }
+                    thread = openai_client.beta.threads.create(messages=[user_message])
+
+                    run = openai_client.beta.threads.runs.create_and_poll(
+                        thread_id=thread.id,
                         assistant_id=assistant_id,
                         instructions=instructions,
-                        input=[
-                            {
-                                "role": "user",
-                                "content": [
-                                    {"type": "text", "text": user_payload},
-                                ],
-                            }
-                        ],
                         response_format=response_schema,
                     )
 
-                    raw_json_text = getattr(response, "output_text", None)
-                    if not raw_json_text:
-                        collected: list[str] = []
-                        for item in getattr(response, "output", []) or []:
-                            for content in getattr(item, "content", []) or []:
-                                text_block = getattr(content, "text", None)
-                                if isinstance(text_block, str):
-                                    collected.append(text_block)
-                                elif isinstance(text_block, list):
-                                    for entry in text_block:
-                                        if isinstance(entry, dict) and "text" in entry:
-                                            collected.append(str(entry["text"]))
-                        raw_json_text = "".join(collected)
+                    assistant_duration_ms = (time.perf_counter() - t_sum0) * 1000.0
+                    run_status = getattr(run, "status", "")
+                    if run_status != "completed":
+                        summary_was_partial = True
+                        log_error(logger, "rag.summary.assistant_incomplete", {
+                            "status": run_status or "unknown",
+                            "run_id": getattr(run, "id", None),
+                        })
 
-                    parsed = json.loads(raw_json_text or "{}")
+                    messages = openai_client.beta.threads.messages.list(
+                        thread_id=thread.id,
+                        order="desc",
+                        limit=10,
+                    )
+
+                    raw_json_text = ""
+                    for message in messages.data:
+                        if getattr(message, "role", None) != "assistant":
+                            continue
+                        if run and getattr(message, "run_id", None) and getattr(message, "run_id", None) != getattr(run, "id", None):
+                            continue
+                        extracted = _collect_assistant_text(message)
+                        if extracted:
+                            raw_json_text = extracted
+                            break
+
+                    if not raw_json_text:
+                        raise ValueError("Assistant run completed without text output")
+
+                    parsed = json.loads(raw_json_text)
                     summary = parsed.get("summary_markdown")
                     assistant_used_labels = [str(lbl) for lbl in parsed.get("used_source_labels") or []]
                     assistant_follow_ups = [str(q) for q in parsed.get("follow_up_questions") or []]
-                    assistant_duration_ms = (time.perf_counter() - t_sum0) * 1000.0
 
                     log_info(logger, "rag.summary.done", {
                         "has_summary": bool(summary),
                         "length": (len(summary) if isinstance(summary, str) else 0),
-                        "partial": False,
+                        "partial": bool(summary_was_partial),
                         "duration_ms": round(assistant_duration_ms or 0.0, 2),
                         "assistant_used_labels": assistant_used_labels,
                     })
                 except Exception as e:
                     summary = None
-                    log_error(logger, "rag.summary.assistant_error", {"error": repr(e)}, exc_info=True)
+                    log_error(logger, "rag.summary.assistant_error", {
+                        "error": repr(e),
+                        "run_status": getattr(run, "status", None) if run else None,
+                    }, exc_info=True)
+                finally:
+                    with contextlib.suppress(Exception):
+                        if thread and getattr(thread, "id", None):
+                            openai_client.beta.threads.delete(thread.id)
             else:
                 log_error(logger, "rag.summary.config_missing", {"missing": "SEARCH_ASSISTANT_ID"})
 
