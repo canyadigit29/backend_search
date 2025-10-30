@@ -493,17 +493,6 @@ async def assistant_search_docs(payload: dict):
     sources = ordered_sources
 
     try:
-        # From "Interactive Q&A" profile (Per-Chunk Size: 900 tokens)
-        per_chunk_token_limit = 600
-        
-        # Helper to trim a single text to a token limit.
-        def _trim_to_tokens(text: str, limit: int, model: str) -> str:
-            if not text:
-                return ""
-            # trim_texts_to_token_limit works with a list, so wrap and unwrap.
-            trimmed_list = trim_texts_to_token_limit([text], limit, model=model, separator="")
-            return trimmed_list[0] if trimmed_list else ""
-
         user_locale = payload.get("language") or "en-US"
         target_length = payload.get("target_length") or 220
         format_variant = payload.get("format_variant") or "standard"
@@ -552,7 +541,7 @@ async def assistant_search_docs(payload: dict):
                 if chunk_id:
                     chunk_label_map[str(chunk_id)] = label
 
-            body = _trim_to_tokens(chunk.get("content", ""), per_chunk_token_limit, model="gpt-4-turbo")
+            body = chunk.get("content", "") or ""
             if not body:
                 continue
 
