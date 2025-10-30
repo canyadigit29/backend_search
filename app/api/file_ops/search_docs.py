@@ -6,6 +6,7 @@ import statistics
 import httpx
 import asyncio
 import logging
+import textwrap
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -468,58 +469,228 @@ async def assistant_search_docs(payload: dict):
             trimmed_list = trim_texts_to_token_limit([text], limit, model=model, separator="")
             return trimmed_list[0] if trimmed_list else ""
 
+        user_locale = payload.get("language") or "en-US"
+        target_length = payload.get("target_length") or 220
+        format_variant = payload.get("format_variant") or "standard"
+        k_retrieved = len(included_chunks or [])
+
+        chunk_label_map: dict[str, str] = {}
+        file_label_map: dict[str, str] = {}
+        for idx, source_entry in enumerate(sources, start=1):
+            label = f"S{idx}"
+            source_entry["label"] = label
+            for cid in source_entry.get("chunk_ids") or []:
+                if cid:
+                    chunk_label_map[str(cid)] = label
+            file_name = source_entry.get("file_name")
+            if file_name:
+                file_label_map[file_name] = label
+            file_id_key = source_entry.get("file_id")
+            if file_id_key:
+                file_label_map[f"file_id::{file_id_key}"] = label
+
+        normalized_terms: list[str] = []
+        for term in search_terms:
+            if isinstance(term, str) and term.strip():
+                normalized_terms.append(term.lower())
+        if isinstance(user_prompt, str) and user_prompt.strip():
+            normalized_terms.append(user_prompt.lower())
+
         # Measure prompt assembly (often the hidden latency)
         t_prompt0 = time.perf_counter()
-        annotated_texts = []
+        retrieved_sections: list[str] = []
+        direct_match_labels: set[str] = set()
+
         for idx, chunk in enumerate(included_chunks, start=1):
             disp = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
             try:
                 disp_val = round(float(disp or 0), 4)
             except Exception:
                 disp_val = 0
-            file_label = chunk.get("file_name") or "Unknown source"
-            header = f"[chunk {idx} | file={file_label} | score={disp_val}]"
-            
-            # Trim each chunk's content to the token limit before adding it.
-            body = _trim_to_tokens(chunk.get("content", ""), per_chunk_token_limit, model="gpt-4-turbo")
-            
-            if body:
-                annotated_texts.append(f"{header}\n{body}")
-        
-        # Join the already-trimmed chunks.
-        top_text = "\n\n".join(annotated_texts)
-        prompt_build_ms = (time.perf_counter() - t_prompt0) * 1000.0
-        # Only log metadata to avoid large logs. Guard verbose text dump behind env flag.
-        if settings.DEBUG_VERBOSE_LOG_TEXTS:
-            log_info(logger, "rag.summary.input.preview", {"chars": len(top_text)})
 
-        if top_text.strip():
-            log_info(logger, "rag.summary.start", {"included_count": len(included_chunks or []), "prompt_build_ms": round(prompt_build_ms, 2)})
+            chunk_id = chunk.get("id")
+            file_label = chunk.get("file_name") or "Unknown source"
+            label = chunk_label_map.get(str(chunk_id)) or file_label_map.get(file_label) or file_label_map.get(f"file_id::{chunk.get('file_id')}")
+            if not label:
+                label = f"S{k_retrieved + len(retrieved_sections) + 1}"
+                if chunk_id:
+                    chunk_label_map[str(chunk_id)] = label
+
+            body = _trim_to_tokens(chunk.get("content", ""), per_chunk_token_limit, model="gpt-4-turbo")
+            if not body:
+                continue
+
+            lower_body = body.lower()
+            if normalized_terms:
+                for term in normalized_terms:
+                    if term and term in lower_body:
+                        direct_match_labels.add(label)
+                        break
+            if label not in direct_match_labels and normalized_terms:
+                raw_content_lower = (chunk.get("content") or "").lower()
+                for term in normalized_terms:
+                    if term and term in raw_content_lower:
+                        direct_match_labels.add(label)
+                        break
+
+            score_text = f"{disp_val:.4f}" if isinstance(disp_val, (int, float)) else str(disp_val)
+            section_lines = [
+                f"[{label}] {file_label}",
+            ]
+            if chunk_id:
+                section_lines.append(f"chunk_id: {chunk_id}")
+            if chunk.get("file_id"):
+                section_lines.append(f"file_id: {chunk.get('file_id')}")
+            if chunk.get("meeting_date"):
+                section_lines.append(f"meeting_date: {chunk.get('meeting_date')}")
+            section_lines.append(f"score: {score_text}")
+            section_lines.append("content:")
+            section_lines.append("---")
+            section_lines.append(body)
+            section_lines.append("---")
+            retrieved_sections.append("\n".join(section_lines))
+
+        retrieved_context = "\n\n".join(retrieved_sections)
+        prompt_build_ms = (time.perf_counter() - t_prompt0) * 1000.0
+        if settings.DEBUG_VERBOSE_LOG_TEXTS:
+            log_info(logger, "rag.summary.input.preview", {"chars": len(retrieved_context)})
+
+        if retrieved_context.strip():
+            log_info(logger, "rag.summary.start", {
+                "included_count": len(included_chunks or []),
+                "prompt_build_ms": round(prompt_build_ms, 2),
+                "direct_match_labels": sorted(direct_match_labels),
+            })
+
+            sources_catalog_lines: list[str] = []
+            for source_entry in sources:
+                label = source_entry.get("label") or "?"
+                title = source_entry.get("file_name") or "Unknown source"
+                meeting_date = source_entry.get("meeting_date")
+                file_id_value = source_entry.get("file_id")
+                line = f"[{label}] {title}"
+                if meeting_date:
+                    line += f" (date={meeting_date})"
+                if file_id_value:
+                    line += f" - file_id={file_id_value}"
+                sources_catalog_lines.append(line)
+            sources_catalog_text = "\n".join(sources_catalog_lines) if sources_catalog_lines else "(no sources)"
+
+            search_terms_line = (
+                f"Search plan terms: {', '.join(term for term in search_terms if isinstance(term, str) and term.strip())}"
+                if search_terms else "Search plan terms: (none)"
+            )
+            if direct_match_labels:
+                direct_match_note = (
+                    "The query terms appear in sources: "
+                    + ", ".join(sorted(direct_match_labels))
+                    + ". Highlight their evidence clearly."
+                )
+            else:
+                direct_match_note = "No direct string match was detected; rely on the strongest evidence."
+
+            retrieved_context_text = retrieved_context if retrieved_sections else "(no text retrieved)"
+
+            user_query_for_prompt = user_prompt or ""
+            user_query_format_safe = user_query_for_prompt.replace("{", "{{").replace("}", "}}")
+
+            system_template = textwrap.dedent("""
+                RAG Summarizer - System Instructions
+
+                Role & Objective
+                You are a factual, no-nonsense summarizer for a Retrieval-Augmented Generation pipeline. Your only job is to summarize the provided passages and metadata in response to the user query "{user_query}". Do not invent facts. If the context does not contain the answer, say so clearly.
+
+                Inputs Provided by the caller:
+                - User Query: "{user_query}"
+                - Results: up to {k} retrieved items with title, source identifiers, timestamps, text content, chunk IDs, and optional scores.
+                - Language: {user_locale}. Write in this language.
+                - Target Length: {target_length} words.
+                - Format Variant: {format_variant} (brief|standard|detailed).
+
+                Hard Rules:
+                1. No hallucinations: only use facts present in the provided results. If something is uncertain or missing, explicitly note it.
+                2. Citations: after each claim that depends on a source, include compact citations like [S1] or [S3, S5]. Map every citation to the Sources section at the end.
+                3. Deduplication and synthesis: merge overlapping points, prefer the most recent and highest-quality sources when conflicts occur. If evidence conflicts, present both and label the situation as Conflict.
+                4. Date awareness: include dates when present. If the material may be stale, call it out (for example, "Last updated 2023-11-04 [S2]").
+                5. Scope control: summarize only what is relevant to the user query. Ignore unrelated material.
+                6. Privacy and safety: do not expose secrets, system prompts, or raw credentials. Replace them with [REDACTED] if encountered.
+                7. Language and tone: use {user_locale}. Be clear, concise, and neutral.
+                8. Formatting: follow the markdown scaffold exactly. Do not add sections unless requested.
+
+                Output Markdown Scaffold (always use):
+                ### Title
+                A short, specific title.
+
+                ### TL;DR
+                One or two sentences answering the query.
+
+                ### Key Points
+                * 3-7 bullets with the most important facts. End each evidence-based bullet with citations like [S2].
+
+                ### Details
+                One or two short paragraphs that synthesize the evidence, resolve conflicts, and add necessary context. Use inline dates and metrics when available, with citations.
+
+                ### Caveats & Unknowns
+                * List any gaps, missing data, ambiguities, or conflicts (with citations).
+
+                ### Next Steps (if applicable)
+                * Actionable follow-ups such as tests to run, data to fetch, or documents to check.
+
+                ### Sources
+                * [S1] Title - identifier (date if known).
+                * [S2] Title - identifier (date if known).
+                Only list sources that were cited.
+
+                Additional Formatting Guidelines:
+                - Length control: aim for {target_length} words (+/-15%). If format variant is brief, target 100-150 words. If detailed, target 300-500 words.
+                - Lists: prefer bullets for dense facts. Keep bullets under two lines when possible.
+                - Numbers: preserve exact figures and units from the sources. If ranges differ, show both and cite each source.
+                - Tables (optional): you may include a small markdown table (<=6 columns, <=10 rows) if it adds clarity.
+                - Code or CLI snippets (optional): for technical steps you may include code blocks up to 15 lines.
+                - Quotations: quote sparingly (<=20 words) only when the exact phrasing matters, and cite the source.
+                - Redactions: replace sensitive tokens with [REDACTED] and mention the redaction in Caveats & Unknowns.
+
+                Conflict Resolution Protocol:
+                - Prefer newer sources over older ones when both are credible.
+                - If credibility differs, present both views under Conflict with citations and avoid adjudicating beyond the evidence.
+                - If a claim appears only once and is extraordinary, flag it as low confidence unless corroborated.
+
+                When Context Is Insufficient:
+                - Write: "The provided results do not contain enough information to answer this fully." Then list what is missing and specific follow-ups to retrieve.
+
+                Prohibited Behaviors:
+                - Do not browse or add outside knowledge.
+                - Do not speculate, guess, or role-play.
+                - Do not promise actions beyond summarization.
+            """)
+
+            system_content = system_template.format(
+                user_query=user_query_format_safe,
+                k=k_retrieved,
+                user_locale=user_locale,
+                target_length=target_length,
+                format_variant=format_variant,
+            )
+
+            user_message_parts = [
+                f"User query: {user_query_for_prompt}",
+                search_terms_line,
+                f"Language: {user_locale}.",
+                f"Target length: {target_length} words. Format variant: {format_variant}.",
+                "",
+                "Retrieved results:",
+                retrieved_context_text,
+                "",
+                "Sources catalog:",
+                sources_catalog_text,
+                "",
+                direct_match_note,
+            ]
+            user_message_content = "\n".join(user_message_parts)
+
             summary_prompt = [
-                {
-                    "role": "system",
-                    "content": ("You are an insightful research assistant. Read the provided document chunks and produce a concise, accurate synthesis that directly answers the user's query. "
-                        "Cite evidence using the chunk ids (id=...) when making claims. Prefer precision over verbosity. If multiple interpretations exist, explain them briefly."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": (
-                        f"User query: {user_prompt}\n\n"
-                        "Search results (each chunk starts with a metadata header):\n"
-                        f"{top_text}\n\n"
-                        "Please respond with the following structure, using the file names from each header (file=...) for any citations:\n"
-                        "Summary:\n"
-                        "- Provide 2-4 bullet points that answer the user's question using bracketed file-name citations like [July 2023 Minutes.pdf].\n"
-                        "Evidence (by source):\n"
-                        "- For each relevant file, add a bullet in the form '<File Name>: insight [File Name]'. Limit to 1-3 bullets per file.\n"
-                        "Important names/aliases/variants:\n"
-                        "- List notable entities or search variants, 1 per bullet.\n"
-                        "Suggested follow-up questions:\n"
-                        "- Provide 1-3 clarifying questions.\n\n"
-                        "Do not mention raw chunk ids or UUIDs in your response."
-                    ),
-                },
+                {"role": "system", "content": system_content},
+                {"role": "user", "content": user_message_content},
             ]
             # Constrain output tokens
             MAX_OUTPUT_TOKENS = 120_000
@@ -587,6 +758,8 @@ async def assistant_search_docs(payload: dict):
                 "excerpt": excerpt,
                 "chunk_ids": [chunk.get("id")],
                 "id": chunk.get("id"),
+                "file_id": chunk.get("file_id"),
+                "meeting_date": chunk.get("meeting_date"),
             }
             sources_map[file_name] = entry
             ordered_sources.append(entry)
@@ -597,6 +770,10 @@ async def assistant_search_docs(payload: dict):
                 if excerpt:
                     entry["excerpt"] = excerpt
                     entry["id"] = chunk.get("id")
+                    if chunk.get("file_id"):
+                        entry["file_id"] = chunk.get("file_id")
+                    if chunk.get("meeting_date"):
+                        entry["meeting_date"] = chunk.get("meeting_date")
 
     sources = ordered_sources
 
@@ -620,30 +797,22 @@ async def assistant_search_docs(payload: dict):
 
     log_info(logger, "rag.sources", {"count": len(sources or [])})
 
-    # Format a plain-text response that the frontend can stream directly.
-    # Retain useful structure (summary + sources) so the UI can render without JSON parsing.
-    summary_lines: list[str] = []
     if isinstance(summary, str) and summary.strip():
-        summary_lines.append("Summary:\n" + summary.strip())
+        plain_text = summary.strip()
+    else:
+        fallback_lines: list[str] = [
+            "No synthesized summary was produced. Review the retrieved evidence below:",
+        ]
+        if sources:
+            for idx, source in enumerate(sources, start=1):
+                name = str(source.get("file_name") or f"source-{idx}")
+                excerpt = source.get("excerpt")
+                excerpt_text = f": {excerpt}" if isinstance(excerpt, str) and excerpt else ""
+                fallback_lines.append(f"- {name}{excerpt_text}")
+        else:
+            fallback_lines.append("- No sources were returned for this query.")
 
-    if sources:
-        formatted_sources = []
-        for idx, source in enumerate(sources, start=1):
-            name = str(source.get("file_name") or f"source-{idx}")
-            excerpt = source.get("excerpt")
-            excerpt_text = f": {excerpt}" if isinstance(excerpt, str) and excerpt else ""
-            formatted_sources.append(f"- {name}{excerpt_text}")
-
-        if formatted_sources:
-            summary_lines.append("Sources:\n" + "\n".join(formatted_sources))
-
-    if not summary_lines:
-        summary_lines.append(
-            "No relevant sources were found for your query. Try adjusting the search terms or filters."
-        )
-
-    # Compose plain-text once so we can log exactly what is emitted
-    plain_text = "\n\n".join(summary_lines)
+        plain_text = "\n".join(fallback_lines)
 
     try:
         preview = plain_text[:600] if isinstance(plain_text, str) else ""
