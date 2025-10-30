@@ -457,9 +457,44 @@ async def assistant_search_docs(payload: dict):
         hyd_dt_ms = (time.perf_counter() - t_hyd0) * 1000.0
         log_info(logger, "rag.hydration.complete", {"hydrated": len(hydrated_chunks_data or []), "duration_ms": round(hyd_dt_ms, 2)})
 
+    excerpt_length = 300
+    sources_map: dict[str, dict] = {}
+    ordered_sources: list[dict] = []
+    for chunk in included_chunks:
+        file_name = chunk.get("file_name") or "Unknown source"
+        score = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
+        content = chunk.get("content") or ""
+        excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+        entry = sources_map.get(file_name)
+        if not entry:
+            entry = {
+                "file_name": file_name,
+                "score": score,
+                "excerpt": excerpt,
+                "chunk_ids": [chunk.get("id")],
+                "id": chunk.get("id"),
+                "file_id": chunk.get("file_id"),
+                "meeting_date": chunk.get("meeting_date"),
+            }
+            sources_map[file_name] = entry
+            ordered_sources.append(entry)
+        else:
+            entry.setdefault("chunk_ids", []).append(chunk.get("id"))
+            if score is not None and (entry.get("score") is None or score > entry.get("score")):
+                entry["score"] = score
+                if excerpt:
+                    entry["excerpt"] = excerpt
+                    entry["id"] = chunk.get("id")
+                    if chunk.get("file_id"):
+                        entry["file_id"] = chunk.get("file_id")
+                    if chunk.get("meeting_date"):
+                        entry["meeting_date"] = chunk.get("meeting_date")
+
+    sources = ordered_sources
+
     try:
         # From "Interactive Q&A" profile (Per-Chunk Size: 900 tokens)
-        per_chunk_token_limit = 900
+        per_chunk_token_limit = 600
         
         # Helper to trim a single text to a token limit.
         def _trim_to_tokens(text: str, limit: int, model: str) -> str:
@@ -693,7 +728,7 @@ async def assistant_search_docs(payload: dict):
                 {"role": "user", "content": user_message_content},
             ]
             # Constrain output tokens
-            MAX_OUTPUT_TOKENS = 120_000
+            MAX_OUTPUT_TOKENS = 2_048
             t_sum0 = time.perf_counter()
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
             sum_dt_ms = (time.perf_counter() - t_sum0) * 1000.0
@@ -741,41 +776,6 @@ async def assistant_search_docs(payload: dict):
         log_error(logger, "rag.summary.error", {"error": repr(e)}, exc_info=True)
         summary = None
         summary_was_partial = False
-    
-    excerpt_length = 300
-    sources_map: dict[str, dict] = {}
-    ordered_sources: list[dict] = []
-    for chunk in included_chunks:
-        file_name = chunk.get("file_name") or "Unknown source"
-        score = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
-        content = chunk.get("content") or ""
-        excerpt = content.strip().replace("\n", " ")[:excerpt_length]
-        entry = sources_map.get(file_name)
-        if not entry:
-            entry = {
-                "file_name": file_name,
-                "score": score,
-                "excerpt": excerpt,
-                "chunk_ids": [chunk.get("id")],
-                "id": chunk.get("id"),
-                "file_id": chunk.get("file_id"),
-                "meeting_date": chunk.get("meeting_date"),
-            }
-            sources_map[file_name] = entry
-            ordered_sources.append(entry)
-        else:
-            entry.setdefault("chunk_ids", []).append(chunk.get("id"))
-            if score is not None and (entry.get("score") is None or score > entry.get("score")):
-                entry["score"] = score
-                if excerpt:
-                    entry["excerpt"] = excerpt
-                    entry["id"] = chunk.get("id")
-                    if chunk.get("file_id"):
-                        entry["file_id"] = chunk.get("file_id")
-                    if chunk.get("meeting_date"):
-                        entry["meeting_date"] = chunk.get("meeting_date")
-
-    sources = ordered_sources
 
     # Emit final-stage metrics
     log_info(logger, "rag.final", {
