@@ -534,6 +534,7 @@ async def assistant_search_docs(payload: dict):
         # Measure prompt assembly (often the hidden latency)
         t_prompt0 = time.perf_counter()
         retrieved_sections: list[str] = []
+        chunk_previews: list[dict] = []
         direct_match_labels: set[str] = set()
 
         for idx, chunk in enumerate(included_chunks, start=1):
@@ -554,6 +555,14 @@ async def assistant_search_docs(payload: dict):
             body = _trim_to_tokens(chunk.get("content", ""), per_chunk_token_limit, model="gpt-4-turbo")
             if not body:
                 continue
+
+            raw_content = chunk.get("content") or ""
+            preview_text = raw_content.strip().replace("\n", " ")[:160]
+            chunk_previews.append({
+                "label": label,
+                "chars": len(raw_content),
+                "preview": preview_text,
+            })
 
             lower_body = body.lower()
             if normalized_terms:
@@ -584,6 +593,12 @@ async def assistant_search_docs(payload: dict):
             section_lines.append(body)
             section_lines.append("---")
             retrieved_sections.append("\n".join(section_lines))
+
+        if chunk_previews:
+            log_info(logger, "rag.hydration.preview", {
+                "count": len(chunk_previews),
+                "chunks": chunk_previews,
+            })
 
         retrieved_context = "\n\n".join(retrieved_sections)
         prompt_build_ms = (time.perf_counter() - t_prompt0) * 1000.0
