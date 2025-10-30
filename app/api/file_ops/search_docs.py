@@ -16,7 +16,7 @@ from sentence_transformers import CrossEncoder
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import time
-from app.core.logger import log_info, log_error
+from app.core.logger import log_info, log_error, request_id_var
 from app.core.config import settings
 
 
@@ -513,6 +513,41 @@ async def assistant_search_docs(payload: dict):
             summary_was_partial = bool(was_partial)
             # Do not log the full summary by default. Only length.
             log_info(logger, "rag.summary.done", {"has_summary": bool(summary), "length": (len(summary) if isinstance(summary, str) else 0), "partial": summary_was_partial, "duration_ms": round(sum_dt_ms, 2)})
+
+            # Optionally log a truncated summary snippet
+            try:
+                if summary and settings.LOG_SUMMARY_TEXT:
+                    max_chars = int(getattr(settings, "SUMMARY_TEXT_MAX_CHARS", 1200) or 1200)
+                    snippet = summary[:max_chars]
+                    log_info(logger, "rag.summary.text", {
+                        "chars": len(summary),
+                        "truncated": len(summary) > max_chars,
+                        "text": snippet,
+                    })
+            except Exception:
+                # Never fail the request due to logging
+                pass
+
+            # Optionally persist full summary and metadata to Supabase (best-effort)
+            try:
+                if summary and settings.CAPTURE_SUMMARY_TO_DB:
+                    rid = request_id_var.get()
+                    record = {
+                        "request_id": rid,
+                        "user_prompt": user_prompt,
+                        "included_chunk_ids": included_chunk_ids,
+                        "summary": summary,
+                        "summary_len": len(summary),
+                        "summary_partial": bool(summary_was_partial),
+                    }
+                    try:
+                        supabase.table("rag_summary_results").insert(record).execute()
+                        log_info(logger, "rag.summary.capture.ok", {"len": len(summary)})
+                    except Exception as db_e:
+                        log_error(logger, "rag.summary.capture.error", {"error": str(db_e)})
+            except Exception:
+                # Best-effort only
+                pass
     except Exception as e:
         # Log summary failures explicitly; this is the step right after reranking
         log_error(logger, "rag.summary.error", {"error": repr(e)}, exc_info=True)
