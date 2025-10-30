@@ -28,5 +28,11 @@ class Settings:
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").strip()
     DEBUG: bool = os.getenv("DEBUG", "True").strip() == "True"
 
+    # 🪵 Logging
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").strip()
+    LOG_JSON: bool = os.getenv("LOG_JSON", "True").strip().lower() in ("1", "true", "yes")
+    # Avoid logging large texts by default (e.g., hydrated chunks or summaries)
+    DEBUG_VERBOSE_LOG_TEXTS: bool = os.getenv("DEBUG_VERBOSE_LOG_TEXTS", "False").strip().lower() in ("1", "true", "yes")
+
 
 settings = Settings()

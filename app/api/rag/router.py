@@ -1,6 +1,7 @@
 import os
 import asyncio
 import json
+import logging
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -8,9 +9,12 @@ from typing import List, Dict, Optional
 
 # Consolidate all necessary imports here
 from app.core.openai_client import chat_completion
+from app.core.config import settings
+from app.core.logger import log_info, log_error
 from app.api.file_ops.search_docs import assistant_search_docs
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # --- Pydantic Models for Request and Response ---
 class RagSearchRequest(BaseModel):
@@ -66,8 +70,8 @@ async def rag_search(req: RagSearchRequest):
     plans the search, executes it, and returns a synthesized response.
     """
     try:
-        print(f"--- RAG SEARCH REQUEST RECEIVED ---\nQuery: {req.query}\n---------------------------------")
-        
+        log_info(logger, "rag_search.request", {"query_len": len(req.query or "")})
+
         # 1. Plan the search based on the user query
         user_prompt = req.query
         search_plan = plan_search_query(user_prompt)
@@ -79,10 +83,11 @@ async def rag_search(req: RagSearchRequest):
         payload["search_plan"] = search_plan
 
         # 3. Execute the search by calling the decoupled search function
-        return await assistant_search_docs(payload)
-        
+        result = await assistant_search_docs(payload)
+        log_info(logger, "rag_search.completed", {})
+        return result
+
     except Exception as e:
         # Log the full error for debugging
-        import traceback
-        traceback.print_exc()
+        log_error(logger, "rag_search.error", {"error": str(e)}, exc_info=True)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred in RAG pipeline: {str(e)}")

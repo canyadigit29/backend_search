@@ -5,6 +5,7 @@ import sys
 import statistics
 import httpx
 import asyncio
+import logging
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
@@ -15,11 +16,14 @@ from sentence_transformers import CrossEncoder
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import time
+from app.core.logger import log_info, log_error
+from app.core.config import settings
 
 
 # Load the Cross-Encoder model once when the module is loaded
 # This is a lightweight model optimized for performance
 cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+logger = logging.getLogger(__name__)
 
 
 
@@ -123,6 +127,7 @@ def _select_included_and_pending(matches: list[dict], included_limit: int = 25):
     return included, pending_ids
 
 def perform_search(tool_args):
+    t0 = time.perf_counter()
     query_embedding = tool_args.get("embedding")
     user_prompt = tool_args.get("user_prompt")
     search_query = tool_args.get("search_query")
@@ -181,8 +186,12 @@ def perform_search(tool_args):
         # --- Apply max_results limit after sorting ---
         matches = matches[:max_results]
 
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+        log_info(logger, "semantic.search.ok", {"count": len(matches), "threshold": threshold, "duration_ms": round(dt_ms, 2)})
         return {"retrieved_chunks": matches}
     except Exception as e:
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+        log_error(logger, "semantic.search.error", {"error": str(e), "duration_ms": round(dt_ms, 2)}, exc_info=True)
         return {"error": f"Error during search: {str(e)}"}
 
 
@@ -284,22 +293,25 @@ async def keyword_search_async(
     endpoint = f"{supabase_url}/rest/v1/rpc/match_file_items_fts"
 
     try:
+        t0 = time.perf_counter()
         response = await client.post(endpoint, headers=headers, json=rpc_args, timeout=30)
         
         if response.status_code >= 400:
             try:
                 error_details = response.json()
-                print(f"[ERROR] Keyword search: endpoint {endpoint} returned status {response.status_code} with details: {error_details}")
+                log_error(logger, "keyword.search.http_error", {"status": response.status_code, "details": error_details})
             except Exception:
-                print(f"[ERROR] Keyword search: endpoint {endpoint} returned status {response.status_code} with non-JSON body.")
+                log_error(logger, "keyword.search.http_error", {"status": response.status_code, "details": "non-JSON body"})
             response.raise_for_status()
 
         results = response.json() or []
         for r in results:
             r["keyword_score"] = r.get("ts_rank", 0)
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+        log_info(logger, "keyword.search.ok", {"count": len(results), "duration_ms": round(dt_ms, 2)})
         return results
     except Exception as e:
-        print(f"[ERROR] Keyword search: unhandled exception during search. Error: {str(e)}")
+        log_error(logger, "keyword.search.error", {"error": str(e)}, exc_info=True)
         return []
 
 
@@ -332,7 +344,7 @@ async def assistant_search_docs(payload: dict):
         search_terms = [user_prompt]
     
     all_matches = {}
-    print("[METRICS] Search plan:", {"operator": search_plan.get("operator"), "terms": search_terms})
+    log_info(logger, "rag.plan", {"operator": search_plan.get("operator"), "terms_count": len(search_terms)})
 
     # --- 2. Execute the Search Plan in Parallel ---
     
@@ -370,10 +382,7 @@ async def assistant_search_docs(payload: dict):
                 )
 
     # --- 4. Rerank the Final Combined List ---
-    try:
-        print("[METRICS] After merge across terms:", {"unique_candidates": len(all_matches or {})})
-    except Exception:
-        pass
+    log_info(logger, "rag.merge_across_terms", {"unique_candidates": len(all_matches or {})})
     matches = sorted(all_matches.values(), key=lambda x: x.get("combined_score", 0.0), reverse=True)
     
     top_k_for_rerank = 24 # From "Interactive Q&A" profile (Rerank Top m)
@@ -391,23 +400,14 @@ async def assistant_search_docs(payload: dict):
         reranked_matches = sorted(matches[:top_k_for_rerank], key=lambda x: x.get("rerank_score", 0.0), reverse=True)
         matches = reranked_matches + matches[top_k_for_rerank:]
 
-        try:
-            rr_scores = [m.get("rerank_score", 0.0) for m in reranked_matches[:5]]
-            print(
-                "[METRICS] Rerank:",
-                {
-                    "applied": True,
-                    "considered": min(len(passages), top_k_for_rerank),
-                    "top5_scores": [round(float(s or 0.0), 4) for s in rr_scores],
-                },
-            )
-        except Exception:
-            pass
+        rr_scores = [m.get("rerank_score", 0.0) for m in reranked_matches[:5]]
+        log_info(logger, "rag.rerank", {
+            "applied": True,
+            "considered": min(len(passages), top_k_for_rerank),
+            "top5_scores": [round(float(s or 0.0), 4) for s in rr_scores],
+        })
     else:
-        try:
-            print("[METRICS] Rerank:", {"applied": False, "candidates": len(matches or [])})
-        except Exception:
-            pass
+        log_info(logger, "rag.rerank", {"applied": False, "candidates": len(matches or [])})
 
     # --- 5. Prepare and Send the Response ---
     summary = None
@@ -420,7 +420,7 @@ async def assistant_search_docs(payload: dict):
     # Unconditionally fetch the full content for the final list of chunks.
     # This is necessary because the search functions only return metadata.
     if included_chunk_ids:
-        print(f"[METRICS] Hydrating content for {len(included_chunk_ids)} chunks...")
+        log_info(logger, "rag.hydration.start", {"count": len(included_chunk_ids)})
         hydrated_chunks_data = _fetch_chunks_by_ids(included_chunk_ids)
         
         # Create a dictionary for quick lookup of hydrated content
@@ -437,7 +437,7 @@ async def assistant_search_docs(payload: dict):
                 if not chunk.get("file_name"):
                     chunk["file_name"] = hydrated_chunk.get("file_name")
         
-        print("[METRICS] Hydration complete.")
+                log_info(logger, "rag.hydration.complete", {"hydrated": len(hydrated_chunks_data or [])})
 
     try:
         # From "Interactive Q&A" profile (Per-Chunk Size: 900 tokens)
@@ -469,8 +469,9 @@ async def assistant_search_docs(payload: dict):
         
         # Join the already-trimmed chunks.
         top_text = "\n\n".join(annotated_texts)
-
-        print(f"--- TEXT FOR SUMMARY ---\n{top_text}\n------------------------")
+        # Only log metadata to avoid large logs. Guard verbose text dump behind env flag.
+        if settings.DEBUG_VERBOSE_LOG_TEXTS:
+            log_info(logger, "rag.summary.input.preview", {"chars": len(top_text)})
 
         if top_text.strip():
             summary_prompt = [
@@ -499,13 +500,11 @@ async def assistant_search_docs(payload: dict):
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
             summary = content if content else None
             summary_was_partial = bool(was_partial)
-            print(f"--- SUMMARY OUTPUT ---\n{summary}\n----------------------")
+            # Do not log the full summary by default. Only length.
+            log_info(logger, "rag.summary.done", {"has_summary": bool(summary), "length": (len(summary) if isinstance(summary, str) else 0), "partial": summary_was_partial})
     except Exception as e:
         # Log summary failures explicitly; this is the step right after reranking
-        try:
-            print(f"[ERROR] Summary generation failed right after rerank: {repr(e)}")
-        except Exception:
-            pass
+        log_error(logger, "rag.summary.error", {"error": repr(e)}, exc_info=True)
         summary = None
         summary_was_partial = False
     
@@ -522,19 +521,13 @@ async def assistant_search_docs(payload: dict):
         })
 
     # Emit final-stage metrics
-    try:
-        print(
-            "[METRICS] Final response:",
-            {
-                "included_count": len(included_chunks or []),
-                "included_ids_count": len(included_chunk_ids or []),
-                "has_summary": bool(summary),
-                "summary_len": (len(summary) if isinstance(summary, str) else None),
-                "summary_was_partial": bool(summary_was_partial),
-            },
-        )
-    except Exception:
-        pass
+    log_info(logger, "rag.final", {
+        "included_count": len(included_chunks or []),
+        "included_ids_count": len(included_chunk_ids or []),
+        "has_summary": bool(summary),
+        "summary_len": (len(summary) if isinstance(summary, str) else None),
+        "summary_was_partial": bool(summary_was_partial),
+    })
 
     response_data = {
         "summary": summary,
@@ -545,10 +538,7 @@ async def assistant_search_docs(payload: dict):
         "included_chunk_ids": included_chunk_ids,
     }
 
-    try:
-        print("[METRICS] Sources emitted:", {"count": len(sources or [])})
-    except Exception:
-        pass
+    log_info(logger, "rag.sources", {"count": len(sources or [])})
 
     return JSONResponse(response_data)
 
@@ -566,9 +556,11 @@ async def _perform_hybrid_search_for_term(term: str, payload: dict, client: http
     """
     try:
         # Each term gets its own hybrid search
+        t0 = time.perf_counter()
         embedding = await asyncio.to_thread(embed_text, term)
+        log_info(logger, "rag.embed", {"term_len": len(term or ""), "duration_ms": round((time.perf_counter()-t0)*1000.0, 2)})
     except Exception as e:
-        print(f"Warning: Failed to generate embedding for term '{term}': {e}")
+        log_error(logger, "rag.embed.error", {"term": term, "error": str(e)})
         return None
 
     tool_args = {
@@ -637,19 +629,13 @@ async def _perform_hybrid_search_for_term(term: str, payload: dict, client: http
         v["combined_score"] = sem_w * sem + kw_w * kw
 
     # Term-level metrics
-    try:
-        print(
-            "[METRICS] Term results:",
-            {
-                "term": term,
-                "semantic_count": len(term_matches or []),
-                "keyword_count": len(fts_results or []),
-                "merged_count": len(merged_by_id or {}),
-                "weights": {"semantic": round(sem_w, 3), "keyword": round(kw_w, 3)},
-            },
-        )
-    except Exception:
-        pass
+    log_info(logger, "rag.term.results", {
+        "term_len": len(term or ""),
+        "semantic_count": len(term_matches or []),
+        "keyword_count": len(fts_results or []),
+        "merged_count": len(merged_by_id or {}),
+        "weights": {"semantic": round(sem_w, 3), "keyword": round(kw_w, 3)},
+    })
     
     # This debug block is no longer needed as the hydration logic is fixed.
     # try:
