@@ -12,6 +12,11 @@ from app.api.gdrive_ops import router as gdrive_router
 from app.api.query_analyzer import router as query_analyzer_router
 from app.api.rag import router as rag_router
 from app.core.config import settings
+from app.core.logging_config import setup_logging, set_request_id
+import uuid
+from fastapi import Request
+
+setup_logging()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -29,6 +34,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_request_id_middleware(request: Request, call_next):
+    # Generate a per-request ID for correlation
+    req_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    set_request_id(req_id)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = req_id
+    return response
 
 @app.get("/")
 async def root():

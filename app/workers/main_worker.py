@@ -15,6 +15,10 @@ class MainWorker:
         logger.info("OCR Task: Checking for files needing OCR...")
         try:
             # Find files that are PDFs, haven't been scanned, and where ocr_needed is true
+            logger.info(
+                "supabase_op: table.select",
+                extra={"table": "files", "filter": {"ocr_needed": True, "ocr_scanned": False}, "columns": ["id"]},
+            )
             files_to_ocr = supabase.table("files").select("id") \
                 .eq("ocr_needed", True) \
                 .eq("ocr_scanned", False) \
@@ -43,6 +47,10 @@ class MainWorker:
         try:
             # Find files that are not ingested yet.
             # This will include new files and files that just finished OCR.
+            logger.info(
+                "supabase_op: table.select",
+                extra={"table": "files", "filter": {"ingested": False}, "columns": ["id"]},
+            )
             files_to_ingest = supabase.table("files").select("id").eq("ingested", False).execute()
 
             if not files_to_ingest.data:
@@ -52,6 +60,10 @@ class MainWorker:
             logger.info(f"Ingestion Task: Found {len(files_to_ingest.data)} file(s) to ingest.")
             for file in files_to_ingest.data:
                 # We need to double-check the OCR status of the file
+                logger.info(
+                    "supabase_op: table.select",
+                    extra={"table": "files", "filter": {"id": file['id']}, "columns": ["id", "ocr_needed", "ocr_scanned"], "single": True},
+                )
                 file_details = supabase.table("files").select("id, ocr_needed, ocr_scanned").eq("id", file['id']).single().execute().data
                 
                 # Skip if OCR is needed but not yet complete
