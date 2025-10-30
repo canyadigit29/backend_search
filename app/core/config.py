@@ -18,6 +18,8 @@ class Settings:
     # 🤖 OpenAI
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "").strip()
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-ada-002"
+    HUB_ASSISTANT_ID: str = os.getenv("HUB_ASSISTANT_ID", "").strip()
+    SEARCH_ASSISTANT_ID: str = os.getenv("SEARCH_ASSISTANT_ID", "").strip()
 
     # 📄 Google Drive
     GOOGLE_CREDENTIALS_BASE64: str = os.getenv("GOOGLE_CREDENTIALS_BASE64", "").strip()

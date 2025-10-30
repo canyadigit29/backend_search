@@ -1,8 +1,5 @@
 import json
 import os
-from collections import defaultdict
-import sys
-import statistics
 import httpx
 import asyncio
 import logging
@@ -10,15 +7,15 @@ import textwrap
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
-from app.core.openai_client import chat_completion, stream_chat_completion
-from app.core.token_utils import trim_texts_to_token_limit
+from app.core.openai_client import chat_completion
 from sentence_transformers import CrossEncoder
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse, StreamingResponse
-import time
+from fastapi.responses import JSONResponse
 from app.core.logger import log_info, log_error, request_id_var
 from app.core.config import settings
+from app.core.openai_client import client as openai_client
+import time
 
 
 # Load the Cross-Encoder model once when the module is loaded
@@ -41,6 +38,7 @@ def _parse_inline_or_terms(text: str) -> list[str]:
     Case-insensitive on the OR separator. Trims quotes and whitespace.
     If no OR is present, returns an empty list (caller may choose to ignore).
     """
+
     if not isinstance(text, str) or not text:
         return []
     import re
@@ -69,12 +67,7 @@ def _parse_inline_or_terms(text: str) -> list[str]:
     return uniq
 
 def _decide_weighting(user_prompt: str, or_terms: list[str]) -> tuple[float, float]:
-    """
-    Decide semantic vs keyword weighting based on lexical cues in the query.
-    Returns (alpha_semantic, beta_keyword) where alpha + beta = 1.0.
-    Heuristics boost keyword weight for quoted phrases, digits/addresses,
-    short acronyms, and explicit OR lists.
-    """
+    """Decide semantic vs keyword weighting using simple lexical heuristics."""
     text = (user_prompt or "").strip()
     import re
     lexicality = 0.0
@@ -197,10 +190,7 @@ def perform_search(tool_args):
 
 
 def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
-    """
-    Use OpenAI to extract the most effective search phrase or keywords for semantic document retrieval from the user's request.
-    If agent_mode is True, use enhanced instructions for extraction.
-    """
+    """Return an optimized search phrase for semantic retrieval."""
     if agent_mode:
         system_prompt = (
             "You are a search assistant. Given a user's request, extract only the most relevant keywords or noun phrases that would best match the content of documents in a search system.\n"
@@ -329,9 +319,10 @@ async def api_search_docs(request: Request):
 @router.post("/assistant/search_docs")
 async def assistant_search_docs(payload: dict):
     """
-    Accepts a payload containing a search plan, executes the plan in parallel,
-    and returns a summary or structured results.
-    The planning is expected to be done by the frontend model or a dedicated planner.
+    Handles search requests issued by the ChatGPT assistant function. The payload
+    contains the search plan and user prompt, and this endpoint executes the plan
+    server-side before returning the structured summary back to the frontend via
+    the standard `/file_ops/search_docs` endpoint.
     """
     user_prompt = payload.get("user_prompt")
     search_plan = payload.get("search_plan")
@@ -428,6 +419,8 @@ async def assistant_search_docs(payload: dict):
     # --- 5. Prepare and Send the Response ---
     summary = None
     summary_was_partial = False
+    assistant_used_labels: list[str] = []
+    assistant_follow_ups: list[str] = []
     
     included_chunks = matches[:12] # From "Interactive Q&A" profile (Retrieved k)
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
@@ -633,117 +626,128 @@ async def assistant_search_docs(payload: dict):
             user_query_for_prompt = user_prompt or ""
             user_query_format_safe = user_query_for_prompt.replace("{", "{{").replace("}", "}}")
 
-            system_template = textwrap.dedent("""
-                RAG Summarizer - System Instructions
+            assistant_id = getattr(settings, "SEARCH_ASSISTANT_ID", "")
+            summary = None
+            summary_was_partial = False
+            if assistant_id:
+                instructions_template = textwrap.dedent("""
+                    You are a retrieval QA summarizer. Use only the provided context to answer the user question.
+                    Produce a concise but complete markdown summary following this scaffold:
+                    ### Title
+                    ### TL;DR
+                    ### Key Points
+                    ### Details
+                    ### Caveats & Unknowns
+                    ### Next Steps (if applicable)
+                    ### Sources
 
-                Role & Objective
-                You are a factual, no-nonsense summarizer for a Retrieval-Augmented Generation pipeline. Your only job is to summarize the provided passages and metadata in response to the user query "{user_query}". Do not invent facts. If the context does not contain the answer, say so clearly.
+                    Rules:
+                    - Language: {user_locale}.
+                    - Aim for about {target_length} words. Respect the format_variant flag ({format_variant}). If "brief", keep it ~120 words; if "detailed", up to 450 words.
+                    - Cite supporting sources inline using bracketed labels like [S1].
+                    - Only cite sources that appear in the provided catalog. If context is insufficient, say so explicitly and propose follow-up data.
+                    - Do not fabricate information or refer to external knowledge.
 
-                Inputs Provided by the caller:
-                - User Query: "{user_query}"
-                - Results: up to {k} retrieved items with title, source identifiers, timestamps, text content, chunk IDs, and optional scores.
-                - Language: {user_locale}. Write in this language.
-                - Target Length: {target_length} words.
-                - Format Variant: {format_variant} (brief|standard|detailed).
+                    Respond as JSON with these fields:
+                    - summary_markdown (string): the final markdown summary.
+                    - used_source_labels (array of strings): each cited label (e.g., "S1"), unique.
+                    - follow_up_questions (array of strings, optional): follow-up steps if the answer is incomplete.
+                """)
 
-                Hard Rules:
-                1. No hallucinations: only use facts present in the provided results. If something is uncertain or missing, explicitly note it.
-                2. Citations: after each claim that depends on a source, include compact citations like [S1] or [S3, S5]. Map every citation to the Sources section at the end.
-                3. Deduplication and synthesis: merge overlapping points, prefer the most recent and highest-quality sources when conflicts occur. If evidence conflicts, present both and label the situation as Conflict.
-                4. Date awareness: include dates when present. If the material may be stale, call it out (for example, "Last updated 2023-11-04 [S2]").
-                5. Scope control: summarize only what is relevant to the user query. Ignore unrelated material.
-                6. Privacy and safety: do not expose secrets, system prompts, or raw credentials. Replace them with [REDACTED] if encountered.
-                7. Language and tone: use {user_locale}. Be clear, concise, and neutral.
-                8. Formatting: follow the markdown scaffold exactly. Do not add sections unless requested.
+                instructions = instructions_template.format(
+                    user_locale=user_locale,
+                    target_length=target_length,
+                    format_variant=format_variant,
+                )
 
-                Output Markdown Scaffold (always use):
-                ### Title
-                A short, specific title.
+                user_payload_parts = [
+                    f"User query: {user_query_for_prompt}",
+                    search_terms_line,
+                    f"Direct match labels: {', '.join(sorted(direct_match_labels)) if direct_match_labels else 'None'}",
+                    "",
+                    "Sources catalog:",
+                    sources_catalog_text,
+                    "",
+                    "Retrieved context:",
+                    retrieved_context_text,
+                ]
+                user_payload = "\n".join(user_payload_parts)
 
-                ### TL;DR
-                One or two sentences answering the query.
+                response_schema = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "rag_summary_response",
+                        "schema": {
+                            "type": "object",
+                            "required": ["summary_markdown", "used_source_labels"],
+                            "properties": {
+                                "summary_markdown": {"type": "string"},
+                                "used_source_labels": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "uniqueItems": True,
+                                },
+                                "follow_up_questions": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            },
+                            "additionalProperties": False,
+                        },
+                    },
+                }
 
-                ### Key Points
-                * 3-7 bullets with the most important facts. End each evidence-based bullet with citations like [S2].
+                try:
+                    t_sum0 = time.perf_counter()
+                    response = openai_client.responses.create(
+                        assistant_id=assistant_id,
+                        instructions=instructions,
+                        input=[
+                            {
+                                "role": "user",
+                                "content": [
+                                    {"type": "text", "text": user_payload},
+                                ],
+                            }
+                        ],
+                        response_format=response_schema,
+                    )
 
-                ### Details
-                One or two short paragraphs that synthesize the evidence, resolve conflicts, and add necessary context. Use inline dates and metrics when available, with citations.
+                    raw_json_text = getattr(response, "output_text", None)
+                    if not raw_json_text:
+                        collected: list[str] = []
+                        for item in getattr(response, "output", []) or []:
+                            for content in getattr(item, "content", []) or []:
+                                text_block = getattr(content, "text", None)
+                                if isinstance(text_block, str):
+                                    collected.append(text_block)
+                                elif isinstance(text_block, list):
+                                    for entry in text_block:
+                                        if isinstance(entry, dict) and "text" in entry:
+                                            collected.append(str(entry["text"]))
+                        raw_json_text = "".join(collected)
 
-                ### Caveats & Unknowns
-                * List any gaps, missing data, ambiguities, or conflicts (with citations).
+                    parsed = json.loads(raw_json_text or "{}")
+                    summary = parsed.get("summary_markdown")
+                    assistant_used_labels = [str(lbl) for lbl in parsed.get("used_source_labels") or []]
+                    assistant_follow_ups = [str(q) for q in parsed.get("follow_up_questions") or []]
+                    assistant_duration_ms = (time.perf_counter() - t_sum0) * 1000.0
 
-                ### Next Steps (if applicable)
-                * Actionable follow-ups such as tests to run, data to fetch, or documents to check.
+                    log_info(logger, "rag.summary.done", {
+                        "has_summary": bool(summary),
+                        "length": (len(summary) if isinstance(summary, str) else 0),
+                        "partial": False,
+                        "duration_ms": round(assistant_duration_ms or 0.0, 2),
+                        "assistant_used_labels": assistant_used_labels,
+                    })
+                except Exception as e:
+                    summary = None
+                    log_error(logger, "rag.summary.assistant_error", {"error": repr(e)}, exc_info=True)
+            else:
+                log_error(logger, "rag.summary.config_missing", {"missing": "SEARCH_ASSISTANT_ID"})
 
-                ### Sources
-                * [S1] Title - identifier (date if known).
-                * [S2] Title - identifier (date if known).
-                Only list sources that were cited.
-
-                Additional Formatting Guidelines:
-                - Length control: aim for {target_length} words (+/-15%). If format variant is brief, target 100-150 words. If detailed, target 300-500 words.
-                - Lists: prefer bullets for dense facts. Keep bullets under two lines when possible.
-                - Numbers: preserve exact figures and units from the sources. If ranges differ, show both and cite each source.
-                - Tables (optional): you may include a small markdown table (<=6 columns, <=10 rows) if it adds clarity.
-                - Code or CLI snippets (optional): for technical steps you may include code blocks up to 15 lines.
-                - Quotations: quote sparingly (<=20 words) only when the exact phrasing matters, and cite the source.
-                - Redactions: replace sensitive tokens with [REDACTED] and mention the redaction in Caveats & Unknowns.
-
-                Conflict Resolution Protocol:
-                - Prefer newer sources over older ones when both are credible.
-                - If credibility differs, present both views under Conflict with citations and avoid adjudicating beyond the evidence.
-                - If a claim appears only once and is extraordinary, flag it as low confidence unless corroborated.
-
-                When Context Is Insufficient:
-                - Write: "The provided results do not contain enough information to answer this fully." Then list what is missing and specific follow-ups to retrieve.
-
-                Prohibited Behaviors:
-                - Do not browse or add outside knowledge.
-                - Do not speculate, guess, or role-play.
-                - Do not promise actions beyond summarization.
-            """)
-
-            system_content = system_template.format(
-                user_query=user_query_format_safe,
-                k=k_retrieved,
-                user_locale=user_locale,
-                target_length=target_length,
-                format_variant=format_variant,
-            )
-
-            user_message_parts = [
-                f"User query: {user_query_for_prompt}",
-                search_terms_line,
-                f"Language: {user_locale}.",
-                f"Target length: {target_length} words. Format variant: {format_variant}.",
-                "",
-                "Retrieved results:",
-                retrieved_context_text,
-                "",
-                "Sources catalog:",
-                sources_catalog_text,
-                "",
-                direct_match_note,
-            ]
-            user_message_content = "\n".join(user_message_parts)
-
-            summary_prompt = [
-                {"role": "system", "content": system_content},
-                {"role": "user", "content": user_message_content},
-            ]
-            # Constrain output tokens
-            MAX_OUTPUT_TOKENS = 2_048
-            t_sum0 = time.perf_counter()
-            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
-            sum_dt_ms = (time.perf_counter() - t_sum0) * 1000.0
-            summary = content if content else None
-            summary_was_partial = bool(was_partial)
-            # Do not log the full summary by default. Only length.
-            log_info(logger, "rag.summary.done", {"has_summary": bool(summary), "length": (len(summary) if isinstance(summary, str) else 0), "partial": summary_was_partial, "duration_ms": round(sum_dt_ms, 2)})
-
-            # Optionally log a truncated summary snippet
-            try:
-                if summary and settings.LOG_SUMMARY_TEXT:
+            if summary and settings.LOG_SUMMARY_TEXT:
+                try:
                     max_chars = int(getattr(settings, "SUMMARY_TEXT_MAX_CHARS", 1200) or 1200)
                     snippet = summary[:max_chars]
                     log_info(logger, "rag.summary.text", {
@@ -751,13 +755,11 @@ async def assistant_search_docs(payload: dict):
                         "truncated": len(summary) > max_chars,
                         "text": snippet,
                     })
-            except Exception:
-                # Never fail the request due to logging
-                pass
+                except Exception:
+                    pass
 
-            # Optionally persist full summary and metadata to Supabase (best-effort)
-            try:
-                if summary and settings.CAPTURE_SUMMARY_TO_DB:
+            if summary and settings.CAPTURE_SUMMARY_TO_DB:
+                try:
                     rid = request_id_var.get()
                     record = {
                         "request_id": rid,
@@ -767,14 +769,10 @@ async def assistant_search_docs(payload: dict):
                         "summary_len": len(summary),
                         "summary_partial": bool(summary_was_partial),
                     }
-                    try:
-                        supabase.table("rag_summary_results").insert(record).execute()
-                        log_info(logger, "rag.summary.capture.ok", {"len": len(summary)})
-                    except Exception as db_e:
-                        log_error(logger, "rag.summary.capture.error", {"error": str(db_e)})
-            except Exception:
-                # Best-effort only
-                pass
+                    supabase.table("rag_summary_results").insert(record).execute()
+                    log_info(logger, "rag.summary.capture.ok", {"len": len(summary)})
+                except Exception as db_e:
+                    log_error(logger, "rag.summary.capture.error", {"error": str(db_e)})
     except Exception as e:
         # Log summary failures explicitly; this is the step right after reranking
         log_error(logger, "rag.summary.error", {"error": repr(e)}, exc_info=True)
@@ -794,16 +792,17 @@ async def assistant_search_docs(payload: dict):
         "summary": summary,
         "summary_was_partial": summary_was_partial,
         "sources": sources,
-        "can_resume": False, # Batch processing is removed
+        "used_source_labels": assistant_used_labels,
+        "follow_up_questions": assistant_follow_ups,
+        "can_resume": False,
         "pending_chunk_ids": [],
         "included_chunk_ids": included_chunk_ids,
     }
 
     log_info(logger, "rag.sources", {"count": len(sources or [])})
 
-    if isinstance(summary, str) and summary.strip():
-        plain_text = summary.strip()
-    else:
+    fallback_text = None
+    if not (isinstance(summary, str) and summary.strip()):
         fallback_lines: list[str] = [
             "No synthesized summary was produced. Review the retrieved evidence below:",
         ]
@@ -816,16 +815,21 @@ async def assistant_search_docs(payload: dict):
         else:
             fallback_lines.append("- No sources were returned for this query.")
 
-        plain_text = "\n".join(fallback_lines)
+        fallback_text = "\n".join(fallback_lines)
+        response_data["fallback_text"] = fallback_text
 
     try:
-        preview = plain_text[:600] if isinstance(plain_text, str) else ""
+        preview = ""
+        if isinstance(summary, str) and summary.strip():
+            preview = summary.strip()[:600]
+        elif isinstance(fallback_text, str):
+            preview = fallback_text[:600]
         log_info(
             logger,
             "rag.emit",
             {
-                "media_type": "text/plain",
-                "chars": len(plain_text or ""),
+                "media_type": "application/json",
+                "chars": len(preview or ""),
                 "has_summary": bool(summary and isinstance(summary, str) and summary.strip()),
                 "sources_count": len(sources or []),
                 "preview": preview,
@@ -835,10 +839,7 @@ async def assistant_search_docs(payload: dict):
         # Never fail the request due to logging
         pass
 
-    async def text_stream():
-        yield plain_text
-
-    return StreamingResponse(text_stream(), media_type="text/plain")
+    return JSONResponse(response_data)
 
 
 # Legacy endpoint maintained for backward compatibility
