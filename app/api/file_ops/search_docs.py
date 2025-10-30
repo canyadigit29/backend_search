@@ -477,8 +477,8 @@ async def assistant_search_docs(payload: dict):
                 disp_val = round(float(disp or 0), 4)
             except Exception:
                 disp_val = 0
-            # Fix header index formatting
-            header = f"[#{idx} id={chunk.get('id')} file={chunk.get('file_name')} score={disp_val}]"
+            file_label = chunk.get("file_name") or "Unknown source"
+            header = f"[chunk {idx} | file={file_label} | score={disp_val}]"
             
             # Trim each chunk's content to the token limit before adding it.
             body = _trim_to_tokens(chunk.get("content", ""), per_chunk_token_limit, model="gpt-4-turbo")
@@ -508,11 +508,16 @@ async def assistant_search_docs(payload: dict):
                         f"User query: {user_prompt}\n\n"
                         "Search results (each chunk starts with a metadata header):\n"
                         f"{top_text}\n\n"
-                        "Please respond with the following structure:\n"
-                        "1) Key findings (with inline citations like [id=...])\n"
-                        "2) Evidence by chunk (grouped by id, 1-3 bullets each)\n"
-                        "3) Important names/aliases/variants\n"
-                        "4) Suggested follow-up questions"
+                        "Please respond with the following structure, using the file names from each header (file=...) for any citations:\n"
+                        "Summary:\n"
+                        "- Provide 2-4 bullet points that answer the user's question using bracketed file-name citations like [July 2023 Minutes.pdf].\n"
+                        "Evidence (by source):\n"
+                        "- For each relevant file, add a bullet in the form '<File Name>: insight [File Name]'. Limit to 1-3 bullets per file.\n"
+                        "Important names/aliases/variants:\n"
+                        "- List notable entities or search variants, 1 per bullet.\n"
+                        "Suggested follow-up questions:\n"
+                        "- Provide 1-3 clarifying questions.\n\n"
+                        "Do not mention raw chunk ids or UUIDs in your response."
                     ),
                 },
             ]
@@ -567,16 +572,33 @@ async def assistant_search_docs(payload: dict):
         summary_was_partial = False
     
     excerpt_length = 300
-    sources = []
-    for c in included_chunks:
-        content = c.get("content") or ""
+    sources_map: dict[str, dict] = {}
+    ordered_sources: list[dict] = []
+    for chunk in included_chunks:
+        file_name = chunk.get("file_name") or "Unknown source"
+        score = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
+        content = chunk.get("content") or ""
         excerpt = content.strip().replace("\n", " ")[:excerpt_length]
-        sources.append({
-            "id": c.get("id"),
-            "file_name": c.get("file_name"),
-            "score": c.get("rerank_score") or c.get("combined_score") or c.get("similarity"),
-            "excerpt": excerpt
-        })
+        entry = sources_map.get(file_name)
+        if not entry:
+            entry = {
+                "file_name": file_name,
+                "score": score,
+                "excerpt": excerpt,
+                "chunk_ids": [chunk.get("id")],
+                "id": chunk.get("id"),
+            }
+            sources_map[file_name] = entry
+            ordered_sources.append(entry)
+        else:
+            entry.setdefault("chunk_ids", []).append(chunk.get("id"))
+            if score is not None and (entry.get("score") is None or score > entry.get("score")):
+                entry["score"] = score
+                if excerpt:
+                    entry["excerpt"] = excerpt
+                    entry["id"] = chunk.get("id")
+
+    sources = ordered_sources
 
     # Emit final-stage metrics
     log_info(logger, "rag.final", {
@@ -607,12 +629,10 @@ async def assistant_search_docs(payload: dict):
     if sources:
         formatted_sources = []
         for idx, source in enumerate(sources, start=1):
-            name = str(source.get("file_name") or source.get("id") or f"source-{idx}")
-            score = source.get("score")
-            score_text = f" (score: {score:.3f})" if isinstance(score, (int, float)) else ""
+            name = str(source.get("file_name") or f"source-{idx}")
             excerpt = source.get("excerpt")
             excerpt_text = f": {excerpt}" if isinstance(excerpt, str) and excerpt else ""
-            formatted_sources.append(f"- {name}{score_text}{excerpt_text}")
+            formatted_sources.append(f"- {name}{excerpt_text}")
 
         if formatted_sources:
             summary_lines.append("Sources:\n" + "\n".join(formatted_sources))
