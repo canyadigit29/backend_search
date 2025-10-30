@@ -14,7 +14,7 @@ from app.core.token_utils import trim_texts_to_token_limit
 from sentence_transformers import CrossEncoder
 
 from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import time
 from app.core.logger import log_info, log_error, request_id_var
 from app.core.config import settings
@@ -598,7 +598,34 @@ async def assistant_search_docs(payload: dict):
 
     log_info(logger, "rag.sources", {"count": len(sources or [])})
 
-    return JSONResponse(response_data)
+    # Format a plain-text response that the frontend can stream directly.
+    # Retain useful structure (summary + sources) so the UI can render without JSON parsing.
+    summary_lines: list[str] = []
+    if isinstance(summary, str) and summary.strip():
+        summary_lines.append("Summary:\n" + summary.strip())
+
+    if sources:
+        formatted_sources = []
+        for idx, source in enumerate(sources, start=1):
+            name = str(source.get("file_name") or source.get("id") or f"source-{idx}")
+            score = source.get("score")
+            score_text = f" (score: {score:.3f})" if isinstance(score, (int, float)) else ""
+            excerpt = source.get("excerpt")
+            excerpt_text = f": {excerpt}" if isinstance(excerpt, str) and excerpt else ""
+            formatted_sources.append(f"- {name}{score_text}{excerpt_text}")
+
+        if formatted_sources:
+            summary_lines.append("Sources:\n" + "\n".join(formatted_sources))
+
+    if not summary_lines:
+        summary_lines.append(
+            "No relevant sources were found for your query. Try adjusting the search terms or filters."
+        )
+
+    async def text_stream():
+        yield "\n\n".join(summary_lines)
+
+    return StreamingResponse(text_stream(), media_type="text/plain")
 
 
 # Legacy endpoint maintained for backward compatibility
