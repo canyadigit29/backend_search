@@ -387,6 +387,7 @@ async def assistant_search_docs(payload: dict):
     
     top_k_for_rerank = 24 # From "Interactive Q&A" profile (Rerank Top m)
     if matches and len(matches) > 1:
+        t_rr0 = time.perf_counter()
         passages = [chunk.get("content", "") for chunk in matches[:top_k_for_rerank]]
         # Use the original, full user prompt for reranking to capture the complete intent
         query_passage_pairs = [[user_prompt, passage] for passage in passages]
@@ -401,10 +402,12 @@ async def assistant_search_docs(payload: dict):
         matches = reranked_matches + matches[top_k_for_rerank:]
 
         rr_scores = [m.get("rerank_score", 0.0) for m in reranked_matches[:5]]
+        rr_dt_ms = (time.perf_counter() - t_rr0) * 1000.0
         log_info(logger, "rag.rerank", {
             "applied": True,
             "considered": min(len(passages), top_k_for_rerank),
             "top5_scores": [round(float(s or 0.0), 4) for s in rr_scores],
+            "duration_ms": round(rr_dt_ms, 2),
         })
     else:
         log_info(logger, "rag.rerank", {"applied": False, "candidates": len(matches or [])})
@@ -421,6 +424,7 @@ async def assistant_search_docs(payload: dict):
     # This is necessary because the search functions only return metadata.
     if included_chunk_ids:
         log_info(logger, "rag.hydration.start", {"count": len(included_chunk_ids)})
+        t_hyd0 = time.perf_counter()
         hydrated_chunks_data = _fetch_chunks_by_ids(included_chunk_ids)
         
         # Create a dictionary for quick lookup of hydrated content
@@ -436,8 +440,9 @@ async def assistant_search_docs(payload: dict):
                 # Also update file_name in case it was missing
                 if not chunk.get("file_name"):
                     chunk["file_name"] = hydrated_chunk.get("file_name")
-        
-                log_info(logger, "rag.hydration.complete", {"hydrated": len(hydrated_chunks_data or [])})
+
+        hyd_dt_ms = (time.perf_counter() - t_hyd0) * 1000.0
+        log_info(logger, "rag.hydration.complete", {"hydrated": len(hydrated_chunks_data or []), "duration_ms": round(hyd_dt_ms, 2)})
 
     try:
         # From "Interactive Q&A" profile (Per-Chunk Size: 900 tokens)
@@ -451,6 +456,8 @@ async def assistant_search_docs(payload: dict):
             trimmed_list = trim_texts_to_token_limit([text], limit, model=model, separator="")
             return trimmed_list[0] if trimmed_list else ""
 
+        # Measure prompt assembly (often the hidden latency)
+        t_prompt0 = time.perf_counter()
         annotated_texts = []
         for idx, chunk in enumerate(included_chunks, start=1):
             disp = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
@@ -469,11 +476,13 @@ async def assistant_search_docs(payload: dict):
         
         # Join the already-trimmed chunks.
         top_text = "\n\n".join(annotated_texts)
+        prompt_build_ms = (time.perf_counter() - t_prompt0) * 1000.0
         # Only log metadata to avoid large logs. Guard verbose text dump behind env flag.
         if settings.DEBUG_VERBOSE_LOG_TEXTS:
             log_info(logger, "rag.summary.input.preview", {"chars": len(top_text)})
 
         if top_text.strip():
+            log_info(logger, "rag.summary.start", {"included_count": len(included_chunks or []), "prompt_build_ms": round(prompt_build_ms, 2)})
             summary_prompt = [
                 {
                     "role": "system",
@@ -497,11 +506,13 @@ async def assistant_search_docs(payload: dict):
             ]
             # Constrain output tokens
             MAX_OUTPUT_TOKENS = 120_000
+            t_sum0 = time.perf_counter()
             content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_seconds=99999, max_tokens=MAX_OUTPUT_TOKENS)
+            sum_dt_ms = (time.perf_counter() - t_sum0) * 1000.0
             summary = content if content else None
             summary_was_partial = bool(was_partial)
             # Do not log the full summary by default. Only length.
-            log_info(logger, "rag.summary.done", {"has_summary": bool(summary), "length": (len(summary) if isinstance(summary, str) else 0), "partial": summary_was_partial})
+            log_info(logger, "rag.summary.done", {"has_summary": bool(summary), "length": (len(summary) if isinstance(summary, str) else 0), "partial": summary_was_partial, "duration_ms": round(sum_dt_ms, 2)})
     except Exception as e:
         # Log summary failures explicitly; this is the step right after reranking
         log_error(logger, "rag.summary.error", {"error": repr(e)}, exc_info=True)
