@@ -319,7 +319,8 @@ async def keyword_search_async(
 async def api_search_docs(request: Request):
     # This endpoint is now a simplified wrapper around the assistant endpoint logic
     data = await request.json()
-    return await assistant_search_docs(request)
+    # Pass the parsed JSON payload through to the assistant endpoint handler
+    return await assistant_search_docs(data)
 
 
 
@@ -333,6 +334,17 @@ async def assistant_search_docs(payload: dict):
     """
     user_prompt = payload.get("user_prompt")
     search_plan = payload.get("search_plan")
+
+    # Log exactly what the frontend sent as the user query (and basic plan info)
+    try:
+        log_info(logger, "rag.query", {
+            "user_prompt": user_prompt,
+            "operator": (search_plan or {}).get("operator"),
+            "terms": (search_plan or {}).get("terms", []),
+        })
+    except Exception:
+        # Never fail the request due to logging
+        pass
 
     if not user_prompt or not search_plan:
         return JSONResponse({"error": "Missing user_prompt or search_plan in payload"}, status_code=400)
