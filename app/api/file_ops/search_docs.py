@@ -622,8 +622,28 @@ async def assistant_search_docs(payload: dict):
             "No relevant sources were found for your query. Try adjusting the search terms or filters."
         )
 
+    # Compose plain-text once so we can log exactly what is emitted
+    plain_text = "\n\n".join(summary_lines)
+
+    try:
+        preview = plain_text[:600] if isinstance(plain_text, str) else ""
+        log_info(
+            logger,
+            "rag.emit",
+            {
+                "media_type": "text/plain",
+                "chars": len(plain_text or ""),
+                "has_summary": bool(summary and isinstance(summary, str) and summary.strip()),
+                "sources_count": len(sources or []),
+                "preview": preview,
+            },
+        )
+    except Exception:
+        # Never fail the request due to logging
+        pass
+
     async def text_stream():
-        yield "\n\n".join(summary_lines)
+        yield plain_text
 
     return StreamingResponse(text_stream(), media_type="text/plain")
 
