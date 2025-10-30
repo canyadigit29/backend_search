@@ -84,6 +84,110 @@ def _collect_assistant_text(message) -> str:
                 text_parts.append(value)
     return "\n".join(part for part in text_parts if part)
 
+
+def _trim_content_to_window(content, terms, *, max_chars: int = 1200, context_radius: int = 350) -> str:
+    """Trim long chunk content around the first matching search term window."""
+    text = (content or "").strip()
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return text
+
+    normalized_terms: list[str] = []
+    seen_terms: set[str] = set()
+    for term in terms or []:
+        if not isinstance(term, str):
+            continue
+        lowered = term.strip().lower()
+        if not lowered:
+            continue
+        if lowered in seen_terms:
+            continue
+        seen_terms.add(lowered)
+        normalized_terms.append(lowered)
+
+    if not normalized_terms:
+        return text[:max_chars].strip()
+
+    lower_text = text.lower()
+    windows: list[tuple[int, int]] = []
+    for term in normalized_terms:
+        idx = lower_text.find(term)
+        if idx == -1:
+            continue
+        start = max(0, idx - context_radius)
+        end = min(len(text), idx + len(term) + context_radius)
+        windows.append((start, end))
+
+    if not windows:
+        return text[:max_chars].strip()
+
+    windows.sort()
+    merged: list[list[int]] = []
+    for start, end in windows:
+        if not merged:
+            merged.append([start, end])
+            continue
+        prev_start, prev_end = merged[-1]
+        if start <= prev_end + 80:
+            merged[-1][1] = max(prev_end, end)
+        else:
+            merged.append([start, end])
+
+    final_start, final_end = merged[0]
+    for start, end in merged[1:]:
+        if end - final_start <= max_chars:
+            final_end = end
+        else:
+            break
+
+    window_len = final_end - final_start
+    if window_len < max_chars:
+        extra = max_chars - window_len
+        pad_before = min(final_start, extra // 2)
+        pad_after = min(len(text) - final_end, extra - pad_before)
+        final_start -= pad_before
+        final_end += pad_after
+
+    final_start = max(0, final_start)
+    final_end = min(len(text), final_end)
+    snippet = text[final_start:final_end].strip()
+    if final_start > 0:
+        snippet = "… " + snippet
+    if final_end < len(text):
+        snippet = snippet + " …"
+    return snippet
+
+
+def _build_normalized_terms(search_terms, user_prompt):
+    """Create a lowercase term list for trimming and highlighting."""
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    def _add(term: str):
+        if not isinstance(term, str):
+            return
+        term_clean = term.strip().lower()
+        if not term_clean:
+            return
+        if term_clean in seen:
+            return
+        seen.add(term_clean)
+        normalized.append(term_clean)
+
+    for term in search_terms or []:
+        _add(term)
+        for part in str(term).replace(",", " ").split():
+            if len(part) >= 4:
+                _add(part)
+
+    if isinstance(user_prompt, str):
+        for part in user_prompt.replace(",", " ").split():
+            if len(part) >= 4:
+                _add(part)
+
+    return normalized
+
 def _decide_weighting(user_prompt: str, or_terms: list[str]) -> tuple[float, float]:
     """Decide semantic vs keyword weighting using simple lexical heuristics."""
     text = (user_prompt or "").strip()
@@ -440,7 +544,7 @@ async def assistant_search_docs(payload: dict):
     assistant_used_labels: list[str] = []
     assistant_follow_ups: list[str] = []
     
-    included_chunks = matches[:12] # From "Interactive Q&A" profile (Retrieved k)
+    included_chunks = matches[:24]
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
     # --- HYDRATION STEP ---
@@ -467,6 +571,17 @@ async def assistant_search_docs(payload: dict):
 
         hyd_dt_ms = (time.perf_counter() - t_hyd0) * 1000.0
         log_info(logger, "rag.hydration.complete", {"hydrated": len(hydrated_chunks_data or []), "duration_ms": round(hyd_dt_ms, 2)})
+
+    normalized_terms = _build_normalized_terms(search_terms, user_prompt)
+
+    for chunk in included_chunks:
+        original_content = chunk.get("content") or ""
+        chunk["_original_content_len"] = len(original_content)
+        trimmed = _trim_content_to_window(original_content, normalized_terms)
+        if trimmed:
+            chunk["content"] = trimmed
+        else:
+            chunk["content"] = original_content[:1200].strip()
 
     excerpt_length = 300
     sources_map: dict[str, dict] = {}
@@ -524,13 +639,6 @@ async def assistant_search_docs(payload: dict):
             if file_id_key:
                 file_label_map[f"file_id::{file_id_key}"] = label
 
-        normalized_terms: list[str] = []
-        for term in search_terms:
-            if isinstance(term, str) and term.strip():
-                normalized_terms.append(term.lower())
-        if isinstance(user_prompt, str) and user_prompt.strip():
-            normalized_terms.append(user_prompt.lower())
-
         # Measure prompt assembly (often the hidden latency)
         t_prompt0 = time.perf_counter()
         retrieved_sections: list[str] = []
@@ -561,8 +669,11 @@ async def assistant_search_docs(payload: dict):
             chunk_previews.append({
                 "label": label,
                 "chars": len(raw_content),
+                "original_chars": chunk.get("_original_content_len"),
                 "preview": preview_text,
             })
+
+            chunk.pop("_original_content_len", None)
 
             lower_body = body.lower()
             if normalized_terms:
