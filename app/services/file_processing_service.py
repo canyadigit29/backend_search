@@ -41,11 +41,27 @@ class FileProcessingService:
                 "ocr_needed": False,
                 "ocr_scanned": False,
             }
+            logger.info(
+                "supabase_op: table.insert",
+                extra={
+                    "table": "files",
+                    "fields": list(insert_data.keys()),
+                    "size_bytes": insert_data.get("size"),
+                },
+            )
             inserted_file = supabase.table("files").insert(insert_data).execute()
             if not inserted_file.data:
                 raise Exception("Failed to create file record in database.")
             file_id = inserted_file.data[0]['id']
             logger.info(f"Created file record with ID: {file_id} for path: {file_path}")
+            logger.info(
+                "supabase_op: storage.upload",
+                extra={
+                    "bucket": settings.SUPABASE_STORAGE_BUCKET,
+                    "path": file_path,
+                    "content_type": content_type,
+                },
+            )
             supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).upload(
                 file_path, file_content, {"content-type": content_type}
             )
@@ -58,6 +74,10 @@ class FileProcessingService:
     @staticmethod
     def process_file_for_ingestion(file_id: str):
         logger.info(f"Starting ingestion process for file_id: {file_id}")
+        logger.info(
+            "supabase_op: table.select",
+            extra={"table": "files", "filter": {"id": file_id}, "single": True},
+        )
         file_record = supabase.table("files").select("*").eq("id", file_id).single().execute().data
         if not file_record:
             raise Exception(f"File record not found for ID: {file_id}")
@@ -68,6 +88,13 @@ class FileProcessingService:
         if file_record.get("ocr_scanned") and file_record.get("ocr_text_path"):
             logger.info(f"Found OCR text at {file_record['ocr_text_path']}. Loading it.")
             try:
+                logger.info(
+                    "supabase_op: storage.download",
+                    extra={
+                        "bucket": settings.SUPABASE_STORAGE_BUCKET,
+                        "path": file_record.get("ocr_text_path"),
+                    },
+                )
                 response = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_record["ocr_text_path"])
                 if response:
                     text = response.decode('utf-8')
@@ -81,6 +108,10 @@ class FileProcessingService:
             logger.info(f"No valid OCR text found. Attempting direct text extraction from: {file_path}")
             local_temp_path = None
             try:
+                logger.info(
+                    "supabase_op: storage.download",
+                    extra={"bucket": settings.SUPABASE_STORAGE_BUCKET, "path": file_path},
+                )
                 response = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)
                 local_temp_path = f"/tmp/{file_id}{Path(file_path).suffix}"
                 with open(local_temp_path, "wb") as f:
@@ -88,6 +119,10 @@ class FileProcessingService:
                 extracted_content = extract_text(local_temp_path)
                 if file_path.lower().endswith('.pdf') and (extracted_content is None or len(re.sub(r'---PAGE \d+---', '', extracted_content).strip()) < 100):
                     logger.warning(f"Direct extraction yielded little or no content. Marking for OCR.")
+                    logger.info(
+                        "supabase_op: table.update",
+                        extra={"table": "files", "filter": {"id": file_id}, "fields": ["ocr_needed"]},
+                    )
                     supabase.table("files").update({"ocr_needed": True}).eq("id", file_id).execute()
                     FileProcessingService.process_file_for_ocr(file_id)
                     return
@@ -156,6 +191,10 @@ class FileProcessingService:
 
         logger.info(f"Generated {len(chunks)} chunks. Now embedding.")
         embed_chunks(chunks)
+        logger.info(
+            "supabase_op: table.update",
+            extra={"table": "files", "filter": {"id": file_id}, "fields": ["ingested"]},
+        )
         supabase.table("files").update(
             {"ingested": True}
         ).eq("id", file_id).execute()
@@ -164,6 +203,10 @@ class FileProcessingService:
     @staticmethod
     def process_file_for_ocr(file_id: str):
         logger.info(f"Starting OCR process for file_id: {file_id}")
+        logger.info(
+            "supabase_op: table.select",
+            extra={"table": "files", "filter": {"id": file_id}, "single": True},
+        )
         file_record = supabase.table("files").select("*").eq("id", file_id).single().execute().data
         if not file_record:
             raise Exception(f"File record not found for ID: {file_id}")

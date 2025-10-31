@@ -1,24 +1,28 @@
 import json
 import os
-from collections import defaultdict
-import sys
-import statistics
 import httpx
+import asyncio
+import logging
+import textwrap
+import contextlib
 
 from app.core.supabase_client import create_client
 from app.api.file_ops.embed import embed_text
-from app.core.openai_client import chat_completion, stream_chat_completion
-from app.core.token_utils import trim_texts_to_token_limit
+from app.core.openai_client import chat_completion
 from sentence_transformers import CrossEncoder
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
+from app.core.logger import log_info, log_error, request_id_var
+from app.core.config import settings
+from app.core.openai_client import client as openai_client
 import time
 
 
 # Load the Cross-Encoder model once when the module is loaded
 # This is a lightweight model optimized for performance
 cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+logger = logging.getLogger(__name__)
 
 
 
@@ -35,6 +39,7 @@ def _parse_inline_or_terms(text: str) -> list[str]:
     Case-insensitive on the OR separator. Trims quotes and whitespace.
     If no OR is present, returns an empty list (caller may choose to ignore).
     """
+
     if not isinstance(text, str) or not text:
         return []
     import re
@@ -62,13 +67,129 @@ def _parse_inline_or_terms(text: str) -> list[str]:
         uniq.append(t)
     return uniq
 
+
+def _collect_assistant_text(message) -> str:
+    """Extract plain text segments from an assistant message returned by the Assistants API."""
+    text_parts: list[str] = []
+    for content in getattr(message, "content", []) or []:
+        content_type = getattr(content, "type", None)
+        if content_type == "text":
+            text_block = getattr(content, "text", None)
+            value = getattr(text_block, "value", None)
+            if value:
+                text_parts.append(value)
+        elif content_type == "output_text":
+            value = getattr(content, "text", None)
+            if value:
+                text_parts.append(value)
+    return "\n".join(part for part in text_parts if part)
+
+
+def _trim_content_to_window(content, terms, *, max_chars: int = 1200, context_radius: int = 350) -> str:
+    """Trim long chunk content around the first matching search term window."""
+    text = (content or "").strip()
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return text
+
+    normalized_terms: list[str] = []
+    seen_terms: set[str] = set()
+    for term in terms or []:
+        if not isinstance(term, str):
+            continue
+        lowered = term.strip().lower()
+        if not lowered:
+            continue
+        if lowered in seen_terms:
+            continue
+        seen_terms.add(lowered)
+        normalized_terms.append(lowered)
+
+    if not normalized_terms:
+        return text[:max_chars].strip()
+
+    lower_text = text.lower()
+    windows: list[tuple[int, int]] = []
+    for term in normalized_terms:
+        idx = lower_text.find(term)
+        if idx == -1:
+            continue
+        start = max(0, idx - context_radius)
+        end = min(len(text), idx + len(term) + context_radius)
+        windows.append((start, end))
+
+    if not windows:
+        return text[:max_chars].strip()
+
+    windows.sort()
+    merged: list[list[int]] = []
+    for start, end in windows:
+        if not merged:
+            merged.append([start, end])
+            continue
+        prev_start, prev_end = merged[-1]
+        if start <= prev_end + 80:
+            merged[-1][1] = max(prev_end, end)
+        else:
+            merged.append([start, end])
+
+    final_start, final_end = merged[0]
+    for start, end in merged[1:]:
+        if end - final_start <= max_chars:
+            final_end = end
+        else:
+            break
+
+    window_len = final_end - final_start
+    if window_len < max_chars:
+        extra = max_chars - window_len
+        pad_before = min(final_start, extra // 2)
+        pad_after = min(len(text) - final_end, extra - pad_before)
+        final_start -= pad_before
+        final_end += pad_after
+
+    final_start = max(0, final_start)
+    final_end = min(len(text), final_end)
+    snippet = text[final_start:final_end].strip()
+    if final_start > 0:
+        snippet = "… " + snippet
+    if final_end < len(text):
+        snippet = snippet + " …"
+    return snippet
+
+
+def _build_normalized_terms(search_terms, user_prompt):
+    """Create a lowercase term list for trimming and highlighting."""
+    normalized: list[str] = []
+    seen: set[str] = set()
+
+    def _add(term: str):
+        if not isinstance(term, str):
+            return
+        term_clean = term.strip().lower()
+        if not term_clean:
+            return
+        if term_clean in seen:
+            return
+        seen.add(term_clean)
+        normalized.append(term_clean)
+
+    for term in search_terms or []:
+        _add(term)
+        for part in str(term).replace(",", " ").split():
+            if len(part) >= 4:
+                _add(part)
+
+    if isinstance(user_prompt, str):
+        for part in user_prompt.replace(",", " ").split():
+            if len(part) >= 4:
+                _add(part)
+
+    return normalized
+
 def _decide_weighting(user_prompt: str, or_terms: list[str]) -> tuple[float, float]:
-    """
-    Decide semantic vs keyword weighting based on lexical cues in the query.
-    Returns (alpha_semantic, beta_keyword) where alpha + beta = 1.0.
-    Heuristics boost keyword weight for quoted phrases, digits/addresses,
-    short acronyms, and explicit OR lists.
-    """
+    """Decide semantic vs keyword weighting using simple lexical heuristics."""
     text = (user_prompt or "").strip()
     import re
     lexicality = 0.0
@@ -122,6 +243,7 @@ def _select_included_and_pending(matches: list[dict], included_limit: int = 25):
     return included, pending_ids
 
 def perform_search(tool_args):
+    t0 = time.perf_counter()
     query_embedding = tool_args.get("embedding")
     user_prompt = tool_args.get("user_prompt")
     search_query = tool_args.get("search_query")
@@ -139,8 +261,8 @@ def perform_search(tool_args):
         query_embedding = embed_text(text_to_embed)
 
     try:
-        # The DB function 'match_file_items_openai' expects a DISTANCE (1 - similarity).
-        db_match_threshold = 1 - threshold
+        # The SQL function expects a similarity threshold directly.
+        db_match_threshold = threshold
 
         # Build arguments for the RPC call, ensuring empty values are sent as None (NULL)
         rpc_args = {
@@ -165,8 +287,8 @@ def perform_search(tool_args):
             value = tool_args.get(tool_key)
             rpc_args[rpc_key] = value if value else None
 
-        print(f"--- RPC ARGS SENT TO SUPABASE ---\n{rpc_args}\n---------------------------------")
         # Exclusively use the new, optimized 'match_file_items_openai' RPC function.
+        # This function is defined in Supabase and only returns metadata, not content.
         response = supabase.rpc("match_file_items_openai", rpc_args).execute()
         if getattr(response, "error", None):
             # If the RPC call itself fails, raise an error to be caught below.
@@ -180,16 +302,17 @@ def perform_search(tool_args):
         # --- Apply max_results limit after sorting ---
         matches = matches[:max_results]
 
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+        log_info(logger, "semantic.search.ok", {"count": len(matches), "threshold": threshold, "duration_ms": round(dt_ms, 2)})
         return {"retrieved_chunks": matches}
     except Exception as e:
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+        log_error(logger, "semantic.search.error", {"error": str(e), "duration_ms": round(dt_ms, 2)}, exc_info=True)
         return {"error": f"Error during search: {str(e)}"}
 
 
 def extract_search_query(user_prompt: str, agent_mode: bool = False) -> str:
-    """
-    Use OpenAI to extract the most effective search phrase or keywords for semantic document retrieval from the user's request.
-    If agent_mode is True, use enhanced instructions for extraction.
-    """
+    """Return an optimized search phrase for semantic retrieval."""
     if agent_mode:
         system_prompt = (
             "You are a search assistant. Given a user's request, extract only the most relevant keywords or noun phrases that would best match the content of documents in a search system.\n"
@@ -229,7 +352,8 @@ async def semantic_search(request, payload):
 router = APIRouter()
 
 
-def keyword_search(
+async def keyword_search_async(
+    client: httpx.AsyncClient,
     keywords,
     file_ids=None,
     match_count=150,
@@ -243,24 +367,20 @@ def keyword_search(
     ordinance_title=None,
 ):
     """
-    Keyword search over file_items table using Postgres FTS.
-    This function specifically targets the 'match_file_items_fts' RPC endpoint.
+    Asynchronous keyword search over file_items table using Postgres FTS.
     """
     def _quote_term(t: str) -> str:
         t = (t or "").strip()
         if not t:
             return ""
-        # Escape embedded quotes
         t = t.replace('"', '\\"')
-        # Quote multi-word or non-alnum terms to preserve phrases
         if any(ch.isspace() for ch in t) or not t.isalnum():
             return f'"{t}"'
         return t
-    # Use OR between terms so any term can match
+    
     quoted_terms = [_quote_term(k) for k in keywords if k]
     keyword_query = " OR ".join([qt for qt in quoted_terms if qt])
 
-    # Arguments for match_file_items_fts, aligned with its SQL definition
     rpc_args = {
         "keyword_query": keyword_query,
         "match_count": match_count,
@@ -286,22 +406,25 @@ def keyword_search(
     endpoint = f"{supabase_url}/rest/v1/rpc/match_file_items_fts"
 
     try:
-        response = httpx.post(endpoint, headers=headers, json=rpc_args, timeout=30)
+        t0 = time.perf_counter()
+        response = await client.post(endpoint, headers=headers, json=rpc_args, timeout=30)
         
         if response.status_code >= 400:
             try:
                 error_details = response.json()
-                print(f"[ERROR] Keyword search: endpoint {endpoint} returned status {response.status_code} with details: {error_details}")
+                log_error(logger, "keyword.search.http_error", {"status": response.status_code, "details": error_details})
             except Exception:
-                print(f"[ERROR] Keyword search: endpoint {endpoint} returned status {response.status_code} with non-JSON body.")
+                log_error(logger, "keyword.search.http_error", {"status": response.status_code, "details": "non-JSON body"})
             response.raise_for_status()
 
         results = response.json() or []
         for r in results:
             r["keyword_score"] = r.get("ts_rank", 0)
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+        log_info(logger, "keyword.search.ok", {"count": len(results), "duration_ms": round(dt_ms, 2)})
         return results
     except Exception as e:
-        print(f"[ERROR] Keyword search: unhandled exception during search. Error: {str(e)}")
+        log_error(logger, "keyword.search.error", {"error": str(e)}, exc_info=True)
         return []
 
 
@@ -309,138 +432,71 @@ def keyword_search(
 async def api_search_docs(request: Request):
     # This endpoint is now a simplified wrapper around the assistant endpoint logic
     data = await request.json()
-    return await assistant_search_docs(request)
+    # Pass the parsed JSON payload through to the assistant endpoint handler
+    return await assistant_search_docs(data)
 
 
-
-def plan_search_query(user_prompt: str) -> dict:
-    """
-    Uses an LLM to decompose a user query into a structured search plan.
-    Returns a JSON object like: {"operator": "OR", "terms": ["term1", "term2"]}.
-    """
-    system_prompt = (
-        "You are a search query planner. Your task is to analyze the user's request and convert it into a structured JSON object representing the search logic. "
-        "Identify distinct search terms and the boolean operators connecting them. "
-        "The output must be a single JSON object with two keys: 'operator' (which can be 'AND' or 'OR') and 'terms' (a list of strings). "
-        "If there is only one logical concept, use the 'AND' operator with a single term in the list. "
-        "Prioritize breaking down queries with explicit 'OR' clauses. "
-        "Do not include conversational phrases or explanations in the terms.\n\n"
-        "Examples:\n"
-        'User: find documents about "Mennonite Publishing House" OR "Herald Press"\n'
-        'JSON: {"operator": "OR", "terms": ["Mennonite Publishing House", "Herald Press"]}\n\n'
-        'User: what are the rules for zoning and code enforcement\n'
-        'JSON: {"operator": "AND", "terms": ["zoning rules", "code enforcement"]}\n\n'
-        'User: reports on infrastructure spending in 2022\n'
-        'JSON: {"operator": "AND", "terms": ["infrastructure spending 2022"]}\n'
-    )
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt}
-    ]
-    
-    try:
-        result = chat_completion(messages)
-        plan = json.loads(result)
-        if isinstance(plan, dict) and "operator" in plan and "terms" in plan:
-            return plan
-    except (json.JSONDecodeError, TypeError):
-        # Fallback for non-JSON responses or errors
-        pass
-    
-    # Default fallback plan if LLM fails
-    return {"operator": "AND", "terms": [user_prompt]}
 
 # Endpoint to accept calls from an OpenAI Assistant (custom function / webhook)
 @router.post("/assistant/search_docs")
-async def assistant_search_docs(request: Request):
+async def assistant_search_docs(payload: dict):
     """
-    Accepts a payload, plans the search using an LLM, executes the plan,
-    and returns a summary or structured results.
+    Handles search requests issued by the ChatGPT assistant function. The payload
+    contains the search plan and user prompt, and this endpoint executes the plan
+    server-side before returning the structured summary back to the frontend via
+    the standard `/file_ops/search_docs` endpoint.
     """
-    payload = await request.json()
-    user_prompt = payload.get("query") or payload.get("user_prompt")
-    if not user_prompt:
-        return JSONResponse({"error": "Missing query in payload"}, status_code=400)
+    user_prompt = payload.get("user_prompt")
+    search_plan = payload.get("search_plan")
 
-    # --- 1. Plan the Search using LLM ---
-    search_plan = plan_search_query(user_prompt)
-    search_terms = search_plan.get("terms", [user_prompt])
+    # Log exactly what the frontend sent as the user query (and basic plan info)
+    try:
+        log_info(logger, "rag.query", {
+            "user_prompt": user_prompt,
+            "operator": (search_plan or {}).get("operator"),
+            "terms": (search_plan or {}).get("terms", []),
+        })
+    except Exception:
+        # Never fail the request due to logging
+        pass
+
+    if not user_prompt or not search_plan:
+        return JSONResponse({"error": "Missing user_prompt or search_plan in payload"}, status_code=400)
+
+    # The plan is now taken from the payload.
+    search_terms = search_plan.get("terms", [])
+    if not search_terms:
+        # Fallback to user_prompt if terms are missing, though the plan should provide them.
+        search_terms = [user_prompt]
     
     all_matches = {}
+    log_info(logger, "rag.plan", {"operator": search_plan.get("operator"), "terms_count": len(search_terms)})
 
-    # --- 2. Execute the Search Plan ---
-    for term in search_terms:
-        # Each term gets its own hybrid search
-        try:
-            embedding = embed_text(term)
-        except Exception as e:
-            # If one term fails to embed, skip it but continue with others
-            print(f"Warning: Failed to generate embedding for term '{term}': {e}")
-            continue
+    # --- 2. Execute the Search Plan in Parallel ---
+    
+    # Gather all results from parallel searches
+    all_term_results = []
 
-        tool_args = {
-            "embedding": embedding,
-            "user_prompt": term,
-            "search_query": term,
-            "relevance_threshold": 0.2, # Hardcoded to a lower value
-            "max_results": 50, # Hardcoded value
-            "file_ids": payload.get("file_ids"),
-            "file_name": payload.get("file_name"),
-            "description": payload.get("description"),
-            "document_type": payload.get("document_type"),
-            "meeting_year": payload.get("meeting_year"),
-            "meeting_month": payload.get("meeting_month"),
-            "meeting_month_name": payload.get("meeting_month_name"),
-            "meeting_day": payload.get("meeting_day"),
-            "ordinance_title": payload.get("ordinance_title"),
-        }
+    # Use a single session for all keyword searches
+    async with httpx.AsyncClient() as client:
+        # Create tasks for all searches
+        search_tasks = []
+        for term in search_terms:
+            search_tasks.append(
+                _perform_hybrid_search_for_term(term, payload, client)
+            )
         
-        # Perform semantic search for the current term
-        search_result = perform_search(tool_args)
-        term_matches = search_result.get("retrieved_chunks", [])
+        # Run all tasks concurrently
+        results_from_tasks = await asyncio.gather(*search_tasks)
 
-        # Perform keyword search for the current term
-        sem_w, kw_w = _decide_weighting(term, [])
-        fts_results = keyword_search(
-            keywords=[term.strip()],
-            file_ids=tool_args.get("file_ids"),
-            match_count=150,
-            # Pass through all filters
-            file_name_filter=tool_args.get("file_name"),
-            description_filter=tool_args.get("description"),
-            document_type=tool_args.get("document_type"),
-            meeting_year=tool_args.get("meeting_year"),
-            meeting_month=tool_args.get("meeting_month"),
-            meeting_month_name=tool_args.get("meeting_month_name"),
-            meeting_day=tool_args.get("meeting_day"),
-            ordinance_title=tool_args.get("ordinance_title"),
-        ) or []
+        # Process results from each task
+        for result in results_from_tasks:
+            if result:
+                all_term_results.append(result)
 
-        # --- Merge and Score results for the current term ---
-        kw_scores = [r.get("keyword_score") or 0.0 for r in fts_results]
-        kmin, kmax = (min(kw_scores), max(kw_scores)) if kw_scores else (0.0, 0.0)
-        for r in fts_results:
-            ks = r.get("keyword_score") or 0.0
-            r["keyword_score_norm"] = (ks - kmin) / (kmax - kmin) if kmax > kmin else 0.0
-        
-        merged_by_id = {m.get("id"): m for m in term_matches if m.get("id")}
-        for r in fts_results:
-            rid = r.get("id")
-            if not rid: continue
-            if rid in merged_by_id:
-                merged_by_id[rid]["keyword_score_norm"] = max(
-                    merged_by_id[rid].get("keyword_score_norm", 0.0),
-                    r.get("keyword_score_norm", 0.0)
-                )
-            else:
-                merged_by_id[rid] = r
-        
-        for v in merged_by_id.values():
-            sem = v.get("similarity", 0.0) or 0.0
-            kw = v.get("keyword_score_norm", 0.0) or 0.0
-            v["combined_score"] = sem_w * sem + kw_w * kw
-        
-        # Add the results for this term to the overall collection
+    # --- 3. Merge and Score results from all terms ---
+    for term_results in all_term_results:
+        merged_by_id = term_results.get("merged_results", {})
         for chunk_id, chunk_data in merged_by_id.items():
             if chunk_id not in all_matches:
                 all_matches[chunk_id] = chunk_data
@@ -451,88 +507,491 @@ async def assistant_search_docs(request: Request):
                     chunk_data.get("combined_score", 0.0)
                 )
 
-    # --- 3. Rerank the Final Combined List ---
+    # --- 4. Rerank the Final Combined List ---
+    log_info(logger, "rag.merge_across_terms", {"unique_candidates": len(all_matches or {})})
     matches = sorted(all_matches.values(), key=lambda x: x.get("combined_score", 0.0), reverse=True)
     
-    top_k_for_rerank = 50
+    top_k_for_rerank = 24 # From "Interactive Q&A" profile (Rerank Top m)
     if matches and len(matches) > 1:
+        t_rr0 = time.perf_counter()
         passages = [chunk.get("content", "") for chunk in matches[:top_k_for_rerank]]
         # Use the original, full user prompt for reranking to capture the complete intent
         query_passage_pairs = [[user_prompt, passage] for passage in passages]
-        rerank_scores = cross_encoder.predict(query_passage_pairs)
+        
+        # Run cross-encoder in a separate thread to avoid blocking the event loop
+        rerank_scores = await asyncio.to_thread(cross_encoder.predict, query_passage_pairs)
+
         for i, score in enumerate(rerank_scores):
             matches[i]["rerank_score"] = float(score)
         
         reranked_matches = sorted(matches[:top_k_for_rerank], key=lambda x: x.get("rerank_score", 0.0), reverse=True)
         matches = reranked_matches + matches[top_k_for_rerank:]
 
-    # --- 4. Prepare and Send the Response ---
+        rr_scores = [m.get("rerank_score", 0.0) for m in reranked_matches[:5]]
+        rr_dt_ms = (time.perf_counter() - t_rr0) * 1000.0
+        log_info(logger, "rag.rerank", {
+            "applied": True,
+            "considered": min(len(passages), top_k_for_rerank),
+            "top5_scores": [round(float(s or 0.0), 4) for s in rr_scores],
+            "duration_ms": round(rr_dt_ms, 2),
+        })
+    else:
+        log_info(logger, "rag.rerank", {"applied": False, "candidates": len(matches or [])})
+
+    # --- 5. Prepare and Send the Response ---
     summary = None
     summary_was_partial = False
+    assistant_used_labels: list[str] = []
+    assistant_follow_ups: list[str] = []
     
-    included_chunks = matches[:25] # Use up to the top 25 reranked results
+    included_chunks = matches[:24]
     included_chunk_ids = [c.get("id") for c in included_chunks if c.get("id")]
 
+    # --- HYDRATION STEP ---
+    # Unconditionally fetch the full content for the final list of chunks.
+    # This is necessary because the search functions only return metadata.
+    if included_chunk_ids:
+        log_info(logger, "rag.hydration.start", {"count": len(included_chunk_ids)})
+        t_hyd0 = time.perf_counter()
+        hydrated_chunks_data = _fetch_chunks_by_ids(included_chunk_ids)
+        
+        # Create a dictionary for quick lookup of hydrated content
+        hydrated_content_map = {str(chunk.get("id")): chunk for chunk in hydrated_chunks_data}
+        
+        # Replace the content in our working list of chunks
+        for chunk in included_chunks:
+            chunk_id = str(chunk.get("id"))
+            if chunk_id in hydrated_content_map:
+                # Preserve existing scores, but update content and metadata
+                hydrated_chunk = hydrated_content_map[chunk_id]
+                chunk["content"] = hydrated_chunk.get("content")
+                # Also update file_name in case it was missing
+                if not chunk.get("file_name"):
+                    chunk["file_name"] = hydrated_chunk.get("file_name")
+
+        hyd_dt_ms = (time.perf_counter() - t_hyd0) * 1000.0
+        log_info(logger, "rag.hydration.complete", {"hydrated": len(hydrated_chunks_data or []), "duration_ms": round(hyd_dt_ms, 2)})
+
+    normalized_terms = _build_normalized_terms(search_terms, user_prompt)
+
+    for chunk in included_chunks:
+        original_content = chunk.get("content") or ""
+        chunk["_original_content_len"] = len(original_content)
+        trimmed = _trim_content_to_window(original_content, normalized_terms)
+        if trimmed:
+            chunk["content"] = trimmed
+        else:
+            chunk["content"] = original_content[:1200].strip()
+
+    excerpt_length = 300
+    sources_map: dict[str, dict] = {}
+    ordered_sources: list[dict] = []
+    for chunk in included_chunks:
+        file_name = chunk.get("file_name") or "Unknown source"
+        score = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
+        content = chunk.get("content") or ""
+        excerpt = content.strip().replace("\n", " ")[:excerpt_length]
+        entry = sources_map.get(file_name)
+        if not entry:
+            entry = {
+                "file_name": file_name,
+                "score": score,
+                "excerpt": excerpt,
+                "chunk_ids": [chunk.get("id")],
+                "id": chunk.get("id"),
+                "file_id": chunk.get("file_id"),
+                "meeting_date": chunk.get("meeting_date"),
+            }
+            sources_map[file_name] = entry
+            ordered_sources.append(entry)
+        else:
+            entry.setdefault("chunk_ids", []).append(chunk.get("id"))
+            if score is not None and (entry.get("score") is None or score > entry.get("score")):
+                entry["score"] = score
+                if excerpt:
+                    entry["excerpt"] = excerpt
+                    entry["id"] = chunk.get("id")
+                    if chunk.get("file_id"):
+                        entry["file_id"] = chunk.get("file_id")
+                    if chunk.get("meeting_date"):
+                        entry["meeting_date"] = chunk.get("meeting_date")
+
+    sources = ordered_sources
+
     try:
-        per_chunk_char_limit = 3000
-        def _trim(s: str, n: int) -> str: return s[:n] if s else ""
-        annotated_texts = []
+        user_locale = payload.get("language") or "en-US"
+        target_length = payload.get("target_length") or 220
+        format_variant = payload.get("format_variant") or "standard"
+        k_retrieved = len(included_chunks or [])
+
+        chunk_label_map: dict[str, str] = {}
+        file_label_map: dict[str, str] = {}
+        for idx, source_entry in enumerate(sources, start=1):
+            label = f"S{idx}"
+            source_entry["label"] = label
+            for cid in source_entry.get("chunk_ids") or []:
+                if cid:
+                    chunk_label_map[str(cid)] = label
+            file_name = source_entry.get("file_name")
+            if file_name:
+                file_label_map[file_name] = label
+            file_id_key = source_entry.get("file_id")
+            if file_id_key:
+                file_label_map[f"file_id::{file_id_key}"] = label
+
+        # Measure prompt assembly (often the hidden latency)
+        t_prompt0 = time.perf_counter()
+        retrieved_sections: list[str] = []
+        chunk_previews: list[dict] = []
+        direct_match_labels: set[str] = set()
+
         for idx, chunk in enumerate(included_chunks, start=1):
             disp = chunk.get("rerank_score") or chunk.get("combined_score") or chunk.get("similarity")
             try:
                 disp_val = round(float(disp or 0), 4)
             except Exception:
                 disp_val = 0
-            # Fix header index formatting
-            header = f"[#{idx} id={chunk.get('id')} file={chunk.get('file_name')} score={disp_val}]"
-            body = _trim(chunk.get("content", ""), per_chunk_char_limit)
-            if body:
-                annotated_texts.append(f"{header}\n{body}")
-        
-        # Hard-coded conservative token budgets to avoid 400 invalid_request errors
-        MAX_INPUT_TOKENS = 80_000
-        top_text = trim_texts_to_token_limit(annotated_texts, MAX_INPUT_TOKENS, model="gpt-5", separator="\n\n")
 
-        if top_text.strip():
-            summary_prompt = [
-                {"role": "system", "content": "You are an insightful research assistant..."},
-                {"role": "user", "content": f"User query: {user_prompt}\n\nSearch results:\n{top_text}\n\nPlease provide a detailed summary..."}
+            chunk_id = chunk.get("id")
+            file_label = chunk.get("file_name") or "Unknown source"
+            label = chunk_label_map.get(str(chunk_id)) or file_label_map.get(file_label) or file_label_map.get(f"file_id::{chunk.get('file_id')}")
+            if not label:
+                label = f"S{k_retrieved + len(retrieved_sections) + 1}"
+                if chunk_id:
+                    chunk_label_map[str(chunk_id)] = label
+
+            body = chunk.get("content", "") or ""
+            if not body:
+                continue
+
+            raw_content = chunk.get("content") or ""
+            preview_text = raw_content.strip().replace("\n", " ")[:160]
+            chunk_previews.append({
+                "label": label,
+                "chars": len(raw_content),
+                "original_chars": chunk.get("_original_content_len"),
+                "preview": preview_text,
+            })
+
+            chunk.pop("_original_content_len", None)
+
+            lower_body = body.lower()
+            if normalized_terms:
+                for term in normalized_terms:
+                    if term and term in lower_body:
+                        direct_match_labels.add(label)
+                        break
+            if label not in direct_match_labels and normalized_terms:
+                raw_content_lower = (chunk.get("content") or "").lower()
+                for term in normalized_terms:
+                    if term and term in raw_content_lower:
+                        direct_match_labels.add(label)
+                        break
+
+            score_text = f"{disp_val:.4f}" if isinstance(disp_val, (int, float)) else str(disp_val)
+            section_lines = [
+                f"[{label}] {file_label}",
             ]
-            # Keep output budget well within typical model limits
-            MAX_OUTPUT_TOKENS = 4_000
-            print(f"[info] Summarization budgets -> input_tokens<=${'{:,}'.format(MAX_INPUT_TOKENS)}, output_tokens<=${'{:,}'.format(MAX_OUTPUT_TOKENS)}")
-            content, was_partial = stream_chat_completion(summary_prompt, model="gpt-5", max_tokens=MAX_OUTPUT_TOKENS)
-            summary = content if content else None
-            summary_was_partial = bool(was_partial)
+            if chunk_id:
+                section_lines.append(f"chunk_id: {chunk_id}")
+            if chunk.get("file_id"):
+                section_lines.append(f"file_id: {chunk.get('file_id')}")
+            if chunk.get("meeting_date"):
+                section_lines.append(f"meeting_date: {chunk.get('meeting_date')}")
+            section_lines.append(f"score: {score_text}")
+            section_lines.append("content:")
+            section_lines.append("---")
+            section_lines.append(body)
+            section_lines.append("---")
+            retrieved_sections.append("\n".join(section_lines))
+
+        if chunk_previews:
+            log_info(logger, "rag.hydration.preview", {
+                "count": len(chunk_previews),
+                "chunks": chunk_previews,
+            })
+
+        retrieved_context = "\n\n".join(retrieved_sections)
+        prompt_build_ms = (time.perf_counter() - t_prompt0) * 1000.0
+        if settings.DEBUG_VERBOSE_LOG_TEXTS:
+            log_info(logger, "rag.summary.input.preview", {"chars": len(retrieved_context)})
+
+        if retrieved_context.strip():
+            log_info(logger, "rag.summary.start", {
+                "included_count": len(included_chunks or []),
+                "prompt_build_ms": round(prompt_build_ms, 2),
+                "direct_match_labels": sorted(direct_match_labels),
+            })
+
+            sources_catalog_lines: list[str] = []
+            for source_entry in sources:
+                label = source_entry.get("label") or "?"
+                title = source_entry.get("file_name") or "Unknown source"
+                meeting_date = source_entry.get("meeting_date")
+                file_id_value = source_entry.get("file_id")
+                line = f"[{label}] {title}"
+                if meeting_date:
+                    line += f" (date={meeting_date})"
+                if file_id_value:
+                    line += f" - file_id={file_id_value}"
+                sources_catalog_lines.append(line)
+            sources_catalog_text = "\n".join(sources_catalog_lines) if sources_catalog_lines else "(no sources)"
+
+            search_terms_line = (
+                f"Search plan terms: {', '.join(term for term in search_terms if isinstance(term, str) and term.strip())}"
+                if search_terms else "Search plan terms: (none)"
+            )
+            if direct_match_labels:
+                direct_match_note = (
+                    "The query terms appear in sources: "
+                    + ", ".join(sorted(direct_match_labels))
+                    + ". Highlight their evidence clearly."
+                )
+            else:
+                direct_match_note = "No direct string match was detected; rely on the strongest evidence."
+
+            retrieved_context_text = retrieved_context if retrieved_sections else "(no text retrieved)"
+
+            user_query_for_prompt = user_prompt or ""
+            user_query_format_safe = user_query_for_prompt.replace("{", "{{").replace("}", "}}")
+
+            assistant_id = getattr(settings, "SEARCH_ASSISTANT_ID", "")
+            summary = None
+            summary_was_partial = False
+            if assistant_id:
+                instructions_template = textwrap.dedent("""
+                    You are a retrieval QA summarizer. Use only the provided context to answer the user question.
+                    Produce a concise but complete markdown summary following this scaffold:
+                    ### Title
+                    ### TL;DR
+                    ### Key Points
+                    ### Details
+                    ### Caveats & Unknowns
+                    ### Next Steps (if applicable)
+                    ### Sources
+
+                    Rules:
+                    - Language: {user_locale}.
+                    - Aim for about {target_length} words. Respect the format_variant flag ({format_variant}). If "brief", keep it ~120 words; if "detailed", up to 450 words.
+                    - Cite supporting sources inline using bracketed labels like [S1].
+                    - Only cite sources that appear in the provided catalog. If context is insufficient, say so explicitly and propose follow-up data.
+                    - Do not fabricate information or refer to external knowledge.
+
+                    Respond as JSON with these fields:
+                    - summary_markdown (string): the final markdown summary.
+                    - used_source_labels (array of strings): each cited label (e.g., "S1"), unique.
+                    - follow_up_questions (array of strings, optional): follow-up steps if the answer is incomplete.
+                """)
+
+                instructions = instructions_template.format(
+                    user_locale=user_locale,
+                    target_length=target_length,
+                    format_variant=format_variant,
+                )
+
+                user_payload_parts = [
+                    f"User query: {user_query_for_prompt}",
+                    search_terms_line,
+                    f"Direct match labels: {', '.join(sorted(direct_match_labels)) if direct_match_labels else 'None'}",
+                    "",
+                    "Sources catalog:",
+                    sources_catalog_text,
+                    "",
+                    "Retrieved context:",
+                    retrieved_context_text,
+                ]
+                user_payload = "\n".join(user_payload_parts)
+
+                response_schema = {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "rag_summary_response",
+                        "schema": {
+                            "type": "object",
+                            "required": ["summary_markdown", "used_source_labels"],
+                            "properties": {
+                                "summary_markdown": {"type": "string"},
+                                "used_source_labels": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "uniqueItems": True,
+                                },
+                                "follow_up_questions": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            },
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+
+                thread = None
+                run = None
+                assistant_duration_ms = 0.0
+                try:
+                    t_sum0 = time.perf_counter()
+                    user_message = {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": user_payload},
+                        ],
+                    }
+                    thread = openai_client.beta.threads.create(messages=[user_message])
+
+                    run = openai_client.beta.threads.runs.create_and_poll(
+                        thread_id=thread.id,
+                        assistant_id=assistant_id,
+                        instructions=instructions,
+                        response_format=response_schema,
+                    )
+
+                    assistant_duration_ms = (time.perf_counter() - t_sum0) * 1000.0
+                    run_status = getattr(run, "status", "")
+                    if run_status != "completed":
+                        summary_was_partial = True
+                        log_error(logger, "rag.summary.assistant_incomplete", {
+                            "status": run_status or "unknown",
+                            "run_id": getattr(run, "id", None),
+                        })
+
+                    messages = openai_client.beta.threads.messages.list(
+                        thread_id=thread.id,
+                        order="desc",
+                        limit=10,
+                    )
+
+                    raw_json_text = ""
+                    for message in messages.data:
+                        if getattr(message, "role", None) != "assistant":
+                            continue
+                        if run and getattr(message, "run_id", None) and getattr(message, "run_id", None) != getattr(run, "id", None):
+                            continue
+                        extracted = _collect_assistant_text(message)
+                        if extracted:
+                            raw_json_text = extracted
+                            break
+
+                    if not raw_json_text:
+                        raise ValueError("Assistant run completed without text output")
+
+                    parsed = json.loads(raw_json_text)
+                    summary = parsed.get("summary_markdown")
+                    assistant_used_labels = [str(lbl) for lbl in parsed.get("used_source_labels") or []]
+                    assistant_follow_ups = [str(q) for q in parsed.get("follow_up_questions") or []]
+
+                    log_info(logger, "rag.summary.done", {
+                        "has_summary": bool(summary),
+                        "length": (len(summary) if isinstance(summary, str) else 0),
+                        "partial": bool(summary_was_partial),
+                        "duration_ms": round(assistant_duration_ms or 0.0, 2),
+                        "assistant_used_labels": assistant_used_labels,
+                    })
+                except Exception as e:
+                    summary = None
+                    log_error(logger, "rag.summary.assistant_error", {
+                        "error": repr(e),
+                        "run_status": getattr(run, "status", None) if run else None,
+                    }, exc_info=True)
+                finally:
+                    with contextlib.suppress(Exception):
+                        if thread and getattr(thread, "id", None):
+                            openai_client.beta.threads.delete(thread.id)
+            else:
+                log_error(logger, "rag.summary.config_missing", {"missing": "SEARCH_ASSISTANT_ID"})
+
+            if summary and settings.LOG_SUMMARY_TEXT:
+                try:
+                    max_chars = int(getattr(settings, "SUMMARY_TEXT_MAX_CHARS", 1200) or 1200)
+                    snippet = summary[:max_chars]
+                    log_info(logger, "rag.summary.text", {
+                        "chars": len(summary),
+                        "truncated": len(summary) > max_chars,
+                        "text": snippet,
+                    })
+                except Exception:
+                    pass
+
+            if summary and settings.CAPTURE_SUMMARY_TO_DB:
+                try:
+                    rid = request_id_var.get()
+                    record = {
+                        "request_id": rid,
+                        "user_prompt": user_prompt,
+                        "included_chunk_ids": included_chunk_ids,
+                        "summary": summary,
+                        "summary_len": len(summary),
+                        "summary_partial": bool(summary_was_partial),
+                    }
+                    supabase.table("rag_summary_results").insert(record).execute()
+                    log_info(logger, "rag.summary.capture.ok", {"len": len(summary)})
+                except Exception as db_e:
+                    log_error(logger, "rag.summary.capture.error", {"error": str(db_e)})
     except Exception as e:
         # Log summary failures explicitly; this is the step right after reranking
-        try:
-            print(f"[ERROR] Summary generation failed right after rerank: {repr(e)}")
-        except Exception:
-            pass
+        log_error(logger, "rag.summary.error", {"error": repr(e)}, exc_info=True)
         summary = None
         summary_was_partial = False
-    
-    excerpt_length = 300
-    sources = []
-    for c in included_chunks:
-        content = c.get("content") or ""
-        excerpt = content.strip().replace("\n", " ")[:excerpt_length]
-        sources.append({
-            "id": c.get("id"),
-            "file_name": c.get("file_name"),
-            "score": c.get("rerank_score") or c.get("combined_score") or c.get("similarity"),
-            "excerpt": excerpt
-        })
+
+    # Emit final-stage metrics
+    log_info(logger, "rag.final", {
+        "included_count": len(included_chunks or []),
+        "included_ids_count": len(included_chunk_ids or []),
+        "has_summary": bool(summary),
+        "summary_len": (len(summary) if isinstance(summary, str) else None),
+        "summary_was_partial": bool(summary_was_partial),
+    })
 
     response_data = {
         "summary": summary,
         "summary_was_partial": summary_was_partial,
         "sources": sources,
-        "can_resume": False, # Batch processing is removed
+        "used_source_labels": assistant_used_labels,
+        "follow_up_questions": assistant_follow_ups,
+        "can_resume": False,
         "pending_chunk_ids": [],
         "included_chunk_ids": included_chunk_ids,
     }
+
+    log_info(logger, "rag.sources", {"count": len(sources or [])})
+
+    fallback_text = None
+    if not (isinstance(summary, str) and summary.strip()):
+        fallback_lines: list[str] = [
+            "No synthesized summary was produced. Review the retrieved evidence below:",
+        ]
+        if sources:
+            for idx, source in enumerate(sources, start=1):
+                name = str(source.get("file_name") or f"source-{idx}")
+                excerpt = source.get("excerpt")
+                excerpt_text = f": {excerpt}" if isinstance(excerpt, str) and excerpt else ""
+                fallback_lines.append(f"- {name}{excerpt_text}")
+        else:
+            fallback_lines.append("- No sources were returned for this query.")
+
+        fallback_text = "\n".join(fallback_lines)
+        response_data["fallback_text"] = fallback_text
+
+    try:
+        preview = ""
+        if isinstance(summary, str) and summary.strip():
+            preview = summary.strip()[:600]
+        elif isinstance(fallback_text, str):
+            preview = fallback_text[:600]
+        log_info(
+            logger,
+            "rag.emit",
+            {
+                "media_type": "application/json",
+                "chars": len(preview or ""),
+                "has_summary": bool(summary and isinstance(summary, str) and summary.strip()),
+                "sources_count": len(sources or []),
+                "preview": preview,
+            },
+        )
+    except Exception:
+        # Never fail the request due to logging
+        pass
 
     return JSONResponse(response_data)
 
@@ -542,3 +1001,104 @@ async def assistant_search_docs(request: Request):
 async def api_search_documents(request: Request):
     tool_args = await request.json()
     return perform_search(tool_args)
+
+async def _perform_hybrid_search_for_term(term: str, payload: dict, client: httpx.AsyncClient):
+    """
+    Performs a self-contained hybrid search for a single term.
+    This function is designed to be run concurrently for multiple terms.
+    """
+    try:
+        # Each term gets its own hybrid search
+        t0 = time.perf_counter()
+        embedding = await asyncio.to_thread(embed_text, term)
+        log_info(logger, "rag.embed", {"term_len": len(term or ""), "duration_ms": round((time.perf_counter()-t0)*1000.0, 2)})
+    except Exception as e:
+        log_error(logger, "rag.embed.error", {"term": term, "error": str(e)})
+        return None
+
+    tool_args = {
+        "embedding": embedding,
+        "user_prompt": term,
+        "search_query": term,
+        "relevance_threshold": 0.25, # From "Interactive Q&A" profile
+        "max_results": 50,
+        "file_ids": payload.get("file_ids"),
+        "file_name": payload.get("file_name"),
+        "description": payload.get("description"),
+        "document_type": payload.get("document_type"),
+        "meeting_year": payload.get("meeting_year"),
+        "meeting_month": payload.get("meeting_month"),
+        "meeting_month_name": payload.get("meeting_month_name"),
+        "meeting_day": payload.get("meeting_day"),
+        "ordinance_title": payload.get("ordinance_title"),
+    }
+    
+    # Perform semantic and keyword searches concurrently
+    semantic_task = asyncio.to_thread(perform_search, tool_args)
+    
+    sem_w, kw_w = _decide_weighting(term, [])
+    keyword_task = keyword_search_async(
+        client=client,
+        keywords=[term.strip()],
+        file_ids=tool_args.get("file_ids"),
+        match_count=150,
+        file_name_filter=tool_args.get("file_name"),
+        description_filter=tool_args.get("description"),
+        document_type=tool_args.get("document_type"),
+        meeting_year=tool_args.get("meeting_year"),
+        meeting_month=tool_args.get("meeting_month"),
+        meeting_month_name=tool_args.get("meeting_month_name"),
+        meeting_day=tool_args.get("meeting_day"),
+        ordinance_title=tool_args.get("ordinance_title"),
+    )
+
+    search_result, fts_results = await asyncio.gather(semantic_task, keyword_task)
+    
+    term_matches = search_result.get("retrieved_chunks", [])
+    fts_results = fts_results or []
+
+    # --- Merge and Score results for the current term ---
+    kw_scores = [r.get("keyword_score") or 0.0 for r in fts_results]
+    kmin, kmax = (min(kw_scores), max(kw_scores)) if kw_scores else (0.0, 0.0)
+    for r in fts_results:
+        ks = r.get("keyword_score") or 0.0
+        r["keyword_score_norm"] = (ks - kmin) / (kmax - kmin) if kmax > kmin else 0.0
+    
+    merged_by_id = {m.get("id"): m for m in term_matches if m.get("id")}
+    for r in fts_results:
+        rid = r.get("id")
+        if not rid: continue
+        if rid in merged_by_id:
+            merged_by_id[rid]["keyword_score_norm"] = max(
+                merged_by_id[rid].get("keyword_score_norm", 0.0),
+                r.get("keyword_score_norm", 0.0)
+            )
+        else:
+            merged_by_id[rid] = r
+    
+    for v in merged_by_id.values():
+        sem = v.get("similarity", 0.0) or 0.0
+        kw = v.get("keyword_score_norm", 0.0) or 0.0
+        v["combined_score"] = sem_w * sem + kw_w * kw
+
+    # Term-level metrics
+    log_info(logger, "rag.term.results", {
+        "term_len": len(term or ""),
+        "semantic_count": len(term_matches or []),
+        "keyword_count": len(fts_results or []),
+        "merged_count": len(merged_by_id or {}),
+        "weights": {"semantic": round(sem_w, 3), "keyword": round(kw_w, 3)},
+    })
+    
+    # This debug block is no longer needed as the hydration logic is fixed.
+    # try:
+    #     sorted_merged = sorted(merged_by_id.values(), key=lambda x: x.get('combined_score', 0.0), reverse=True)
+    #     print(f"--- TOP 5 MERGED FOR TERM '{term}' (BEFORE RERANK) ---")
+    #     for i, item in enumerate(sorted_merged[:5]):
+    #         content_preview = (item.get('content') or 'NO CONTENT').strip().replace('\\n', ' ')[:100]
+    #         print(f"  #{i+1}: id={item.get('id')}, score={item.get('combined_score'):.4f}, content='{content_preview}...'")
+    #     print("----------------------------------------------------")
+    # except Exception as e:
+    #     print(f"[WARN] Failed to print top merged results for term '{term}': {e}")
+
+    return {"term": term, "merged_results": merged_by_id}

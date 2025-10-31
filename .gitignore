@@ -319,3 +319,30 @@ app/**/*.json
 
 # Google Cloud credentials
 google-credentials.json
+
+# Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts (optional safety)
+build/
+dist/
+*.egg-info/
+app/__pycache__/main.cpython-313.pyc
+app/api/file_ops/__pycache__/__init__.cpython-313.pyc
+app/api/file_ops/__pycache__/chunk.cpython-313.pyc
+app/api/file_ops/__pycache__/embed.cpython-313.pyc
+app/api/file_ops/__pycache__/extract_text_api.cpython-313.pyc
+app/api/file_ops/__pycache__/ocr.cpython-313.pyc
+app/api/file_ops/__pycache__/search_docs.cpython-313.pyc
+app/api/file_ops/__pycache__/upload.cpython-313.pyc
+app/api/gdrive_ops/__pycache__/router.cpython-313.pyc
+app/core/__pycache__/config.cpython-313.pyc
+app/core/__pycache__/extract_text.cpython-313.pyc
+app/core/__pycache__/llm_answer_extraction.cpython-313.pyc
+app/core/__pycache__/openai_client.cpython-313.pyc
+app/core/__pycache__/token_utils.cpython-313.pyc
+app/services/__pycache__/file_processing_service.cpython-313.pyc
+app/workers/__pycache__/main_worker.cpython-313.pyc
