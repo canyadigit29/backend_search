@@ -1,6 +1,9 @@
 import os
 import asyncio
-from fastapi import FastAPI, BackgroundTasks
+import time
+import uuid
+import logging
+from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import the new unified worker
@@ -12,6 +15,15 @@ from app.api.gdrive_ops import router as gdrive_router
 from app.api.query_analyzer import router as query_analyzer_router
 from app.api.rag import router as rag_router
 from app.core.config import settings
+from app.core.logger import setup_logging, request_id_var, log_info
+from app.core.logging_config import setup_logging, set_request_id
+import uuid
+from fastapi import Request
+
+setup_logging()
+
+# Initialize logging early
+setup_logging()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -29,6 +41,40 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Lightweight request logging with request id propagation
+@app.middleware("http")
+async def request_logging_middleware(request: Request, call_next):
+    rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    token = request_id_var.set(rid)
+    start = time.perf_counter()
+    try:
+        log_info(logging.getLogger("request"), "request.start", {
+            "path": request.url.path,
+            "method": request.method,
+        })
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start) * 1000.0
+        response.headers["X-Request-ID"] = rid
+        log_info(logging.getLogger("request"), "request.end", {
+            "path": request.url.path,
+            "method": request.method,
+            "status": getattr(response, "status_code", None),
+            "duration_ms": round(duration_ms, 2),
+        })
+        return response
+    finally:
+        request_id_var.reset(token)
+
+
+@app.middleware("http")
+async def add_request_id_middleware(request: Request, call_next):
+    # Generate a per-request ID for correlation
+    req_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    set_request_id(req_id)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = req_id
+    return response
 
 @app.get("/")
 async def root():

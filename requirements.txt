@@ -1,7 +1,7 @@
 aiofiles
 fastapi
 httpx
-openai
+openai>=2.6.1
 psycopg2-binary
 pydantic
 python-dotenv
