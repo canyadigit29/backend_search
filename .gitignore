@@ -316,6 +316,7 @@ app/**/*.json
 # app/some_folder/generated.json
 # Environment variables
 .env
+.env.example
 
 # Google Cloud credentials
 google-credentials.json
