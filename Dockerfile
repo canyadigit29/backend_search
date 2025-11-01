@@ -4,7 +4,14 @@ WORKDIR /app
 
 # Install dependencies
 COPY requirements.txt .
-RUN apt-get update && apt-get install -y gawk poppler-utils tesseract-ocr && \
+RUN apt-get update && apt-get install -y \
+        gawk \
+        poppler-utils \
+        tesseract-ocr \
+        ghostscript \
+        qpdf \
+        pngquant \
+    && \
     pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
