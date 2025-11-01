@@ -98,6 +98,35 @@ def _delete_vs_file(client: OpenAI, vector_store_id: str, file_id: str):
         logger.warning(f"Detached but failed deleting OpenAI file: {last_err}")
 
 
+def _flexible_detach(client: OpenAI, vector_store_id: str, vs_file_id: Optional[str], openai_file_id: Optional[str]) -> bool:
+    """Attempt to detach using either vs_file_id or openai_file_id, tolerant of variants.
+    Returns True if detachment appears successful or the file was already absent.
+    """
+    candidates = [c for c in [openai_file_id, vs_file_id] if c]
+    if not candidates:
+        return True  # nothing to detach
+
+    # Try modern and beta namespaces; tolerate 404s/not-found
+    for cid in candidates:
+        last_err = None
+        for api in [getattr(client, "vector_stores", None), getattr(getattr(client, "beta", None), "vector_stores", None)]:
+            if api is None:
+                continue
+            for attr in ["delete", "del"]:
+                try:
+                    getattr(api.files, attr)(vector_store_id=vector_store_id, file_id=cid)
+                    last_err = None
+                    return True
+                except Exception as e:
+                    msg = f"{e}".lower()
+                    if any(s in msg for s in ["not found", "no such", "not attached", "already"]) or getattr(e, "status", None) == 404:
+                        return True
+                    last_err = e
+        if last_err:
+            logger.debug(f"Detach attempt failed for candidate id {cid}: {last_err}")
+    return False
+
+
 @router.post("/upload", response_model=list[UploadResult])
 async def upload_to_vector_store(
     workspace_id: str = Form(...),
@@ -208,6 +237,118 @@ def delete_vector_store_file(file_id: str, workspace_id: str = Query(...)):
     client = OpenAI()
     _delete_vs_file(client, vector_store_id, file_id)
     return {"ok": True}
+
+
+class SoftDeleteBody(BaseModel):
+    workspace_id: str
+    file_id: str
+    also_delete_openai: bool = False
+    also_delete_storage: bool = True
+
+
+@router.post("/file/soft-delete")
+def soft_delete_file(body: SoftDeleteBody):
+    """
+    Per-workspace soft delete:
+    - Detach from Vector Store using stored ids (vs_file_id/openai_file_id)
+    - Optionally delete the underlying OpenAI File and Storage object
+    - Mark file_workspaces.deleted=true, ingested=false, clear ids, set deleted_at
+    """
+    ws_id = body.workspace_id
+    file_id = body.file_id
+    vector_store_id = _get_vector_store_id(ws_id)
+
+    # Lookup join row + file path
+    try:
+        sel = (
+            "openai_file_id, vs_file_id, ingested, deleted, files(file_path,name)"
+        )
+        res = (
+            supabase.table("file_workspaces")
+            .select(sel)
+            .eq("workspace_id", ws_id)
+            .eq("file_id", file_id)
+            .maybe_single()
+            .execute()
+        )
+        row = getattr(res, "data", None)
+        if not row:
+            raise HTTPException(status_code=404, detail="file_workspaces row not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Supabase error getting join row: {e}")
+        raise HTTPException(status_code=500, detail="Failed to query file_workspaces")
+
+    # Detach (tolerant)
+    client = OpenAI()
+    try:
+        _flexible_detach(client, vector_store_id, row.get("vs_file_id"), row.get("openai_file_id"))
+    except Exception as e:
+        logger.warning(f"Detach attempt reported error (continuing): {e}")
+
+    # Optionally delete OpenAI File
+    if body.also_delete_openai and row.get("openai_file_id"):
+        last_err = None
+        for attr in ["delete", "del"]:
+            try:
+                getattr(client.files, attr)(row["openai_file_id"])  # type: ignore
+                last_err = None
+                break
+            except Exception as e:
+                last_err = e
+        if last_err:
+            logger.warning(f"Failed deleting OpenAI file {row.get('openai_file_id')}: {last_err}")
+
+    # Optionally delete storage object
+    f = row.get("files") or {}
+    if body.also_delete_storage and f.get("file_path"):
+        try:
+            supabase.storage.from_(os.getenv("SUPABASE_STORAGE_BUCKET", "files")).remove([f["file_path"]])  # type: ignore
+        except Exception as e:
+            logger.warning(f"Failed removing storage object {f.get('file_path')}: {e}")
+
+    # Update join flags
+    try:
+        supabase.table("file_workspaces").update(
+            {
+                "deleted": True,
+                "deleted_at": __import__("datetime").datetime.utcnow().isoformat(),
+                "ingested": False,
+                "openai_file_id": None,
+                "vs_file_id": None,
+            }
+        ).eq("workspace_id", ws_id).eq("file_id", file_id).execute()
+    except Exception as e:
+        logger.error(f"Failed to update file_workspaces soft-delete flags: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update soft-delete flags")
+
+    return {"ok": True}
+
+
+@router.get("/file/status")
+def get_file_status(file_id: str = Query(...), workspace_id: str = Query(...)):
+    """
+    Return per-workspace state for a file: ingested/deleted flags and stored IDs.
+    """
+    try:
+        res = (
+            supabase.table("file_workspaces")
+            .select("ingested,deleted,deleted_at,openai_file_id,vs_file_id,files(name,file_path,ocr_scanned,ocr_needed)")
+            .eq("workspace_id", workspace_id)
+            .eq("file_id", file_id)
+            .maybe_single()
+            .execute()
+        )
+        row = getattr(res, "data", None)
+        if not row:
+            raise HTTPException(status_code=404, detail="file_workspaces row not found")
+        return row
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get file status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get file status")
 
 
 @router.post("/gdrive/sync", status_code=202)
