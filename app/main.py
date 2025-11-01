@@ -11,6 +11,7 @@ from app.workers.main_worker import MainWorker
 
 # Import existing, still-needed routers
 from app.api.file_ops import upload, search_docs, embed_api, extract_text_api
+from app.api.file_ops import ocr_searchable_pdf
 from app.api.gdrive_ops import router as gdrive_router
 from app.api.query_analyzer import router as query_analyzer_router
 from app.api.rag import router as rag_router
@@ -95,6 +96,7 @@ app.include_router(upload.router, prefix=settings.API_PREFIX)
 app.include_router(search_docs.router, prefix=settings.API_PREFIX)
 app.include_router(embed_api.router, prefix=settings.API_PREFIX)
 app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)
+app.include_router(ocr_searchable_pdf.router, prefix=settings.API_PREFIX)
 app.include_router(gdrive_router.router, prefix=f"{settings.API_PREFIX}/gdrive")
 app.include_router(query_analyzer_router.router, prefix=settings.API_PREFIX)
 app.include_router(rag_router.router, prefix=f"{settings.API_PREFIX}/search")
