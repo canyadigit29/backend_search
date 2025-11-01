@@ -34,16 +34,21 @@ def _resolve_vector_store_id() -> str:
     raise HTTPException(status_code=404, detail="Vector store id not configured or not found for workspace")
 
 
-def _attach_file_to_vector_store(client: OpenAI, vector_store_id: str, file_id: str):
+def _attach_file_to_vector_store(client: OpenAI, vector_store_id: str, file_id: str) -> Optional[str]:
+    """Attach an OpenAI File to a Vector Store and return the VS file id if available."""
     last_err = None
+    # Try modern namespace first
     try:
-        client.vector_stores.files.create(vector_store_id=vector_store_id, file_id=file_id)
-        return
+        res = client.vector_stores.files.create(vector_store_id=vector_store_id, file_id=file_id)
+        return getattr(res, "id", None)
     except Exception as e:
         last_err = e
+    # Beta namespace fallback
     try:
-        getattr(client, "beta").vector_stores.files.create(vector_store_id=vector_store_id, file_id=file_id)  # type: ignore
-        return
+        res = getattr(client, "beta").vector_stores.files.create(  # type: ignore
+            vector_store_id=vector_store_id, file_id=file_id
+        )
+        return getattr(res, "id", None)
     except Exception as e2:
         last_err = e2
     raise RuntimeError(f"Attach failed: {last_err}")
@@ -62,27 +67,38 @@ def _retry_call(fn, *args, retries=4, base_delay=1.0, **kwargs):
             delay *= 2
 
 
-def _get_eligible_files(limit: int) -> List[Dict]:
-    """Pick files that should be uploaded to the Vector Store.
-    Policy: ingested=False (repurposed), and either (ocr_needed=False) or (ocr_scanned=True).
+def _get_eligible_files(limit: int, workspace_id: Optional[str]) -> List[Dict]:
+    """Pick files that should be uploaded to the Vector Store for a workspace.
+    Policy (per-workspace): file_workspaces.ingested=False AND deleted=False AND
+    either (files.ocr_needed=False) OR (files.ocr_scanned=True).
     """
+    if not workspace_id:
+        logger.error("Workspace id not provided for VS ingestion worker")
+        return []
     try:
+        # Join file_workspaces with files to get paths and OCR fields
+        sel = (
+            "file_id, workspace_id, ingested, deleted, openai_file_id, vs_file_id, "
+            "files(id,name,file_path,type,ocr_needed,ocr_scanned,ocr_text_path)"
+        )
         q = (
-            supabase.table("files")
-            .select("id,name,file_path,type,ocr_needed,ocr_scanned,ocr_text_path,ingested")
+            supabase.table("file_workspaces")
+            .select(sel)
+            .eq("workspace_id", workspace_id)
             .eq("ingested", False)
+            .eq("deleted", False)
             .limit(limit)
         )
-        # Supabase Python client doesn't support OR directly; fetch and filter in memory
         res = q.execute()
         rows = getattr(res, "data", []) or []
         eligible = []
         for r in rows:
-            if (not r.get("ocr_needed")) or (r.get("ocr_scanned")):
+            f = r.get("files") or {}
+            if (not f.get("ocr_needed")) or f.get("ocr_scanned"):
                 eligible.append(r)
         return eligible
     except Exception as e:
-        logger.error(f"Failed to query eligible files: {e}")
+        logger.error(f"Failed to query eligible files (per-workspace): {e}")
         return []
 
 
@@ -97,15 +113,17 @@ async def upload_missing_files_to_vector_store():
     per_call_sleep = delay_ms / 1000.0
     batch_limit = max(1, int(settings.VS_UPLOAD_BATCH_LIMIT))
 
-    files = _get_eligible_files(batch_limit)
+    workspace_id = settings.GDRIVE_WORKSPACE_ID
+    files = _get_eligible_files(batch_limit, workspace_id)
     uploaded = 0
     skipped = 0
     errors = 0
 
-    for f in files:
-        file_id = f["id"]
+    for fw in files:
+        file_id = fw["file_id"]
+        f = fw.get("files") or {}
         name = f.get("name") or os.path.basename(f.get("file_path", "")) or f"file-{file_id}"
-        file_path = f["file_path"]
+        file_path = f.get("file_path")
         content_type = f.get("type", "application/octet-stream")
 
         # Prefer OCR text if available
@@ -113,7 +131,7 @@ async def upload_missing_files_to_vector_store():
         try:
             if f.get("ocr_scanned") and f.get("ocr_text_path"):
                 try:
-                    content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(f["ocr_text_path"])
+                    content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(f["ocr_text_path"])  # type: ignore
                     with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="wb") as tmp:
                         tmp.write(content if isinstance(content, (bytes, bytearray)) else content.encode("utf-8"))
                         temp_path = tmp.name
@@ -121,7 +139,7 @@ async def upload_missing_files_to_vector_store():
                     logger.warning(f"Failed downloading OCR text for {name}, falling back to original: {e}")
 
             if temp_path is None:
-                content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)
+                content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)  # type: ignore
                 suffix = os.path.splitext(name)[1] or ".bin"
                 with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                     tmp.write(content)
@@ -135,13 +153,16 @@ async def upload_missing_files_to_vector_store():
             created = _retry_call(_create_file, temp_path, retries=4, base_delay=1.0)
 
             # Attach to Vector Store with retry/backoff
-            _retry_call(_attach_file_to_vector_store, client, vector_store_id, created.id, retries=4, base_delay=1.0)
+            vs_file_id = _retry_call(_attach_file_to_vector_store, client, vector_store_id, created.id, retries=4, base_delay=1.0)
 
-            # Mark as ingested=True to indicate VS upload success
+            # Mark per-workspace ingestion success on file_workspaces
             try:
-                supabase.table("files").update({"ingested": True}).eq("id", file_id).execute()
+                upd = {"ingested": True, "openai_file_id": created.id}
+                if vs_file_id:
+                    upd["vs_file_id"] = vs_file_id
+                supabase.table("file_workspaces").update(upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
             except Exception as e:
-                logger.warning(f"Uploaded {name} to VS but failed to mark ingested=True: {e}")
+                logger.warning(f"Uploaded {name} to VS but failed to mark file_workspaces.ingested=True: {e}")
 
             uploaded += 1
             if per_call_sleep:

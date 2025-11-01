@@ -226,7 +226,8 @@ async def trigger_gdrive_sync(background_tasks: BackgroundTasks):
 @router.post("/vector-store/ingest", status_code=202)
 async def trigger_vector_store_ingest(background_tasks: BackgroundTasks):
     """
-    Process backlog of Supabase files with ingested=False and upload them to the
+    Process backlog of Supabase files for the configured workspace where
+    file_workspaces.ingested = false AND deleted = false, and upload them to the
     workspace Vector Store with retry/backoff and a configurable rate limit.
     """
     background_tasks.add_task(upload_missing_files_to_vector_store)
