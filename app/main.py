@@ -7,7 +7,8 @@ from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import the new unified worker
-from app.workers.main_worker import MainWorker
+# Old background worker (legacy ingestion) intentionally disabled
+# from app.workers.main_worker import MainWorker
 
 # Import existing, still-needed routers
 from app.api.file_ops import upload, search_docs, embed_api, extract_text_api
@@ -82,15 +83,10 @@ async def add_request_id_middleware(request: Request, call_next):
 async def root():
     return {"message": f"{settings.PROJECT_NAME} is running."}
 
-# New endpoint to manually trigger the worker
+# Legacy worker route disabled
 @app.post("/api/run-worker")
-async def run_worker_manually(background_tasks: BackgroundTasks):
-    """
-    Manually triggers a one-off run of the background worker to perform OCR and Ingestion tasks.
-    """
-    background_tasks.add_task(MainWorker.run_ocr_task)
-    background_tasks.add_task(MainWorker.run_ingestion_task)
-    return {"message": "Background worker tasks (OCR and Ingestion) have been triggered."}
+async def run_worker_manually_disabled():
+    return {"message": "Legacy ingestion worker disabled. Use /api/responses/gdrive/sync and /api/responses/vector-store/ingest instead."}
 
 # Mount all the necessary routers
 app.include_router(upload.router, prefix=settings.API_PREFIX)

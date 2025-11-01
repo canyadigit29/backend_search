@@ -25,6 +25,13 @@ class Settings:
     GOOGLE_CREDENTIALS_BASE64: str = os.getenv("GOOGLE_CREDENTIALS_BASE64", "").strip()
     GOOGLE_ADMIN_EMAIL: str = os.getenv("GOOGLE_ADMIN_EMAIL", "").strip()
     GOOGLE_DRIVE_FOLDER_ID: str = os.getenv("GOOGLE_DRIVE_FOLDER_ID", "").strip()
+    GDRIVE_SYNC_INTERVAL_MINUTES: int = int(os.getenv("GDRIVE_SYNC_INTERVAL_MINUTES", "60").strip() or 60)
+    # Workspace/Vector Store targeting for Responses GDrive sync
+    GDRIVE_WORKSPACE_ID: str = os.getenv("GDRIVE_WORKSPACE_ID", "").strip()
+    GDRIVE_VECTOR_STORE_ID: str = os.getenv("GDRIVE_VECTOR_STORE_ID", "").strip()
+    # Vector Store upload worker tuning
+    VS_UPLOAD_DELAY_MS: int = int(os.getenv("VS_UPLOAD_DELAY_MS", "1000").strip() or 1000)
+    VS_UPLOAD_BATCH_LIMIT: int = int(os.getenv("VS_UPLOAD_BATCH_LIMIT", "25").strip() or 25)
 
     # ⚙️ Env
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development").strip()

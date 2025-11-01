@@ -4,7 +4,7 @@ import tempfile
 import logging
 from typing import List, Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel
 
 from openai import OpenAI
@@ -12,6 +12,8 @@ from openai import OpenAI
 from app.core.supabase_client import supabase
 
 from app.core.extract_text import extract_text
+from .gdrive_sync import run_responses_gdrive_sync
+from .vs_ingest_worker import upload_missing_files_to_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -206,3 +208,26 @@ def delete_vector_store_file(file_id: str, workspace_id: str = Query(...)):
     client = OpenAI()
     _delete_vs_file(client, vector_store_id, file_id)
     return {"ok": True}
+
+
+@router.post("/gdrive/sync", status_code=202)
+async def trigger_gdrive_sync(background_tasks: BackgroundTasks):
+    """
+    Kick off a background Google Drive → Supabase sync that:
+    - Finds new files in the configured Drive folder
+    - Uploads to Supabase Storage + files table
+    - For PDFs, performs OCR only when text extraction is insufficient
+    - Does NOT run chunk/embedding
+    """
+    background_tasks.add_task(run_responses_gdrive_sync)
+    return {"message": "GDrive sync (Supabase upload + OCR, no embedding) started."}
+
+
+@router.post("/vector-store/ingest", status_code=202)
+async def trigger_vector_store_ingest(background_tasks: BackgroundTasks):
+    """
+    Process backlog of Supabase files with ingested=False and upload them to the
+    workspace Vector Store with retry/backoff and a configurable rate limit.
+    """
+    background_tasks.add_task(upload_missing_files_to_vector_store)
+    return {"message": "Vector Store ingestion (pending files) started."}
