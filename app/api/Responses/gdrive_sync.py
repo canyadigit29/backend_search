@@ -133,6 +133,25 @@ async def run_responses_gdrive_sync():
             return s.strip("-").lower()
 
         workspace_id = settings.GDRIVE_WORKSPACE_ID or ""
+        # Ingest user to attribute ownership for joins; prefer workspace owner if available
+        ingest_user_id: Optional[str] = None
+        if workspace_id:
+            try:
+                ws = (
+                    supabase.table("workspaces")
+                    .select("user_id")
+                    .eq("id", workspace_id)
+                    .maybe_single()
+                    .execute()
+                )
+                row = getattr(ws, "data", None)
+                if row and row.get("user_id"):
+                    ingest_user_id = row["user_id"]
+            except Exception:
+                ingest_user_id = None
+        # Fallback to the same system user used when creating files if workspace owner isn't found
+        if not ingest_user_id:
+            ingest_user_id = "773e2630-2cca-44c3-957c-0cf5ccce7411"
 
         for gfile in new_files:
             file_id = gfile["id"]
@@ -153,7 +172,7 @@ async def run_responses_gdrive_sync():
 
             # Upload to Supabase first (source-of-truth)
             result = await FileProcessingService.upload_and_register_file(
-                user_id="773e2630-2cca-44c3-957c-0cf5ccce7411",
+                user_id=ingest_user_id,
                 file_content=raw_bytes,
                 file_name=file_name,
                 content_type=content_type,
@@ -168,6 +187,7 @@ async def run_responses_gdrive_sync():
                 if workspace_id:
                     norm = _normalize_name(file_name)
                     payload = {
+                        "user_id": ingest_user_id,
                         "workspace_id": workspace_id,
                         "file_id": file_rec_id,
                         "normalized_name": norm,
@@ -192,8 +212,10 @@ async def run_responses_gdrive_sync():
                         row = None
                     if row:
                         supabase.table("file_workspaces").update(payload).eq("workspace_id", workspace_id).eq("normalized_name", norm).execute()
+                        logger.info(f"[responses.gdrive] file_workspaces updated: ws={workspace_id} name={file_name} norm={norm}")
                     else:
                         supabase.table("file_workspaces").insert(payload).execute()
+                        logger.info(f"[responses.gdrive] file_workspaces inserted: ws={workspace_id} name={file_name} norm={norm}")
             except Exception as e:
                 logger.warning(f"Failed to upsert file_workspaces join for {file_name}: {e}")
 
@@ -298,9 +320,36 @@ async def run_responses_gdrive_sync():
                 except Exception as e:
                     logger.warning(f"DB delete failed for file id {file_id}: {e}")
 
-                # Vector Store delete by filename (best-effort)
-                if client and vector_store_id and vs_name_to_ids.get(file_name):
-                    for fid in list(vs_name_to_ids[file_name]):
+                # Vector Store delete: prefer IDs from file_workspaces, fallback to filename map
+                if client and vector_store_id:
+                    # Try using stored IDs first
+                    fw = None
+                    try:
+                        if workspace_id:
+                            fw_res = (
+                                supabase.table("file_workspaces")
+                                .select("openai_file_id, vs_file_id, normalized_name")
+                                .eq("workspace_id", workspace_id)
+                                .eq("file_id", file_id)
+                                .maybe_single()
+                                .execute()
+                            )
+                            fw = getattr(fw_res, "data", None)
+                    except Exception:
+                        fw = None
+
+                    candidate_ids = []
+                    if fw:
+                        if fw.get("openai_file_id"):
+                            candidate_ids.append(fw["openai_file_id"])  # OpenAI File ID
+                        if fw.get("vs_file_id") and fw["vs_file_id"] not in candidate_ids:
+                            candidate_ids.append(fw["vs_file_id"])     # Vector Store file id (if applicable)
+
+                    detached_any = False
+                    deleted_any = False
+
+                    # Attempt detach/delete using stored IDs
+                    for fid in candidate_ids:
                         # Detach from VS
                         detached = False
                         for attr in ("delete", "del"):
@@ -322,20 +371,61 @@ async def run_responses_gdrive_sync():
                                         pass
                             except Exception:
                                 pass
+                        if detached:
+                            detached_any = True
+                            vs_deleted += 1
 
-                        # Delete underlying OpenAI file
-                        try:
+                        # Delete underlying OpenAI file (try both ids)
+                        for did in (fid,):
+                            try:
+                                for attr in ("delete", "del"):
+                                    try:
+                                        getattr(client.files, attr)(did)
+                                        deleted_any = True
+                                        break
+                                    except Exception:
+                                        continue
+                            except Exception:
+                                pass
+
+                    # Fallback: use filename mapping if no stored IDs or all attempts failed
+                    if not detached_any and vs_name_to_ids.get(file_name):
+                        for fid in list(vs_name_to_ids[file_name]):
+                            # Detach from VS
+                            detached = False
                             for attr in ("delete", "del"):
                                 try:
-                                    getattr(client.files, attr)(fid)
+                                    getattr(client.vector_stores.files, attr)(vector_store_id=vector_store_id, file_id=fid)
+                                    detached = True
                                     break
                                 except Exception:
-                                    continue
-                        except Exception:
-                            pass
+                                    pass
+                            if not detached:
+                                try:
+                                    beta = getattr(client, "beta")
+                                    for attr in ("delete", "del"):
+                                        try:
+                                            getattr(beta.vector_stores.files, attr)(vector_store_id=vector_store_id, file_id=fid)
+                                            detached = True
+                                            break
+                                        except Exception:
+                                            pass
+                                except Exception:
+                                    pass
 
-                        if detached:
-                            vs_deleted += 1
+                            # Delete underlying OpenAI file
+                            try:
+                                for attr in ("delete", "del"):
+                                    try:
+                                        getattr(client.files, attr)(fid)
+                                        break
+                                    except Exception:
+                                        continue
+                            except Exception:
+                                pass
+
+                            if detached:
+                                vs_deleted += 1
 
         return {"status": "success", "new_files_processed": processed, "ocr_started": ocr_started, "files_deleted": deleted, "vs_deleted": vs_deleted}
 
