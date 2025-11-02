@@ -121,6 +121,15 @@ async def run_responses_gdrive_sync():
         processed = 0
         ocr_started = 0
 
+        def _normalize_name(name: str) -> str:
+            base = os.path.splitext(name or "")[0]
+            import re
+            s = re.sub(r"[^a-zA-Z0-9]+", "-", base.strip())
+            s = re.sub(r"-+", "-", s)
+            return s.strip("-").lower()
+
+        workspace_id = settings.GDRIVE_WORKSPACE_ID or ""
+
         for gfile in new_files:
             file_id = gfile["id"]
             file_name = gfile["name"]
@@ -149,6 +158,40 @@ async def run_responses_gdrive_sync():
             processed += 1
             file_rec_id = result["file_id"]
             file_path = result["file_path"]
+
+            # Upsert per-workspace join row so VS ingest worker can act
+            try:
+                if workspace_id:
+                    norm = _normalize_name(file_name)
+                    payload = {
+                        "workspace_id": workspace_id,
+                        "file_id": file_rec_id,
+                        "normalized_name": norm,
+                        "ingested": False,
+                        "deleted": False,
+                        "deleted_at": None,
+                        "openai_file_id": None,
+                        "vs_file_id": None,
+                    }
+                    # Update-if-exists else insert
+                    try:
+                        sel = (
+                            supabase.table("file_workspaces")
+                            .select("file_id")
+                            .eq("workspace_id", workspace_id)
+                            .eq("normalized_name", norm)
+                            .maybe_single()
+                            .execute()
+                        )
+                        row = getattr(sel, "data", None)
+                    except Exception:
+                        row = None
+                    if row:
+                        supabase.table("file_workspaces").update(payload).eq("workspace_id", workspace_id).eq("normalized_name", norm).execute()
+                    else:
+                        supabase.table("file_workspaces").insert(payload).execute()
+            except Exception as e:
+                logger.warning(f"Failed to upsert file_workspaces join for {file_name}: {e}")
 
             # If PDF, decide whether to OCR
             if file_name.lower().endswith(".pdf"):
@@ -239,6 +282,13 @@ async def run_responses_gdrive_sync():
                 except Exception as e:
                     logger.warning(f"Storage remove failed for {file_path}: {e}")
                 try:
+                    # Best-effort: remove per-workspace join before deleting file row (in case FK is not cascading)
+                    try:
+                        if workspace_id:
+                            supabase.table("file_workspaces").delete().eq("workspace_id", workspace_id).eq("file_id", file_id).execute()
+                    except Exception as je:
+                        logger.debug(f"file_workspaces delete warning for file {file_id}: {je}")
+
                     supabase.table("files").delete().eq("id", file_id).execute()
                     deleted += 1
                 except Exception as e:

@@ -88,13 +88,15 @@ async def root():
 async def run_worker_manually_disabled():
     return {"message": "Legacy ingestion worker disabled. Use /api/responses/gdrive/sync and /api/responses/vector-store/ingest instead."}
 
-# Mount all the necessary routers
-app.include_router(upload.router, prefix=settings.API_PREFIX)
-app.include_router(search_docs.router, prefix=settings.API_PREFIX)
-app.include_router(embed_api.router, prefix=settings.API_PREFIX)
-app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)
-app.include_router(ocr_searchable_pdf.router, prefix=settings.API_PREFIX)
-app.include_router(gdrive_router.router, prefix=f"{settings.API_PREFIX}/gdrive")
-app.include_router(query_analyzer_router.router, prefix=settings.API_PREFIX)
-app.include_router(rag_router.router, prefix=f"{settings.API_PREFIX}/search")
+# Mount routers: keep Responses; gate legacy behind ENABLE_LEGACY_ROUTES
+if settings.ENABLE_LEGACY_ROUTES:
+    app.include_router(upload.router, prefix=settings.API_PREFIX)
+    app.include_router(search_docs.router, prefix=settings.API_PREFIX)
+    app.include_router(embed_api.router, prefix=settings.API_PREFIX)
+    app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)
+    app.include_router(ocr_searchable_pdf.router, prefix=settings.API_PREFIX)
+    app.include_router(gdrive_router.router, prefix=f"{settings.API_PREFIX}/gdrive")
+    app.include_router(query_analyzer_router.router, prefix=settings.API_PREFIX)
+    app.include_router(rag_router.router, prefix=f"{settings.API_PREFIX}/search")
+
 app.include_router(responses_router, prefix=settings.API_PREFIX)
