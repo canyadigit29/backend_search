@@ -38,6 +38,8 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "True").strip() == "True"
     # Toggle to expose legacy routers (file_ops, rag, query_analyzer, gdrive_ops legacy)
     ENABLE_LEGACY_ROUTES: bool = os.getenv("ENABLE_LEGACY_ROUTES", "False").strip().lower() in ("1", "true", "yes")
+    # Toggle for Responses Google Drive sync endpoints and worker
+    ENABLE_RESPONSES_GDRIVE_SYNC: bool = os.getenv("ENABLE_RESPONSES_GDRIVE_SYNC", "True").strip().lower() in ("1", "true", "yes")
 
     # 🪵 Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").strip()

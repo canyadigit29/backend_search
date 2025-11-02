@@ -104,6 +104,10 @@ async def run_responses_gdrive_sync():
     storage and DB, and we also attempt to detach/delete it from the configured
     Vector Store by matching filename.
     """
+    # Early exit if disabled in configuration
+    if not settings.ENABLE_RESPONSES_GDRIVE_SYNC:
+        logger.info("[responses.gdrive] Sync is disabled by configuration (ENABLE_RESPONSES_GDRIVE_SYNC=false)")
+        return {"status": "disabled"}
     try:
         service = _get_drive_service()
 

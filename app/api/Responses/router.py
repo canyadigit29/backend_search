@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from openai import OpenAI
 
 from app.core.supabase_client import supabase
+from app.core.config import settings
 
 from app.core.extract_text import extract_text
 from .gdrive_sync import run_responses_gdrive_sync
@@ -533,6 +534,8 @@ async def trigger_gdrive_sync(background_tasks: BackgroundTasks):
     - For PDFs, performs OCR only when text extraction is insufficient
     - Does NOT run chunk/embedding
     """
+    if not settings.ENABLE_RESPONSES_GDRIVE_SYNC:
+        raise HTTPException(status_code=403, detail="GDrive sync is disabled by configuration (ENABLE_RESPONSES_GDRIVE_SYNC=false)")
     background_tasks.add_task(run_responses_gdrive_sync)
     return {"message": "GDrive sync (Supabase upload + OCR, no embedding) started."}
 
