@@ -13,14 +13,10 @@ from fastapi.middleware.cors import CORSMiddleware
 # Import existing, still-needed routers
 from app.api.Responses import router as responses_router
 from app.core.config import settings
-from app.core.logger import setup_logging, request_id_var, log_info
+from app.core.logger import request_id_var, log_info
 from app.core.logging_config import setup_logging, set_request_id
-import uuid
-from fastapi import Request
 
-setup_logging()
-
-# Initialize logging early
+# Initialize logging early (single call)
 setup_logging()
 
 app = FastAPI(

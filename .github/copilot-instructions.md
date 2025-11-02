@@ -21,7 +21,13 @@ Retrieval is now performed by the frontend via the OpenAI Responses API + File S
 ## Summary generation
 - If `SEARCH_ASSISTANT_ID` is set, the service uses the OpenAI Assistants API to return JSON with `summary_markdown`, `used_source_labels`, `follow_up_questions`.
 - If assistant output is missing or incomplete, the API responds with `fallback_text` and still returns ordered `sources`.
- - Considering migration to the OpenAI Responses API + File Search? Port persona to `instructions`, attach your `vector_store_id`, and keep the rerank/hydration stages. See `openai-cookbook/openai-responses-mini-cookbook.md` and `openai-cookbook/openai-vector-stores-guide.md`.
+ - Considering migration to the OpenAI Responses API + File Search? Port persona to `instructions`, attach your `vector_store_id`, and keep the rerank/hydration stages. See in the sibling `openai-cookbook` folder:
+   - `Responses_API_Complete_Cheat_Sheet (1).md` (Complete Responses API interaction cheat sheet)
+   - `openai-responses-mini-cookbook.md` (Responses API)
+   - `file_search_reference.md` (File Search specifics)
+   - `openai-vector-stores-guide.md` (Vector Stores end-to-end + ops)
+   - `OpenAI_Vector_Store_Complete_Interaction_Cheat_Sheet.md` (complete endpoint map)
+   - `OpenAI_Vector_Store_Endpoints_Cheat_Sheet.pdf` (endpoint quick lookup)
 
 ## Logging & debugging
 - Structured logs with request IDs (`X-Request-ID`), set in middleware (`app/main.py`).
