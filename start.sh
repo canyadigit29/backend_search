@@ -13,17 +13,14 @@ export PYTHONPATH=.
 echo "Initializing..."
 sleep 5
 
-# Start the background workers.
-# Their output is piped to awk to add a prefix, making logs easier to read.
+# Start the background worker loop(s).
+# Unified loop: GDrive sync -> OCR sweep -> Vector Store ingestion, on a single cadence.
 if [ "${ENABLE_RESPONSES_GDRIVE_SYNC}" = "true" ] || [ "${ENABLE_RESPONSES_GDRIVE_SYNC}" = "1" ]; then
-  echo "Starting Responses Google Drive sync worker..."
-  python run_gdrive_sync_responses.py | awk '{ print "[gdrive-sync-responses] " $0 }' &
+  echo "Starting unified Responses worker (sync + OCR + VS ingest)..."
+  python run_gdrive_sync_responses.py | awk '{ print "[responses-worker] " $0 }' &
 else
-  echo "Responses GDrive sync worker disabled (ENABLE_RESPONSES_GDRIVE_SYNC is not set)."
+  echo "Responses worker disabled (ENABLE_RESPONSES_GDRIVE_SYNC is not set)."
 fi
-
-echo "Starting ingestion worker (attachments to Vector Store)..."
-python run_worker.py | awk '{ print "[ingestion-worker] " $0 }' &
 
 # Start the Uvicorn server in the foreground. This must be the last command.
 PORT_TO_USE="${PORT:-8000}"

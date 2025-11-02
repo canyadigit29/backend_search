@@ -3,6 +3,7 @@ import logging
 from app.api.Responses.gdrive_sync import run_responses_gdrive_sync
 from app.api.Responses.vs_ingest_worker import upload_missing_files_to_vector_store
 from app.core.config import settings
+from app.workers.main_worker import MainWorker
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,6 +20,15 @@ async def main():
             logger.info("Running scheduled Responses GDrive sync...")
             result = await run_responses_gdrive_sync()
             logger.info(f"Responses GDrive sync finished: {result}")
+
+            # Run OCR sweep on the same cadence so eligible PDFs gain a text layer
+            # before attempting Vector Store ingestion.
+            try:
+                logger.info("Running scheduled OCR sweep (OCRmyPDF where needed)...")
+                await MainWorker.run_ocr_task()
+                logger.info("OCR sweep finished")
+            except Exception as ocr_e:
+                logger.error(f"OCR sweep encountered an error: {ocr_e}")
 
             logger.info("Running scheduled Vector Store ingestion (pending files)...")
             vs_result = await upload_missing_files_to_vector_store()
