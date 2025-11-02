@@ -2,6 +2,7 @@ import logging
 import asyncio
 from app.core.supabase_client import supabase
 from app.services.file_processing_service import FileProcessingService
+from app.api.Responses.vs_ingest_worker import upload_missing_files_to_vector_store
 
 logger = logging.getLogger(__name__)
 
@@ -89,5 +90,10 @@ class MainWorker:
             logger.info("--- Worker cycle starting ---")
             await MainWorker.run_ocr_task()
             await MainWorker.run_ingestion_task()
+            # Attach eligible files to Vector Store (Responses flow)
+            try:
+                await upload_missing_files_to_vector_store()
+            except Exception as e:
+                logger.warning(f"VS ingest worker run encountered an error (continuing): {e}")
             logger.info(f"--- Worker cycle complete. Sleeping for {interval_seconds} seconds. ---")
             await asyncio.sleep(interval_seconds)

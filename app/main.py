@@ -11,12 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # from app.workers.main_worker import MainWorker
 
 # Import existing, still-needed routers
-from app.api.file_ops import upload, search_docs, embed_api, extract_text_api
-from app.api.file_ops import ocr_searchable_pdf
-from app.api.gdrive_ops import router as gdrive_router
 from app.api.Responses import router as responses_router
-from app.api.query_analyzer import router as query_analyzer_router
-from app.api.rag import router as rag_router
 from app.core.config import settings
 from app.core.logger import setup_logging, request_id_var, log_info
 from app.core.logging_config import setup_logging, set_request_id
@@ -88,13 +83,5 @@ async def root():
 async def run_worker_manually_disabled():
     return {"message": "Legacy ingestion worker disabled. Use /api/responses/gdrive/sync and /api/responses/vector-store/ingest instead."}
 
-# Mount all the necessary routers
-app.include_router(upload.router, prefix=settings.API_PREFIX)
-app.include_router(search_docs.router, prefix=settings.API_PREFIX)
-app.include_router(embed_api.router, prefix=settings.API_PREFIX)
-app.include_router(extract_text_api.router, prefix=settings.API_PREFIX)
-app.include_router(ocr_searchable_pdf.router, prefix=settings.API_PREFIX)
-app.include_router(gdrive_router.router, prefix=f"{settings.API_PREFIX}/gdrive")
-app.include_router(query_analyzer_router.router, prefix=settings.API_PREFIX)
-app.include_router(rag_router.router, prefix=f"{settings.API_PREFIX}/search")
+# Mount the Responses router only (legacy routers removed)
 app.include_router(responses_router, prefix=settings.API_PREFIX)
