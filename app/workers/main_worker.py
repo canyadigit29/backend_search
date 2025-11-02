@@ -42,43 +42,11 @@ class MainWorker:
     @staticmethod
     async def run_ingestion_task():
         """
-        Finds and processes files that are ready for ingestion.
+        Legacy ingestion (chunk/embed) is deprecated. Vector Store attach is handled by the VS ingest worker.
+        Keeping this method as a no-op to preserve scheduling flow.
         """
-        logger.info("Ingestion Task: Checking for un-ingested files...")
-        try:
-            # Find files that are not ingested yet.
-            # This will include new files and files that just finished OCR.
-            logger.info(
-                "supabase_op: table.select",
-                extra={"table": "files", "filter": {"ingested": False}, "columns": ["id"]},
-            )
-            files_to_ingest = supabase.table("files").select("id").eq("ingested", False).execute()
-
-            if not files_to_ingest.data:
-                logger.info("Ingestion Task: No new files to ingest.")
-                return
-            
-            logger.info(f"Ingestion Task: Found {len(files_to_ingest.data)} file(s) to ingest.")
-            for file in files_to_ingest.data:
-                # We need to double-check the OCR status of the file
-                logger.info(
-                    "supabase_op: table.select",
-                    extra={"table": "files", "filter": {"id": file['id']}, "columns": ["id", "ocr_needed", "ocr_scanned"], "single": True},
-                )
-                file_details = supabase.table("files").select("id, ocr_needed, ocr_scanned").eq("id", file['id']).single().execute().data
-                
-                # Skip if OCR is needed but not yet complete
-                if file_details and file_details.get('ocr_needed') and not file_details.get('ocr_scanned'):
-                    logger.info(f"Ingestion Task: Skipping file {file['id']} because it is pending OCR completion.")
-                    continue
-
-                try:
-                    FileProcessingService.process_file_for_ingestion(file['id'])
-                except Exception as e:
-                    logger.error(f"Ingestion Task: Error during ingestion for file {file['id']}: {e}")
-
-        except Exception as e:
-            logger.error(f"Ingestion Task: Error fetching files for ingestion: {e}")
+        logger.info("Ingestion Task: Legacy ingestion disabled; skipping.")
+        return
 
     @staticmethod
     async def run_main_loop(interval_seconds=3600):
