@@ -10,6 +10,9 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.core.supabase_client import supabase
+# Note: multi-store mapping helpers live in app.api.Responses.vs_store_mapping
+# When enabling Drive subfolder → store routing, resolve a per-file target store
+# via vs_store_mapping.resolve_vector_store_for(workspace_id, drive_folder_id=..., label=...)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,7 @@ def _attach_file_to_vector_store(client: OpenAI, vector_store_id: str, file_id: 
         return getattr(res, "id", None)
     except Exception as e:
         last_err = e
+        logger.warning("[vs_ingest_worker] vector_stores.files.create failed; trying beta fallback: %s", e)
     # Beta namespace fallback
     try:
         res = getattr(client, "beta").vector_stores.files.create(  # type: ignore

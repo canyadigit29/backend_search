@@ -41,6 +41,9 @@ class Settings:
     # Toggle for Responses Google Drive sync endpoints and worker
     ENABLE_RESPONSES_GDRIVE_SYNC: bool = os.getenv("ENABLE_RESPONSES_GDRIVE_SYNC", "True").strip().lower() in ("1", "true", "yes")
 
+    # 🖨️ OCR settings (OCRmyPDF)
+    # Intentionally no env overrides; we hardcode recommended defaults in the OCR call.
+
     # 🪵 Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").strip()
     LOG_JSON: bool = os.getenv("LOG_JSON", "True").strip().lower() in ("1", "true", "yes")

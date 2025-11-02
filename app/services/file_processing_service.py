@@ -81,10 +81,11 @@ class FileProcessingService:
     @staticmethod
     def process_file_for_ocr(file_id: str):
         """
-        Minimal OCR pipeline using pdf2image + pytesseract.
-        Writes OCR text to Supabase Storage and updates files.ocr_scanned/ocr_text_path.
+        OCR pipeline using OCRmyPDF to produce a single PDF with an embedded text layer.
+        We overwrite the original PDF in Supabase Storage (upsert) so downstream ingestion
+        uses the enhanced file directly. Sets files.ocr_scanned=true and files.ocr_needed=false.
         """
-        logger.info(f"Starting OCR process for file_id: {file_id}")
+        logger.info(f"Starting OCRmyPDF process for file_id: {file_id}")
         logger.info(
             "supabase_op: table.select",
             extra={"table": "files", "filter": {"id": file_id}, "single": True},
@@ -101,47 +102,66 @@ class FileProcessingService:
         )
         pdf_bytes = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)
 
-        # Convert to images and OCR
+        # Run OCRmyPDF and overwrite the original PDF with an OCR'd (text-layer) PDF
+        import tempfile
+        import ocrmypdf
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix or ".pdf") as tmp_in:
+            tmp_in.write(pdf_bytes)
+            tmp_in_path = tmp_in.name
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix or ".pdf") as tmp_out:
+            tmp_out_path = tmp_out.name
+
         try:
-            import tempfile
-            from pdf2image import convert_from_path
-            import pytesseract
-            import re as _re
+            # Use OCRmyPDF's own detection so pages with text are preserved (no force_ocr).
+            # Hardcoded recommended defaults: language=eng, deskew=true, rotate_pages=true, threshold=15, optimize=1.
+            ocrmypdf.ocr(
+                tmp_in_path,
+                tmp_out_path,
+                skip_text=True,
+                # Do NOT force OCR; rely on detection to OCR image-only pages
+                # force_ocr=False,
+                language="eng",
+                deskew=True,
+                rotate_pages=True,
+                rotate_pages_threshold=15,
+                optimize=1,
+                progress_bar=False,
+            )
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file_path).suffix or ".pdf") as tmp:
-                tmp.write(pdf_bytes)
-                tmp_path = tmp.name
+            with open(tmp_out_path, "rb") as fh:
+                ocr_pdf_bytes = fh.read()
 
-            images = convert_from_path(tmp_path)
-            texts = []
-            for idx, img in enumerate(images, start=1):
-                page_text = pytesseract.image_to_string(img) or ""
-                texts.append(f"---PAGE {idx}---\n" + page_text)
-            ocr_text = "\n".join(texts)
-            # Basic cleanup similar to extract_text
-            ocr_text = _re.sub(r"\s+", " ", ocr_text).strip()
+            # Upload back to the same storage path with upsert=true to replace the original file
+            logger.info(
+                "supabase_op: storage.upload (upsert)",
+                extra={"bucket": settings.SUPABASE_STORAGE_BUCKET, "path": file_path, "content_type": "application/pdf", "upsert": True},
+            )
+            supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).upload(
+                file_path,
+                ocr_pdf_bytes,
+                {"content-type": "application/pdf", "upsert": "true"},
+            )
         finally:
             try:
-                os.remove(tmp_path)
+                if os.path.exists(tmp_in_path):
+                    os.remove(tmp_in_path)
+            except Exception:
+                pass
+            try:
+                if os.path.exists(tmp_out_path):
+                    os.remove(tmp_out_path)
             except Exception:
                 pass
 
-        # Upload OCR text to storage
-        ocr_text_path = f"ocr/{file_id}.txt"
-        logger.info(
-            "supabase_op: storage.upload",
-            extra={"bucket": settings.SUPABASE_STORAGE_BUCKET, "path": ocr_text_path, "content_type": "text/plain"},
-        )
-        supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).upload(ocr_text_path, ocr_text.encode("utf-8"), {"content-type": "text/plain"})
-
-        # Update DB flags
+        # Update DB flags (no separate text file stored)
         logger.info(
             "supabase_op: table.update",
-            extra={"table": "files", "filter": {"id": file_id}, "fields": ["ocr_scanned", "ocr_text_path", "ocr_needed"]},
+            extra={"table": "files", "filter": {"id": file_id}, "fields": ["ocr_scanned", "ocr_needed"]},
         )
         supabase.table("files").update({
             "ocr_scanned": True,
-            "ocr_text_path": ocr_text_path,
             "ocr_needed": False,
         }).eq("id", file_id).execute()
-        logger.info(f"✅ Successfully performed OCR on file: {file_record['name']} (ID: {file_id})")
+        logger.info(f"✅ Successfully performed OCRmyPDF on file: {file_record['name']} (ID: {file_id}); replaced original with text-layer PDF")

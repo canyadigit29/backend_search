@@ -78,6 +78,39 @@ Retrieval is now performed by the frontend via the OpenAI Responses API + File S
 - Vector Store resolution: Uses `GDRIVE_VECTOR_STORE_ID` if set; otherwise looks up `workspace_vector_stores.vector_store_id` by `GDRIVE_WORKSPACE_ID`.
 - Retrieval remains UI-side via Responses API + File Search; this service does not handle chat, only ingestion and optional hybrid RAG.
 
+### Planned: Multi-folder Drive sync → multiple Vector Stores per workspace
+- Objective: Support mapping multiple Google Drive subfolders to distinct Vector Stores (e.g., Agendas, Minutes, Transcripts) while retaining a default store for uncategorized files.
+
+Backend changes (high-level)
+1) Folder→store mapping
+  - Add a mapping source (DB table preferred) linking `(workspace_id, label, vector_store_id, drive_folder_id?)`.
+  - Resolve target store for a file based on the Drive subfolder it originates from; fall back to the default store mapping.
+
+2) GDrive sync updates
+  - Allow configuration of multiple subfolders per workspace.
+  - Populate/refresh `file_workspaces` with `ingested=false` and set the resolved `target_store_label/id` as a hint for the VS worker.
+  - Continue OCR detection; set `files.ocr_needed` and enqueue as today.
+
+3) VS ingest worker updates
+  - On eligibility, prefer uploading OCR text (`ocr_text_path`) when available, else original bytes.
+  - Attach to the resolved `vector_store_id` (from the folder mapping or default).
+  - Use file_batches for bulk attach; poll batch status and errors. Retry failed items.
+  - Record both `openai_file_id` and `vs_file_id` in `file_workspaces` for detaching/deleting.
+  - If `files.retrieve` returns 404 for a referenced file, auto-detach to avoid perpetual `in_progress`.
+
+4) HTTP-first OpenAI ops
+  - Use REST endpoints for list/delete with header `OpenAI-Beta: assistants=v2`.
+  - Add short timeouts and small exponential backoff on 429/5xx.
+
+5) Health & monitoring
+  - Provide a small admin endpoint/command to summarize per-store counts, recent errors, and dangling attachments.
+
+Acceptance criteria
+- Drive sync recognizes multiple subfolders per workspace and sets `target_store` hints.
+- VS worker attaches to the correct store, records IDs, and reports batch errors.
+- No long-lived `in_progress` items (auto-detach when underlying file is missing).
+- REST operations include `assistants=v2` and retries/timeouts.
+
 ### Required environment (expanded)
 - Google Workspace / Drive:
   - `GOOGLE_CREDENTIALS_BASE64` (service account JSON, base64-encoded)
