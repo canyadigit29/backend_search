@@ -3,25 +3,20 @@
 Note: For cross-repo flags, routes, and end-to-end flows, see the workspace integration guide: [../COPILOT-WORKSPACE.md](../COPILOT-WORKSPACE.md).
 
 ## Topology and big picture
-- FastAPI backend for document processing, hybrid search, and RAG summarization. Entrypoint: `app/main.py`.
-- Data plane is Supabase (Postgres + Storage). Vector + FTS retrieval is done via Supabase RPCs and SQL functions, not in Python.
-- RAG flow (server-side): semantic + keyword retrieval -> merge/weight -> rerank (CrossEncoder) -> hydrate content by `id` -> optional Assistant-powered summary.
- - Post-migration context: the UI can now call OpenAI Responses + File Search directly for chat. This backend remains useful for ingestion (OCR/parse PDFs) and optional hybrid retrieval/summarization workflows.
+- FastAPI backend focused on ingestion and Vector Store maintenance for the UI’s File Search flow. Entrypoint: `app/main.py`.
+- Data plane is Supabase (Postgres + Storage). This service syncs Google Drive → Supabase and attaches files to an OpenAI Vector Store.
+- Post-migration: Hybrid search/legacy chunk/embedding endpoints have been removed from routing; only `app/api/Responses/**` endpoints are exposed.
 
-## Key modules
-- API routers under `app/api/**`:
-  - `file_ops/search_docs.py`: main hybrid search + summary endpoint at `POST /api/assistant/search_docs` (and legacy `/api/file_ops/search_docs`).
-  - `file_ops/upload.py`, `extract_text_api.py`, `embed_api.py`: ingestion, OCR/extract, embedding helpers.
-  - `gdrive_ops/`: Google Drive sync endpoints.
+- Key routers under `app/api/Responses/**`:
+  - Ingestion upload: `/responses/vector-store/ingest/upload`
+  - Backlog ingest trigger: `/responses/vector-store/ingest`
+  - GDrive sync trigger: `/responses/gdrive/sync`
+  - List/Delete/Purge: `/responses/list`, `/responses/file/*`, `/responses/vector-store/purge`
 - Core services in `app/core/**`: `config.py` (env), `openai_client.py`, `supabase_client.py`, `logger.py`, `logging_config.py`.
 - Background tasks: `app/workers/**` with `MainWorker` orchestrated from `/api/run-worker`.
 
-## Retrieval details (what matters)
-- Semantic: Supabase RPC `match_file_items_openai` using an embedding of the term/query.
-- Keyword: Supabase RPC `match_file_items_fts` (HTTP call with service role token) using OR-joined quoted terms.
-- Merge weighting is decided per-term via `_decide_weighting`; default favors semantic unless the query looks lexical.
-- Rerank: `sentence-transformers` CrossEncoder `ms-marco-MiniLM-L-6-v2` on the top 24 passages.
-- Hydration: fetched by `id` from `file_items` to get full `content` for summarization.
+## Retrieval details
+Retrieval is now performed by the frontend via the OpenAI Responses API + File Search. This backend no longer exposes hybrid search endpoints.
 
 ## Summary generation
 - If `SEARCH_ASSISTANT_ID` is set, the service uses the OpenAI Assistants API to return JSON with `summary_markdown`, `used_source_labels`, `follow_up_questions`.
@@ -53,9 +48,7 @@ Note: For cross-repo flags, routes, and end-to-end flows, see the workspace inte
 - Do not check secrets into version control; rely on env files and platform envs (Railway/Vercel) for deployment.
 
 ## Contract expectations (examples)
-- Input to `/api/assistant/search_docs`: `{ user_prompt, search_plan: { operator, terms }, [filters...] }`.
-- Output fields relied on by the UI: `sources[]` with `file_name`, `excerpt`, `id`, `file_id`, optional `meeting_date`; plus `summary` or `fallback_text`.
-- Responses ingestion (current): `POST /responses/vector-store/ingest/upload` accepts multipart with `workspace_id` and `files[]`; returns `{ vector_store_id, files: [{ id, name, size }], failed?: [{ name, reason }], status }`.
+- Responses ingestion: `POST /responses/vector-store/ingest/upload` accepts multipart with `workspace_id` and `files[]`; returns `{ vector_store_id, files: [{ id, name, size }], failed?: [{ name, reason }], status }`.
 
 ## Integration touchpoints
 - Frontend (`chatbot-ui`) may call this service for hybrid RAG. Keep this repo focused on retrieval/summary; don’t duplicate UI logic.
