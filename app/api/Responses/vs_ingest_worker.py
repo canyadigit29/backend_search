@@ -58,6 +58,91 @@ def _attach_file_to_vector_store(client: OpenAI, vector_store_id: str, file_id: 
     raise RuntimeError(f"Attach failed: {last_err}")
 
 
+def _derive_year_and_doctype(filename: str) -> tuple[Optional[int], Optional[str]]:
+    """Lightweight metadata derivation from filename only (no content extraction).
+    - Returns a (year, doc_type) tuple where doc_type ∈ {agenda, minutes, ordinance, transcript} when detected.
+    """
+    year: Optional[int] = None
+    try:
+        import re
+        m = re.search(r"\b(20\d{2}|19\d{2})\b", filename or "")
+        if m:
+            year = int(m.group(1))
+    except Exception:
+        year = None
+    low = (filename or "").lower()
+    doc_type: Optional[str] = None
+    if "agenda" in low:
+        doc_type = "agenda"
+    elif "minutes" in low:
+        doc_type = "minutes"
+    elif "ordinance" in low:
+        doc_type = "ordinance"
+    elif "transcript" in low:
+        doc_type = "transcript"
+    return year, doc_type
+
+
+def _file_ext_from_name(name: str) -> Optional[str]:
+    if not name:
+        return None
+    _, ext = os.path.splitext(name)
+    return ext.lstrip(".").lower() if ext else None
+
+
+def _derive_month_from_filename(filename: str) -> Optional[int]:
+    """Best-effort month extraction from filename.
+    Supports month names (jan, january, ... dec, december) and numeric patterns near a year.
+    Returns 1-12 or None.
+    """
+    if not filename:
+        return None
+    low = filename.lower()
+    # Month names
+    months = {
+        "jan": 1, "january": 1,
+        "feb": 2, "february": 2,
+        "mar": 3, "march": 3,
+        "apr": 4, "april": 4,
+        "may": 5,
+        "jun": 6, "june": 6,
+        "jul": 7, "july": 7,
+        "aug": 8, "august": 8,
+        "sep": 9, "sept": 9, "september": 9,
+        "oct": 10, "october": 10,
+        "nov": 11, "november": 11,
+        "dec": 12, "december": 12,
+    }
+    try:
+        import re
+        mname = re.search(r"\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b", low)
+        if mname:
+            return months.get(mname.group(1), None)
+        # Numeric patterns around a year
+        # YYYY[-_/ ]MM
+        mnum = re.search(r"\b(20\d{2}|19\d{2})[\-_/ ](1[0-2]|0?[1-9])\b", low)
+        if mnum:
+            val = int(mnum.group(2))
+            return val if 1 <= val <= 12 else None
+        # MM[-_/ ]YYYY
+        mnum2 = re.search(r"\b(1[0-2]|0?[1-9])[\-_/ ](20\d{2}|19\d{2})\b", low)
+        if mnum2:
+            val = int(mnum2.group(1))
+            return val if 1 <= val <= 12 else None
+        # Fallback: YYYYMM or MMYYYY contiguous
+        mnum3 = re.search(r"\b(20\d{2}|19\d{2})(1[0-2]|0[1-9])\b", low)
+        if mnum3:
+            val = int(mnum3.group(2))
+            return val if 1 <= val <= 12 else None
+        mnum4 = re.search(r"\b(1[0-2]|0[1-9])(20\d{2}|19\d{2})\b", low)
+        if mnum4:
+            val = int(mnum4.group(1))
+            return val if 1 <= val <= 12 else None
+    except Exception:
+        return None
+    return None
+
+
 def _retry_call(fn, *args, retries=4, base_delay=1.0, **kwargs):
     delay = base_delay
     for attempt in range(retries):
@@ -179,11 +264,27 @@ async def upload_missing_files_to_vector_store():
             # Attach to Vector Store with retry/backoff
             vs_file_id = _retry_call(_attach_file_to_vector_store, client, vector_store_id, created.id, retries=4, base_delay=1.0)
 
-            # Mark per-workspace ingestion success on file_workspaces
+            # Mark per-workspace ingestion success on file_workspaces and enrich basic metadata columns
             try:
+                # Basic enrichment derived from filename and OCR flags
+                has_ocr = bool(f.get("ocr_scanned")) or (temp_path and temp_path.lower().endswith(".txt"))
+                file_ext = _file_ext_from_name(name)
+                year, doc_type = _derive_year_and_doctype(name)
+                month = _derive_month_from_filename(name)
+
                 upd = {"ingested": True, "openai_file_id": created.id}
                 if vs_file_id:
                     upd["vs_file_id"] = vs_file_id
+                # Optional metadata columns if present in schema
+                upd["has_ocr"] = has_ocr
+                if file_ext:
+                    upd["file_ext"] = file_ext
+                if doc_type:
+                    upd["doc_type"] = doc_type
+                if year:
+                    upd["meeting_year"] = year
+                if month:
+                    upd["meeting_month"] = month
                 supabase.table("file_workspaces").update(upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
             except Exception as e:
                 logger.warning(f"Uploaded {name} to VS but failed to mark file_workspaces.ingested=True: {e}")

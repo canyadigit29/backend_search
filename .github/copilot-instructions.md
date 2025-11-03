@@ -75,6 +75,7 @@ Retrieval is now performed by the frontend via the OpenAI Responses API + File S
     - Prefers uploading OCR text (`files.ocr_text_path`) when available; otherwise uploads original file bytes.
     - Creates an OpenAI File (`purpose:"assistants"`) and attaches it to the workspace Vector Store.
     - Marks `file_workspaces.ingested=true`, records `openai_file_id` and optional `vs_file_id`.
+    - Populates metadata on success: `has_ocr`, `file_ext`, `doc_type`, `meeting_year`, and `meeting_month` (derived from filename via month name/number heuristics).
 - Vector Store resolution: Uses `GDRIVE_VECTOR_STORE_ID` if set; otherwise looks up `workspace_vector_stores.vector_store_id` by `GDRIVE_WORKSPACE_ID`.
 - Retrieval remains UI-side via Responses API + File Search; this service does not handle chat, only ingestion and optional hybrid RAG.
 
@@ -132,6 +133,18 @@ Acceptance criteria
 ### Operations: how to run workers
 - Drive sync: run `run_gdrive_sync.py` or `run_gdrive_sync_responses.py` (or mount inside `app/workers/main_worker.py` if consolidated) to execute `run_responses_gdrive_sync()` on a schedule.
 - VS ingest: schedule periodic calls to `upload_missing_files_to_vector_store()`; batch/pace with the envs above. You can also trigger via `POST /responses/vector-store/ingest` (background task).
+
+### Metadata backfill utility (existing rows)
+- Purpose: Safely populate missing `file_workspaces` metadata for legacy rows, including `has_ocr`, `file_ext`, `doc_type`, `meeting_year`, and `meeting_month`.
+- Location: `scripts/backfill_file_workspaces_metadata.py`
+- Behavior:
+  - Scans only rows where any of the target columns is NULL for the specified workspace.
+  - Derives year/doc_type and month from the filename; sets `has_ocr` from `files.ocr_scanned`/`files.ocr_text_path`; sets `file_ext` from the filename.
+  - Paginates (default 500), logs a summary, and supports a dry run.
+- Usage (envs/CLI):
+  - `BACKFILL_WORKSPACE_ID` or pass `workspace_id` as the first CLI arg; falls back to `GDRIVE_WORKSPACE_ID`.
+  - Optional: `DRY_RUN=1` to preview without writes; `PAGE_SIZE=500` to tune pagination.
+  - Example (PowerShell): `set BACKFILL_WORKSPACE_ID=<workspace_id>; set DRY_RUN=1; python scripts/backfill_file_workspaces_metadata.py`
 
 ### Deletion mirroring (Drive → Vector Store → DB)
 - On missing files in Drive, the sync performs:
