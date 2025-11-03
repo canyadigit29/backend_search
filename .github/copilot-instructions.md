@@ -99,7 +99,7 @@ Backend changes (high-level)
   - If `files.retrieve` returns 404 for a referenced file, auto-detach to avoid perpetual `in_progress`.
 
 4) HTTP-first OpenAI ops
-  - Use REST endpoints for list/delete with header `OpenAI-Beta: assistants=v2`.
+  - Use REST endpoints for list/delete with Authorization only (no `OpenAI-Beta: assistants=v2` header).
   - Add short timeouts and small exponential backoff on 429/5xx.
 
 5) Health & monitoring
@@ -109,7 +109,7 @@ Acceptance criteria
 - Drive sync recognizes multiple subfolders per workspace and sets `target_store` hints.
 - VS worker attaches to the correct store, records IDs, and reports batch errors.
 - No long-lived `in_progress` items (auto-detach when underlying file is missing).
-- REST operations include `assistants=v2` and retries/timeouts.
+- REST operations use Authorization only (no `assistants=v2` header) and include retries/timeouts.
 
 ### Required environment (expanded)
 - Google Workspace / Drive:
@@ -162,6 +162,8 @@ Acceptance criteria
   - `DELETE /responses/file/{file_id}` – detach and delete OpenAI File.
   - `POST /responses/file/soft-delete` – per-workspace soft delete and flag reset.
   - `POST /responses/vector-store/purge` – detach all files (optionally reset DB flags).
+  - `POST /responses/vector-store/hard-purge` – aggressive looped detach with optional file deletes; polls until empty or max iterations.
+  - `GET /responses/vector-store/health` – summarize DB join vs Vector Store attachments and flag dangling items.
 
 ## Frontend integration note (chatbot-ui)
 - The frontend’s `/api/vector-stores/ingest` route forwards to this service’s `POST /responses/vector-store/ingest/upload`. If uploads fail in production, verify Vercel `BACKEND_SEARCH_URL` and CORS `ALLOWED_ORIGINS`, and confirm the endpoint path matches.

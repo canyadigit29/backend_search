@@ -16,6 +16,8 @@ from app.core.extract_text import extract_text
 from app.core.supabase_client import supabase
 from app.services.file_processing_service import FileProcessingService
 from openai import OpenAI
+import os
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -311,165 +313,158 @@ async def run_responses_gdrive_sync():
                 except Exception as e:
                     logger.warning(f"Failed to resolve vector_store_id from Supabase: {e}")
 
-            client: Optional[OpenAI] = None
-            vs_name_to_ids: Dict[str, Set[str]] = {}
+            # HTTP-first helpers for Vector Store ops (Authorization only)
+            def _openai_headers() -> dict:
+                return {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
 
+            async def _http_request(method: str, url: str, *, json: dict | None = None, timeout: float = 10.0, retries: int = 3) -> httpx.Response:
+                last_exc: Exception | None = None
+                backoff = 0.5
+                async with httpx.AsyncClient(timeout=timeout) as client_http:
+                    for _ in range(retries):
+                        try:
+                            resp = await client_http.request(method, url, headers=_openai_headers(), json=json)
+                            if resp.status_code in (429, 500, 502, 503, 504):
+                                last_exc = Exception(f"{resp.status_code} {resp.text}")
+                                await _asyncio_sleep(backoff)
+                                backoff = min(4.0, backoff * 2)
+                                continue
+                            return resp
+                        except Exception as e:
+                            last_exc = e
+                            await _asyncio_sleep(backoff)
+                            backoff = min(4.0, backoff * 2)
+                raise Exception(f"OpenAI HTTP request failed: {last_exc}")
+
+            async def _list_vs_files_http(vs_id: str) -> list[dict]:
+                base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
+                url = f"{base}/v1/vector_stores/{vs_id}/files?limit=100"
+                resp = await _http_request("GET", url)
+                if not resp.is_success:
+                    return []
+                body = resp.json() or {}
+                return body.get("data", [])
+
+            async def _delete_vs_attachment_http(vs_id: str, id_or_file_id: str) -> bool:
+                base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
+                url = f"{base}/v1/vector_stores/{vs_id}/files/{id_or_file_id}"
+                resp = await _http_request("DELETE", url)
+                # Treat 2xx and 404 as detached
+                return bool(resp.is_success or resp.status_code == 404)
+
+            async def _delete_openai_file_http(file_id: str) -> bool:
+                base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
+                url = f"{base}/v1/files/{file_id}"
+                resp = await _http_request("DELETE", url)
+                return bool(resp.is_success or resp.status_code == 404)
+
+            async def _files_retrieve_http(file_id: str) -> dict | None:
+                base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
+                url = f"{base}/v1/files/{file_id}"
+                try:
+                    resp = await _http_request("GET", url)
+                    if resp.is_success:
+                        return resp.json() or {}
+                except Exception:
+                    return None
+                return None
+
+            async def _asyncio_sleep(seconds: float):
+                import asyncio as _asyncio
+                await _asyncio.sleep(seconds)
+
+            # Build filename → file_id set mapping via REST list + files.retrieve
+            vs_name_to_ids: Dict[str, Set[str]] = {}
             if vector_store_id:
                 try:
-                    client = OpenAI()
-                    # List vector store files, then retrieve filenames for mapping
-                    try:
-                        lst = client.vector_stores.files.list(vector_store_id=vector_store_id)
-                    except Exception:
-                        lst = getattr(client, "beta").vector_stores.files.list(vector_store_id=vector_store_id)  # type: ignore
-                    data = getattr(lst, "data", None) or []
-                    for it in data:
-                        # Prefer explicit file_id; fall back to id
-                        file_id = getattr(it, "file_id", None) or getattr(it, "id", None) or (isinstance(it, dict) and (it.get("file_id") or it.get("id")))
-                        if not file_id:
+                    items = await _list_vs_files_http(vector_store_id)
+                    for it in items:
+                        fid = it.get("file_id") or it.get("id")
+                        if not fid:
                             continue
-                        # Retrieve file meta to get filename
-                        try:
-                            meta = client.files.retrieve(file_id)
-                            fname = (
-                                getattr(meta, "filename", None)
-                                or getattr(meta, "name", None)
-                                or (isinstance(meta, dict) and (meta.get("filename") or meta.get("name")))
-                            )
-                        except Exception:
-                            fname = None
+                        meta = await _files_retrieve_http(fid)
+                        fname = (meta or {}).get("filename") or (meta or {}).get("name")
                         if fname:
-                            vs_name_to_ids.setdefault(fname, set()).add(file_id)
+                            vs_name_to_ids.setdefault(fname, set()).add(fid)
                 except Exception as e:
-                    logger.warning(f"Could not build vector store filename map: {e}")
+                    logger.warning(f"Could not build vector store filename map (REST): {e}")
 
             # Execute deletions
             for file_name in files_to_delete_names:
                 file_info = sb_map[file_name]
                 file_id = file_info["id"]
                 file_path = file_info["file_path"]
+                # Vector Store delete: detach first using stored IDs, fallback by filename mapping
+                if vector_store_id:
+                    # Fetch stored IDs BEFORE deleting DB rows
+                    fw = None
+                    try:
+                        fw_res = (
+                            supabase.table("file_workspaces")
+                            .select("openai_file_id, vs_file_id, normalized_name")
+                            .eq("workspace_id", workspace_id)
+                            .eq("file_id", file_id)
+                            .maybe_single()
+                            .execute()
+                        )
+                        fw = getattr(fw_res, "data", None)
+                    except Exception:
+                        fw = None
+
+                    candidate_ids: list[str] = []
+                    if fw:
+                        if fw.get("vs_file_id"):
+                            candidate_ids.append(fw["vs_file_id"])  # VS attachment id
+                        if fw.get("openai_file_id") and fw["openai_file_id"] not in candidate_ids:
+                            candidate_ids.append(fw["openai_file_id"])  # Underlying file id
+
+                    detached_any = False
+                    # Try stored ids
+                    for cid in candidate_ids:
+                        try:
+                            ok = await _delete_vs_attachment_http(vector_store_id, cid)
+                            if ok:
+                                detached_any = True
+                                vs_deleted += 1
+                        except Exception:
+                            pass
+                        # Try deleting the underlying file if this looks like a file id
+                        if str(cid).startswith("file-"):
+                            try:
+                                await _delete_openai_file_http(cid)
+                            except Exception:
+                                pass
+
+                    # Fallback by filename mapping
+                    if not detached_any and vs_name_to_ids.get(file_name):
+                        for fid in list(vs_name_to_ids[file_name]):
+                            try:
+                                ok = await _delete_vs_attachment_http(vector_store_id, fid)
+                                if ok:
+                                    vs_deleted += 1
+                            except Exception:
+                                pass
+                            if str(fid).startswith("file-"):
+                                try:
+                                    await _delete_openai_file_http(fid)
+                                except Exception:
+                                    pass
+
+                # Now remove from storage and DB
                 try:
                     supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).remove([file_path])
                 except Exception as e:
                     logger.warning(f"Storage remove failed for {file_path}: {e}")
                 try:
-                    # Best-effort: remove per-workspace join before deleting file row (in case FK is not cascading)
+                    # Remove per-workspace join then files row
                     try:
                         supabase.table("file_workspaces").delete().eq("workspace_id", workspace_id).eq("file_id", file_id).execute()
                     except Exception as je:
                         logger.debug(f"file_workspaces delete warning for file {file_id}: {je}")
-
                     supabase.table("files").delete().eq("id", file_id).execute()
                     deleted += 1
                 except Exception as e:
                     logger.warning(f"DB delete failed for file id {file_id}: {e}")
-
-                # Vector Store delete: prefer IDs from file_workspaces, fallback to filename map
-                if client and vector_store_id:
-                    # Try using stored IDs first
-                    fw = None
-                    try:
-                        if workspace_id:
-                            fw_res = (
-                                supabase.table("file_workspaces")
-                                .select("openai_file_id, vs_file_id, normalized_name")
-                                .eq("workspace_id", workspace_id)
-                                .eq("file_id", file_id)
-                                .maybe_single()
-                                .execute()
-                            )
-                            fw = getattr(fw_res, "data", None)
-                    except Exception:
-                        fw = None
-
-                    candidate_ids = []
-                    if fw:
-                        if fw.get("openai_file_id"):
-                            candidate_ids.append(fw["openai_file_id"])  # OpenAI File ID
-                        if fw.get("vs_file_id") and fw["vs_file_id"] not in candidate_ids:
-                            candidate_ids.append(fw["vs_file_id"])     # Vector Store file id (if applicable)
-
-                    detached_any = False
-                    deleted_any = False
-
-                    # Attempt detach/delete using stored IDs
-                    for fid in candidate_ids:
-                        # Detach from VS
-                        detached = False
-                        for attr in ("delete", "del"):
-                            try:
-                                getattr(client.vector_stores.files, attr)(vector_store_id=vector_store_id, file_id=fid)
-                                detached = True
-                                break
-                            except Exception:
-                                pass
-                        if not detached:
-                            try:
-                                beta = getattr(client, "beta")
-                                for attr in ("delete", "del"):
-                                    try:
-                                        getattr(beta.vector_stores.files, attr)(vector_store_id=vector_store_id, file_id=fid)
-                                        detached = True
-                                        break
-                                    except Exception:
-                                        pass
-                            except Exception:
-                                pass
-                        if detached:
-                            detached_any = True
-                            vs_deleted += 1
-
-                        # Delete underlying OpenAI file (try both ids)
-                        for did in (fid,):
-                            try:
-                                for attr in ("delete", "del"):
-                                    try:
-                                        getattr(client.files, attr)(did)
-                                        deleted_any = True
-                                        break
-                                    except Exception:
-                                        continue
-                            except Exception:
-                                pass
-
-                    # Fallback: use filename mapping if no stored IDs or all attempts failed
-                    if not detached_any and vs_name_to_ids.get(file_name):
-                        for fid in list(vs_name_to_ids[file_name]):
-                            # Detach from VS
-                            detached = False
-                            for attr in ("delete", "del"):
-                                try:
-                                    getattr(client.vector_stores.files, attr)(vector_store_id=vector_store_id, file_id=fid)
-                                    detached = True
-                                    break
-                                except Exception:
-                                    pass
-                            if not detached:
-                                try:
-                                    beta = getattr(client, "beta")
-                                    for attr in ("delete", "del"):
-                                        try:
-                                            getattr(beta.vector_stores.files, attr)(vector_store_id=vector_store_id, file_id=fid)
-                                            detached = True
-                                            break
-                                        except Exception:
-                                            pass
-                                except Exception:
-                                    pass
-
-                            # Delete underlying OpenAI file
-                            try:
-                                for attr in ("delete", "del"):
-                                    try:
-                                        getattr(client.files, attr)(fid)
-                                        break
-                                    except Exception:
-                                        continue
-                            except Exception:
-                                pass
-
-                            if detached:
-                                vs_deleted += 1
 
         return {"status": "success", "new_files_processed": processed, "ocr_started": ocr_started, "files_deleted": deleted, "vs_deleted": vs_deleted}
 
