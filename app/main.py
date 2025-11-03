@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 # Import existing, still-needed routers
 from app.api.Responses import router as responses_router
+from app.api.health import router as health_router
 from app.core.config import settings
 from app.core.logger import request_id_var, log_info
 from app.core.logging_config import setup_logging, set_request_id
@@ -81,3 +82,4 @@ async def run_worker_manually_disabled():
 
 # Mount the Responses router only (legacy routers removed)
 app.include_router(responses_router, prefix=settings.API_PREFIX)
+app.include_router(health_router, prefix=settings.API_PREFIX)
