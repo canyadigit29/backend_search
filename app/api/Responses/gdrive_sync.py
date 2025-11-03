@@ -67,27 +67,50 @@ def _fetch_workspace_files(workspace_id: str) -> Dict[str, Dict[str, str]]:
 
 
 def _list_drive_files(service) -> Tuple[Set[str], list]:
-    query = f"'{settings.GOOGLE_DRIVE_FOLDER_ID}' in parents and trashed = false"
-    drive_files = []
-    page_token = None
-    while True:
-        results = (
-            service.files()
-            .list(
-                q=query,
-                pageSize=100,
-                fields="nextPageToken, files(id, name, mimeType)",
-                pageToken=page_token,
-                includeItemsFromAllDrives=True,
-                supportsAllDrives=True,
+    """Recursively list all non-trashed files under the configured root folder,
+    traversing all subfolders. Returns (names_set, files_list).
+    Note: names_set is just the set of filenames; duplicates across subfolders are
+    possible in Drive. For now we assume filenames are unique within the workspace.
+    """
+    root_id = settings.GOOGLE_DRIVE_FOLDER_ID
+    if not root_id:
+        raise HTTPException(status_code=500, detail="GOOGLE_DRIVE_FOLDER_ID is not configured")
+
+    queue: list[str] = [root_id]
+    drive_files: list[dict] = []
+    names: Set[str] = set()
+
+    while queue:
+        parent_id = queue.pop(0)
+        page_token = None
+        while True:
+            results = (
+                service.files()
+                .list(
+                    q=f"'{parent_id}' in parents and trashed = false",
+                    pageSize=100,
+                    fields="nextPageToken, files(id, name, mimeType)",
+                    pageToken=page_token,
+                    includeItemsFromAllDrives=True,
+                    supportsAllDrives=True,
+                )
+                .execute()
             )
-            .execute()
-        )
-        drive_files.extend(results.get("files", []))
-        page_token = results.get("nextPageToken")
-        if not page_token:
-            break
-    names = {f["name"] for f in drive_files}
+            for f in results.get("files", []):
+                if f.get("mimeType") == "application/vnd.google-apps.folder":
+                    # Recurse into subfolder
+                    fid = f.get("id")
+                    if fid:
+                        queue.append(fid)
+                    continue
+                # Regular file
+                drive_files.append(f)
+                if f.get("name"):
+                    names.add(f["name"])
+            page_token = results.get("nextPageToken")
+            if not page_token:
+                break
+
     return names, drive_files
 
 

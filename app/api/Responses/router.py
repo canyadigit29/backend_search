@@ -10,6 +10,8 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query, Bac
 from pydantic import BaseModel
 
 from openai import OpenAI
+import httpx
+import time
 
 from app.core.supabase_client import supabase
 from app.core.config import settings
@@ -45,6 +47,72 @@ def _get_vector_store_id(workspace_id: str) -> str:
     if not row or not row.get("vector_store_id"):
         raise HTTPException(status_code=404, detail="Vector store not found for workspace. Create it first.")
     return row["vector_store_id"]
+
+
+# ------------------------------
+# OpenAI REST helpers (HTTP-first)
+# ------------------------------
+
+def _openai_headers() -> dict:
+    # Only auth header for Vector Stores and Files REST endpoints.
+    # Do NOT include Assistants v2 beta header here; it is not required for these routes
+    # and can cause schema/validation mismatches.
+    return {
+        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+    }
+
+
+async def _http_request(method: str, url: str, *, json: dict | None = None, timeout: float = 15.0, retries: int = 3) -> httpx.Response:
+    last_exc: Exception | None = None
+    backoff = 0.5
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for attempt in range(retries):
+            try:
+                resp = await client.request(method, url, headers=_openai_headers(), json=json)
+                # Treat 429/5xx as retryable
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    last_exc = HTTPException(status_code=resp.status_code, detail=f"{resp.text}")
+                    await asyncio_sleep(backoff)
+                    backoff = min(4.0, backoff * 2)
+                    continue
+                return resp
+            except Exception as e:  # network/timeout
+                last_exc = e
+                await asyncio_sleep(backoff)
+                backoff = min(4.0, backoff * 2)
+        raise HTTPException(status_code=500, detail=f"OpenAI HTTP request failed: {last_exc}")
+
+
+async def asyncio_sleep(seconds: float):
+    # small wrapper to avoid importing asyncio at top-level if not needed elsewhere
+    import asyncio as _asyncio
+    await _asyncio.sleep(seconds)
+
+
+async def _list_vs_files_http(vector_store_id: str) -> list[dict]:
+    base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
+    url = f"{base}/v1/vector_stores/{vector_store_id}/files?limit=100"
+    resp = await _http_request("GET", url)
+    if not resp.is_success:
+        raise HTTPException(status_code=resp.status_code, detail=f"VS list failed: {resp.text}")
+    data = resp.json() or {}
+    return data.get("data", [])
+
+
+async def _delete_vs_attachment_http(vector_store_id: str, id_or_file_id: str) -> None:
+    base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
+    url = f"{base}/v1/vector_stores/{vector_store_id}/files/{id_or_file_id}"
+    resp = await _http_request("DELETE", url)
+    if not resp.is_success and resp.status_code != 404:
+        raise HTTPException(status_code=resp.status_code, detail=f"VS detach failed: {resp.text}")
+
+
+async def _delete_openai_file_http(file_id: str) -> None:
+    base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
+    url = f"{base}/v1/files/{file_id}"
+    resp = await _http_request("DELETE", url)
+    if not resp.is_success and resp.status_code != 404:
+        raise HTTPException(status_code=resp.status_code, detail=f"File delete failed: {resp.text}")
 
 
 def _attach_file_to_vector_store(client: OpenAI, vector_store_id: str, file_id: str) -> Optional[str]:
@@ -401,35 +469,56 @@ async def upload_to_vector_store(
 
 
 @router.get("/list")
-def list_vector_store_files(workspace_id: str = Query(...)):
+async def list_vector_store_files(workspace_id: str = Query(...), enrich: bool = Query(False)):
     vector_store_id = _get_vector_store_id(workspace_id)
-    client = OpenAI()
-    try:
-        try:
-            lst = client.vector_stores.files.list(vector_store_id=vector_store_id)
-        except Exception:
-            lst = getattr(client, "beta").vector_stores.files.list(vector_store_id=vector_store_id)  # type: ignore
-    except Exception as e:
-        logger.error(f"Failed listing vector store files: {e}")
-        raise HTTPException(status_code=500, detail="Failed listing vector store files")
+    # HTTP-first for reliability across SDK variants
+    data = await _list_vs_files_http(vector_store_id)
 
-    # Normalize response
-    items = []
-    data = getattr(lst, "data", None) or []
+    items: list[dict] = []
     for it in data:
-        items.append({
-            "id": getattr(it, "id", None) or it.get("id"),
-            "filename": getattr(it, "filename", None) or it.get("filename") or it.get("name"),
-        })
+        # REST returns shape with id (vs_file_id) and file_id (underlying)
+        vs_file_id = it.get("id")
+        file_id = it.get("file_id") or it.get("id")
+        item = {
+            "vs_file_id": vs_file_id,
+            "file_id": file_id,
+            "status": it.get("status"),
+            "created_at": it.get("created_at"),
+        }
+        items.append(item)
+
+    # Optional enrichment with filename/bytes
+    if enrich and items:
+        base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for item in items:
+                fid = item.get("file_id")
+                if not fid:
+                    continue
+                try:
+                    r = await client.get(f"{base}/v1/files/{fid}", headers=_openai_headers())
+                    if r.is_success:
+                        meta = r.json() or {}
+                        item["name"] = meta.get("filename")
+                        item["size"] = meta.get("bytes")
+                except Exception:
+                    pass
+
     return {"vector_store_id": vector_store_id, "files": items}
 
 
-@router.delete("/file/{file_id}")
-def delete_vector_store_file(file_id: str, workspace_id: str = Query(...)):
+@router.delete("/file/{id_or_file_id}")
+async def delete_vector_store_file(id_or_file_id: str, workspace_id: str = Query(...), also_delete_file: bool = Query(True)):
     vector_store_id = _get_vector_store_id(workspace_id)
-    client = OpenAI()
-    _delete_vs_file(client, vector_store_id, file_id)
-    return {"ok": True}
+    # Try REST detach; tolerate 404
+    await _delete_vs_attachment_http(vector_store_id, id_or_file_id)
+    # Optionally delete underlying OpenAI file (best-effort)
+    if also_delete_file and id_or_file_id.startswith("file-"):
+        try:
+            await _delete_openai_file_http(id_or_file_id)
+        except Exception as e:
+            logger.debug(f"OpenAI file delete failed (continuing): {e}")
+    return {"ok": True, "vector_store_id": vector_store_id}
 
 
 class SoftDeleteBody(BaseModel):
@@ -577,51 +666,103 @@ class PurgeBody(BaseModel):
 
 
 @router.post("/vector-store/purge")
-def purge_vector_store(body: PurgeBody):
+async def purge_vector_store(body: PurgeBody):
     """
-    Detach all files from the workspace's Vector Store and optionally delete the
-    underlying OpenAI Files. Also optionally reset DB join flags so a clean
-    re-ingestion can occur.
+    HTTP-first purge: detach every attachment from the workspace's Vector Store via REST.
+    Optionally delete the underlying OpenAI file. Optionally reset DB flags (ignored if DB empty).
     """
     vector_store_id = _get_vector_store_id(body.workspace_id)
-    client = OpenAI()
-
-    # 1) List current files
-    try:
-        try:
-            lst = client.vector_stores.files.list(vector_store_id=vector_store_id)
-        except Exception:
-            lst = getattr(client, "beta").vector_stores.files.list(vector_store_id=vector_store_id)  # type: ignore
-    except Exception as e:
-        logger.error(f"Failed listing vector store files for purge: {e}")
-        raise HTTPException(status_code=500, detail="Failed listing vector store files")
-
-    data = getattr(lst, "data", None) or []
-    # 2) For each file: detach and optionally delete the OpenAI File
+    data = await _list_vs_files_http(vector_store_id)
+    detached = 0
     for it in data:
-        fid = getattr(it, "id", None) or (it.get("id") if isinstance(it, dict) else None)
-        if not fid:
+        vs_file_id = it.get("id")
+        file_id = it.get("file_id") or it.get("id")
+        target = file_id or vs_file_id
+        if not target:
             continue
         try:
-            _delete_vs_file(client, vector_store_id, fid)
+            await _delete_vs_attachment_http(vector_store_id, target)
+            detached += 1
         except Exception as e:
-            logger.warning(f"Detach failed during purge for file {fid}: {e}")
-        # _delete_vs_file already attempts to delete the underlying OpenAI file;
-        # if delete_openai is False, we could skip that, but we don't have an API
-        # to detach-only here; acceptable to always attempt deletion for consistency.
+            logger.warning(f"Detach failed for {target}: {e}")
+        if body.delete_openai and file_id and str(file_id).startswith("file-"):
+            try:
+                await _delete_openai_file_http(file_id)
+            except Exception as e:
+                logger.debug(f"OpenAI file delete failed (continuing): {e}")
 
-    # 3) Optionally reset DB flags for this workspace so re-ingestion can proceed cleanly
     if body.reset_db_flags:
         try:
             supabase.table("file_workspaces").update({
                 "ingested": False,
                 "openai_file_id": None,
                 "vs_file_id": None,
-            }).eq("workspace_id", body.workspace_id).eq("deleted", False).execute()
+            }).eq("workspace_id", body.workspace_id).execute()
         except Exception as e:
-            logger.warning(f"Failed resetting DB flags during purge: {e}")
+            logger.debug(f"DB reset skipped/failed (continuing): {e}")
 
-    return {"ok": True, "vector_store_id": vector_store_id, "detached": len(data)}
+    return {"ok": True, "vector_store_id": vector_store_id, "detached": detached}
+
+
+class HardPurgeBody(BaseModel):
+    workspace_id: str
+    also_delete_file: bool = True
+    max_iters: int = 5
+    sleep_ms: int = 500
+
+
+@router.post("/vector-store/hard-purge")
+async def hard_purge_vector_store(body: HardPurgeBody):
+    """
+    Aggressive purge loop that:
+      - lists attachments via REST
+      - deletes each by file_id (preferred) and falls back to id if needed
+      - optionally deletes underlying OpenAI file
+      - polls until empty or max_iters reached
+    Ignores DB state entirely (safe for wiped DBs).
+    """
+    vector_store_id = _get_vector_store_id(body.workspace_id)
+
+    iters = 0
+    total_detached = 0
+    while iters < body.max_iters:
+        data = await _list_vs_files_http(vector_store_id)
+        if not data:
+            return {"ok": True, "vector_store_id": vector_store_id, "detached": total_detached, "iterations": iters}
+
+        detached_this_round = 0
+        for it in data:
+            vs_file_id = it.get("id")
+            file_id = it.get("file_id") or it.get("id")
+            primary = file_id or vs_file_id
+            if not primary:
+                continue
+            try:
+                await _delete_vs_attachment_http(vector_store_id, primary)
+                detached_this_round += 1
+                total_detached += 1
+            except Exception as e:
+                logger.warning(f"Hard purge detach failed for {primary}: {e}")
+            if body.also_delete_file and file_id and str(file_id).startswith("file-"):
+                try:
+                    await _delete_openai_file_http(file_id)
+                except Exception as e:
+                    logger.debug(f"OpenAI file delete failed (continuing): {e}")
+
+        iters += 1
+        if detached_this_round == 0:
+            break
+        await asyncio_sleep(body.sleep_ms / 1000.0)
+
+    # Final check
+    remaining = await _list_vs_files_http(vector_store_id)
+    return {
+        "ok": True,
+        "vector_store_id": vector_store_id,
+        "detached": total_detached,
+        "iterations": iters,
+        "remaining": len(remaining),
+    }
 
 
 @router.get("/vector-store/health")
