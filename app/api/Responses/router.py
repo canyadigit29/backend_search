@@ -624,6 +624,111 @@ def purge_vector_store(body: PurgeBody):
     return {"ok": True, "vector_store_id": vector_store_id, "detached": len(data)}
 
 
+@router.get("/vector-store/health")
+def vector_store_health(workspace_id: str = Query(...)):
+    """
+    Report current health for a workspace's Vector Store and DB join state.
+    Returns counts and small samples for quick diagnostics:
+    - DB (file_workspaces) counts: active, ingested_true/false, with_openai_file_id, with_vs_file_id
+    - Vector Store attachment count (OpenAI)
+    - Dangling attachments: VS items without matching DB ids; DB ingested rows missing in VS
+    """
+    vector_store_id = _get_vector_store_id(workspace_id)
+    client = OpenAI()
+
+    # Gather DB rows for this workspace
+    try:
+        sel = (
+            supabase.table("file_workspaces")
+            .select("file_id, ingested, deleted, openai_file_id, vs_file_id, files(name)")
+            .eq("workspace_id", workspace_id)
+            .eq("deleted", False)
+        )
+        res = sel.execute()
+        fw_rows = getattr(res, "data", None) or []
+    except Exception as e:
+        logger.error(f"Failed to query file_workspaces for health: {e}")
+        raise HTTPException(status_code=500, detail="Failed to query DB for health")
+
+    active = len(fw_rows)
+    ing_true = sum(1 for r in fw_rows if r.get("ingested") is True)
+    ing_false = sum(1 for r in fw_rows if r.get("ingested") is False)
+    with_openai = sum(1 for r in fw_rows if (r.get("openai_file_id") or None))
+    with_vs = sum(1 for r in fw_rows if (r.get("vs_file_id") or None))
+
+    # Build lookup sets for DB-mapped ids
+    db_openai_ids = {r.get("openai_file_id") for r in fw_rows if r.get("openai_file_id")}
+    db_vs_ids = {r.get("vs_file_id") for r in fw_rows if r.get("vs_file_id")}
+
+    # List VS attachments
+    try:
+        try:
+            lst = client.vector_stores.files.list(vector_store_id=vector_store_id)
+        except Exception:
+            lst = getattr(client, "beta").vector_stores.files.list(vector_store_id=vector_store_id)  # type: ignore
+    except Exception as e:
+        logger.error(f"Failed listing vector store files for health: {e}")
+        raise HTTPException(status_code=500, detail="Failed listing vector store files")
+
+    vs_items = getattr(lst, "data", None) or []
+    # Normalize to a set of candidate ids we can compare against DB mapping
+    vs_ids = set()
+    for it in vs_items:
+        vid = getattr(it, "file_id", None) or getattr(it, "id", None) or (isinstance(it, dict) and (it.get("file_id") or it.get("id")))
+        if vid:
+            vs_ids.add(vid)
+
+    # Dangling: in VS but not in DB
+    vs_not_in_db = sorted(list(vs_ids - db_openai_ids - db_vs_ids))
+
+    # Dangling: in DB (ingested) but not in VS (compare against either stored id)
+    db_ing_missing = []
+    for r in fw_rows:
+        if r.get("ingested") is not True:
+            continue
+        cand_ids = [cid for cid in [r.get("openai_file_id"), r.get("vs_file_id")] if cid]
+        if cand_ids and not any(cid in vs_ids for cid in cand_ids):
+            # capture a small sample with filename for convenience
+            name = (r.get("files") or {}).get("name")
+            db_ing_missing.append({
+                "file_id": r.get("file_id"),
+                "name": name,
+                "openai_file_id": r.get("openai_file_id"),
+                "vs_file_id": r.get("vs_file_id"),
+            })
+
+    # Trim samples
+    sample_vs_not_in_db = vs_not_in_db[:5]
+    sample_db_ing_missing = db_ing_missing[:5]
+
+    return {
+        "workspace_id": workspace_id,
+        "vector_store_id": vector_store_id,
+        "db": {
+            "file_workspaces": {
+                "active": active,
+                "ingested_true": ing_true,
+                "ingested_false": ing_false,
+                "with_openai_file_id": with_openai,
+                "with_vs_file_id": with_vs,
+            }
+        },
+        "vector_store": {
+            "attachments": len(vs_ids),
+        },
+        "dangling": {
+            "vs_without_db_mapping": {
+                "count": len(vs_not_in_db),
+                "sample_ids": sample_vs_not_in_db,
+            },
+            "db_ingested_missing_in_vs": {
+                "count": len(db_ing_missing),
+                "sample": sample_db_ing_missing,
+            },
+        },
+    }
+
+
 def _normalize_name(name: str) -> str:
     base = os.path.splitext(name or "")[0]
     import re
