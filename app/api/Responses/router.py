@@ -99,6 +99,58 @@ async def _list_vs_files_http(vector_store_id: str) -> list[dict]:
     return data.get("data", [])
 
 
+@router.get("/vector-store/progress")
+async def vector_store_progress(
+    workspace_id: Optional[str] = Query(None),
+    vector_store_id: Optional[str] = Query(None),
+    include_files: bool = Query(False),
+):
+    """
+    Lightweight progress summary for a Vector Store's attachments.
+    Returns counts by status and an overall done flag.
+
+    Query:
+      - workspace_id: resolve the store via DB mapping (preferred)
+      - vector_store_id: use this store directly (override)
+      - include_files: if true, include a compact per-file list
+    """
+    if not vector_store_id:
+        if not workspace_id:
+            raise HTTPException(status_code=400, detail="Provide either workspace_id or vector_store_id")
+        vector_store_id = _get_vector_store_id(workspace_id)
+
+    data = await _list_vs_files_http(vector_store_id)
+
+    total = len(data)
+    counts = {"in_progress": 0, "completed": 0, "failed": 0, "other": 0}
+    files: list[dict] = []
+    for it in data:
+        status = (it.get("status") or "").lower()
+        if status in counts:
+            counts[status] += 1
+        else:
+            counts["other"] += 1
+        if include_files:
+            files.append({
+                "vs_file_id": it.get("id"),
+                "file_id": it.get("file_id") or it.get("id"),
+                "status": it.get("status"),
+                "created_at": it.get("created_at"),
+            })
+
+    done = total > 0 and counts["in_progress"] == 0 and counts["failed"] == 0
+
+    resp = {
+        "vector_store_id": vector_store_id,
+        "total": total,
+        "counts": counts,
+        "done": done,
+    }
+    if include_files:
+        resp["files"] = files
+    return resp
+
+
 async def _delete_vs_attachment_http(vector_store_id: str, id_or_file_id: str) -> None:
     base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com")
     url = f"{base}/v1/vector_stores/{vector_store_id}/files/{id_or_file_id}"
