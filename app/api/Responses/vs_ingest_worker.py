@@ -132,27 +132,47 @@ async def upload_missing_files_to_vector_store():
 
         # Prefer OCR text if available
         temp_path = None
+        upload_dir = None
         try:
             if f.get("ocr_scanned") and f.get("ocr_text_path"):
                 try:
                     content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(f["ocr_text_path"])  # type: ignore
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="wb") as tmp:
+                    # Create a stable temp file path using the original base name, so OpenAI sees a friendly filename
+                    upload_dir = tempfile.mkdtemp(prefix="vs_ingest_")
+                    base, _ = os.path.splitext(name)
+                    desired = f"{base}.txt"
+                    temp_path = os.path.join(upload_dir, desired)
+                    with open(temp_path, "wb") as tmp:
                         tmp.write(content if isinstance(content, (bytes, bytearray)) else content.encode("utf-8"))
-                        temp_path = tmp.name
                 except Exception as e:
                     logger.warning(f"Failed downloading OCR text for {name}, falling back to original: {e}")
 
             if temp_path is None:
                 content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)  # type: ignore
+                # Create a stable temp file path using the original filename, preserving its extension
+                upload_dir = tempfile.mkdtemp(prefix="vs_ingest_") if upload_dir is None else upload_dir
                 suffix = os.path.splitext(name)[1] or ".bin"
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                desired = name if os.path.splitext(name)[1] else f"{name}{suffix}"
+                # Sanitize desired filename minimally to avoid path traversal
+                desired = os.path.basename(desired)
+                temp_path = os.path.join(upload_dir, desired)
+                with open(temp_path, "wb") as tmp:
                     tmp.write(content)
-                    temp_path = tmp.name
 
             # Upload to OpenAI Files with retry/backoff
             def _create_file(p):
                 with open(p, "rb") as fh:
-                    return client.files.create(file=fh, purpose="assistants")
+                    # Attach a tiny bit of metadata to aid later debugging (optional)
+                    try:
+                        return client.files.create(file=fh, purpose="assistants", metadata={
+                            "source": "ocr_text" if temp_path and temp_path.lower().endswith('.txt') else "original",
+                            "workspace_id": workspace_id or "",
+                            "original_filename": name,
+                        })
+                    except Exception:
+                        # Fallback for SDKs/environments that don't accept metadata
+                        fh.seek(0)
+                        return client.files.create(file=fh, purpose="assistants")
 
             created = _retry_call(_create_file, temp_path, retries=4, base_delay=1.0)
 
@@ -175,10 +195,16 @@ async def upload_missing_files_to_vector_store():
             logger.error(f"Failed VS upload for {name} (id={file_id}): {e}")
             errors += 1
         finally:
-            if temp_path and os.path.exists(temp_path):
-                try:
+            # Cleanup temp file and directory
+            try:
+                if temp_path and os.path.exists(temp_path):
                     os.remove(temp_path)
-                except Exception:
-                    pass
+            except Exception:
+                pass
+            try:
+                if upload_dir and os.path.isdir(upload_dir):
+                    os.rmdir(upload_dir)
+            except Exception:
+                pass
 
     return {"vector_store_id": vector_store_id, "uploaded": uploaded, "skipped": skipped, "errors": errors}

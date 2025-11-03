@@ -321,7 +321,8 @@ async def upload_to_vector_store(
     results: List[UploadResult] = []
 
     for uf in files:
-        # Save to temp file
+        # Save to temp file (raw) but upload using a friendly filename path
+        upload_dir = tempfile.mkdtemp(prefix="vs_upload_")
         suffix = os.path.splitext(uf.filename or "upload.bin")[1]
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             raw = await uf.read()
@@ -351,23 +352,31 @@ async def upload_to_vector_store(
 
         # Prepare and upload to OpenAI
         if text_to_use is not None:
-            # Write text to temp .txt and upload
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8") as t:
+            # Write text to a path that uses the original filename (so OpenAI sees a friendly name)
+            base = os.path.splitext(uf.filename or "upload")[0]
+            desired = os.path.basename(f"{base}.txt")
+            txt_path = os.path.join(upload_dir, desired)
+            with open(txt_path, "w", encoding="utf-8") as t:
                 t.write(text_to_use)
-                txt_path = t.name
-            try:
-                with open(txt_path, "rb") as fh:
-                    created = client.files.create(file=fh, purpose="assistants")
-                _attach_file_to_vector_store(client, vector_store_id, created.id)
-                results.append(UploadResult(id=created.id, name=f"{uf.filename}.txt", size=len(text_to_use)))
-            finally:
+            with open(txt_path, "rb") as fh:
                 try:
-                    os.remove(txt_path)
+                    created = client.files.create(file=fh, purpose="assistants")
                 except Exception:
-                    pass
+                    fh.seek(0)
+                    created = client.files.create(file=fh, purpose="assistants")
+            _attach_file_to_vector_store(client, vector_store_id, created.id)
+            results.append(UploadResult(id=created.id, name=f"{uf.filename}.txt", size=len(text_to_use)))
         else:
-            # Fallback to original file
-            with open(tmp_path, "rb") as fh:
+            # Fallback to original file: copy to a friendly-named path for upload
+            desired = os.path.basename(uf.filename or "upload.bin")
+            upload_path = os.path.join(upload_dir, desired)
+            try:
+                # Copy bytes to the upload path
+                with open(tmp_path, "rb") as src, open(upload_path, "wb") as dst:
+                    dst.write(src.read())
+            except Exception:
+                upload_path = tmp_path
+            with open(upload_path, "rb") as fh:
                 created = client.files.create(file=fh, purpose="assistants")
             _attach_file_to_vector_store(client, vector_store_id, created.id)
             results.append(UploadResult(id=created.id, name=uf.filename or os.path.basename(tmp_path)))
@@ -375,6 +384,16 @@ async def upload_to_vector_store(
         # Cleanup tmp
         try:
             os.remove(tmp_path)
+        except Exception:
+            pass
+        try:
+            # cleanup any upload artifacts
+            if 'upload_path' in locals() and upload_path and os.path.exists(upload_path) and upload_path != tmp_path:
+                os.remove(upload_path)
+            if 'txt_path' in locals() and txt_path and os.path.exists(txt_path):
+                os.remove(txt_path)
+            if upload_dir and os.path.isdir(upload_dir):
+                os.rmdir(upload_dir)
         except Exception:
             pass
 
@@ -738,7 +757,8 @@ async def ingest_and_upload_to_vector_store(
     failed: List[dict] = []
 
     for uf in files:
-        # Persist upload to a tmp path
+        # Persist upload to a tmp path, but upload using a friendly filename path
+        upload_dir = tempfile.mkdtemp(prefix="vs_ingest_")
         suffix = os.path.splitext(uf.filename or "upload.bin")[1]
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             raw = await uf.read()
@@ -798,12 +818,20 @@ async def ingest_and_upload_to_vector_store(
             if ord_no:
                 metadata["ordinance_number"] = ord_no
 
-            created = _upload_file_with_optional_metadata(client, target_path, metadata)
-            vs_file_id = _attach_file_to_vector_store(client, vector_store_id, created.id)
-            # Name result: if OCR path used, append .ocr.pdf
+            # Construct a friendly-named upload path for OpenAI (preserve human filename)
             res_name = (uf.filename or os.path.basename(target_path))
             if ocr_path and res_name.lower().endswith(".pdf"):
                 res_name = res_name[:-4] + ".ocr.pdf"
+            desired = os.path.basename(res_name)
+            upload_path = os.path.join(upload_dir, desired)
+            try:
+                with open(target_path, "rb") as src, open(upload_path, "wb") as dst:
+                    dst.write(src.read())
+            except Exception:
+                upload_path = target_path
+
+            created = _upload_file_with_optional_metadata(client, upload_path, metadata)
+            vs_file_id = _attach_file_to_vector_store(client, vector_store_id, created.id)
             results.append(IngestUploadResult(id=created.id, name=res_name, size=os.path.getsize(target_path)))
 
             # Upsert into Supabase DB: files and file_workspaces (primary artifact only)
@@ -843,9 +871,10 @@ async def ingest_and_upload_to_vector_store(
                 lines.append("\nExcerpt:\n" + sample_text)
             enrichment_text = "\n".join(lines).strip()
             if enrichment_text:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".context.txt", mode="w", encoding="utf-8") as ctx:
+                ctx_name = os.path.basename(f"{title}.context.txt")
+                ctx_path = os.path.join(upload_dir, ctx_name)
+                with open(ctx_path, "w", encoding="utf-8") as ctx:
                     ctx.write(enrichment_text)
-                    ctx_path = ctx.name
                 try:
                     ctx_meta = {**base_metadata, "source": "enrichment"}
                     if meeting_year:
@@ -868,6 +897,13 @@ async def ingest_and_upload_to_vector_store(
         finally:
             try:
                 os.remove(tmp_path)
+            except Exception:
+                pass
+            try:
+                if 'upload_path' in locals() and upload_path and os.path.exists(upload_path) and upload_path != tmp_path:
+                    os.remove(upload_path)
+                if upload_dir and os.path.isdir(upload_dir):
+                    os.rmdir(upload_dir)
             except Exception:
                 pass
 

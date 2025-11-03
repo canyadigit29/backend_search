@@ -38,16 +38,32 @@ def _get_drive_service():
         raise HTTPException(status_code=500, detail=f"Failed to create Google Drive service: {e}")
 
 
-def _fetch_supabase_file_names() -> Dict[str, Dict[str, str]]:
-    """Return mapping of file name -> { id, file_path } from Supabase via RPC.
-    Relies on an existing RPC `get_all_file_names` that returns rows with 'name','id','file_path'.
+def _fetch_workspace_files(workspace_id: str) -> Dict[str, Dict[str, str]]:
+    """Return mapping of filename -> { id, file_path } for a given workspace.
+    Queries file_workspaces (deleted=false) joined to files to ensure we only consider
+    files that belong to this workspace and are currently active.
     """
-    rpc_response = supabase.rpc("get_all_file_names").execute()
-    if getattr(rpc_response, "data", None) is None:
-        # Attempt to surface richer error if present
-        err = getattr(rpc_response, "error", None) or "No data returned from RPC"
-        raise Exception(f"Error fetching files from Supabase DB: {err}")
-    return {row["name"]: {"id": row["id"], "file_path": row["file_path"]} for row in rpc_response.data}
+    if not workspace_id:
+        raise Exception("Workspace id is required to fetch files for Drive sync")
+    try:
+        sel = (
+            supabase.table("file_workspaces")
+            .select("file_id, deleted, files(name,file_path)")
+            .eq("workspace_id", workspace_id)
+            .eq("deleted", False)
+        )
+        res = sel.execute()
+        rows = getattr(res, "data", None) or []
+        out: Dict[str, Dict[str, str]] = {}
+        for r in rows:
+            f = r.get("files") or {}
+            name = f.get("name")
+            if not name:
+                continue
+            out[name] = {"id": r.get("file_id"), "file_path": f.get("file_path")}
+        return out
+    except Exception as e:
+        raise Exception(f"Error fetching workspace files from Supabase: {e}")
 
 
 def _list_drive_files(service) -> Tuple[Set[str], list]:
@@ -111,8 +127,14 @@ async def run_responses_gdrive_sync():
     try:
         service = _get_drive_service()
 
-        # Existing Supabase filenames
-        sb_map = _fetch_supabase_file_names()
+        # Resolve workspace id early; Drive sync must be workspace-scoped
+        workspace_id = settings.GDRIVE_WORKSPACE_ID or ""
+        if not workspace_id:
+            logger.error("[responses.gdrive] GDRIVE_WORKSPACE_ID is not set; cannot scope deletions safely.")
+            return {"status": "error", "detail": "Missing GDRIVE_WORKSPACE_ID"}
+
+        # Existing Supabase filenames (scoped to this workspace)
+        sb_map = _fetch_workspace_files(workspace_id)
         sb_names = set(sb_map.keys())
 
         # Drive files and names
@@ -132,7 +154,7 @@ async def run_responses_gdrive_sync():
             s = re.sub(r"-+", "-", s)
             return s.strip("-").lower()
 
-        workspace_id = settings.GDRIVE_WORKSPACE_ID or ""
+    # workspace_id already resolved above
         # Ingest user to attribute ownership for joins; prefer workspace owner if available
         ingest_user_id: Optional[str] = None
         if workspace_id:
@@ -310,8 +332,7 @@ async def run_responses_gdrive_sync():
                 try:
                     # Best-effort: remove per-workspace join before deleting file row (in case FK is not cascading)
                     try:
-                        if workspace_id:
-                            supabase.table("file_workspaces").delete().eq("workspace_id", workspace_id).eq("file_id", file_id).execute()
+                        supabase.table("file_workspaces").delete().eq("workspace_id", workspace_id).eq("file_id", file_id).execute()
                     except Exception as je:
                         logger.debug(f"file_workspaces delete warning for file {file_id}: {je}")
 
