@@ -29,6 +29,16 @@ Retrieval is now performed by the frontend via the OpenAI Responses API + File S
    - `OpenAI_Vector_Store_Complete_Interaction_Cheat_Sheet.md` (complete endpoint map)
    - `OpenAI_Vector_Store_Endpoints_Cheat_Sheet.pdf` (endpoint quick lookup)
 
+  ## Local workspace references (authoritative code sources)
+  - The following sibling folders are available in this multi-root VS Code workspace. Use them as live references for APIs, examples, and implementation details while building or debugging this backend:
+    - `openai-cookbook/` – practical guides and runnable examples for Responses API, File Search, Vector Stores, and agent loops (aligns with this service’s ingestion + VS ops).
+    - `openai-python/` – Python SDK source and examples; the definitive place to confirm request/response shapes, retries, timeouts, and streaming helpers in Python.
+    - `openai-node/` – Node/TypeScript SDK source and examples; helpful when ensuring API parity or comparing streaming patterns used by the frontend.
+    - `evals/` – evaluation framework you can adapt for smoke tests or regression checks on summarization/retrieval behavior.
+
+  Notes
+  - These paths are local workspace references (not GitHub links). In VS Code, open the folders in the Explorer to navigate current code and docs.
+
 ## Logging & debugging
 - Structured logs with request IDs (`X-Request-ID`), set in middleware (`app/main.py`).
 - Useful events to grep: `rag.embed`, `keyword.search.*`, `rag.rerank`, `rag.hydration.*`, `rag.summary.*`, `rag.final`, `rag.emit`.
@@ -180,3 +190,6 @@ Acceptance criteria
 
 ## Frontend integration note (chatbot-ui)
 - The frontend’s `/api/vector-stores/ingest` route forwards to this service’s `POST /responses/vector-store/ingest/upload`. If uploads fail in production, verify Vercel `BACKEND_SEARCH_URL` and CORS `ALLOWED_ORIGINS`, and confirm the endpoint path matches.
+
+  ## Maintenance rule
+  - Whenever this document is updated to reflect new resources or code behavior, remove or update any contradicting information to keep the instructions internally consistent. Treat `../COPILOT-WORKSPACE.md` and the frontend’s `COPILOT-WORKSPACE.md` as cross-repo sources of truth for flags, routes, and flows.
