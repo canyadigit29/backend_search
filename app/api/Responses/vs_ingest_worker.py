@@ -11,6 +11,7 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.core.supabase_client import supabase
+from app.core.document_profiler import generate_profile_from_text
 # Note: multi-store mapping helpers live in app.api.Responses.vs_store_mapping
 # When enabling Drive subfolder → store routing, resolve a per-file target store
 # via vs_store_mapping.resolve_vector_store_for(workspace_id, drive_folder_id=..., label=...)
@@ -254,24 +255,37 @@ async def upload_missing_files_to_vector_store():
         upload_dir = None
         try:
             ocr_text_path = f.get("ocr_text_path")
+            has_ocr = False
+            text_content_for_profiling = None
+
             if f.get("ocr_scanned") and ocr_text_path:
                 logger.info(f"[vs_ingest_worker] Attempting to download OCR text from: {ocr_text_path}")
                 try:
-                    content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(ocr_text_path)  # type: ignore
+                    content_bytes = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(ocr_text_path)
+                    has_ocr = True
                     # Create a stable temp file path using the original base name, so OpenAI sees a friendly filename
                     upload_dir = tempfile.mkdtemp(prefix="vs_ingest_")
                     base, _ = os.path.splitext(name)
                     desired = f"{base}.txt"
                     temp_path = os.path.join(upload_dir, desired)
+                    
+                    # Decode for profiling, write bytes to temp file for upload
+                    try:
+                        text_content_for_profiling = content_bytes.decode("utf-8")
+                    except UnicodeDecodeError:
+                        logger.warning(f"[vs_ingest_worker] Could not decode OCR text as utf-8 for profiling, file_id: {file_id}")
+                        text_content_for_profiling = None # Will skip profiling
+
                     with open(temp_path, "wb") as tmp:
-                        tmp.write(content if isinstance(content, (bytes, bytearray)) else content.encode("utf-8"))
+                        tmp.write(content_bytes)
+
                     logger.info(f"[vs_ingest_worker] Successfully created temp file with OCR text at: {temp_path}")
                 except Exception as e:
                     logger.warning(f"[vs_ingest_worker] Failed downloading OCR text for {name}, falling back to original: {e}")
             
             if temp_path is None:
                 logger.info(f"[vs_ingest_worker] No OCR text used. Downloading original file from: {file_path}")
-                content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)  # type: ignore
+                content_bytes = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)
                 # Create a stable temp file path using the original filename, preserving its extension
                 upload_dir = tempfile.mkdtemp(prefix="vs_ingest_") if upload_dir is None else upload_dir
                 suffix = os.path.splitext(name)[1] or ".bin"
@@ -280,8 +294,16 @@ async def upload_missing_files_to_vector_store():
                 desired = os.path.basename(desired)
                 temp_path = os.path.join(upload_dir, desired)
                 with open(temp_path, "wb") as tmp:
-                    tmp.write(content)
+                    tmp.write(content_bytes)
                 logger.info(f"[vs_ingest_worker] Successfully created temp file with original content at: {temp_path}")
+
+                # Attempt to get text for profiling from text-based files
+                if temp_path.lower().endswith(('.txt', '.md', '.json')):
+                    try:
+                        text_content_for_profiling = content_bytes.decode("utf-8")
+                    except UnicodeDecodeError:
+                        logger.warning(f"[vs_ingest_worker] Could not decode text file as utf-8 for profiling, file_id: {file_id}")
+
 
             # Upload to OpenAI Files with retry/backoff
             def _create_file(p):
@@ -307,6 +329,34 @@ async def upload_missing_files_to_vector_store():
             vs_file_id = _retry_call(_attach_file_to_vector_store, client, vector_store_id, created.id, retries=4, base_delay=1.0)
             logger.info(f"[vs_ingest_worker] Successfully attached to Vector Store. VS File ID: {vs_file_id}")
 
+            # --- Document Profiling Step ---
+            profile_saved = False
+            if text_content_for_profiling:
+                logger.info(f"[vs_ingest_worker] Generating document profile for file_id: {file_id}")
+                try:
+                    profile = await generate_profile_from_text(text_content_for_profiling)
+                    if profile:
+                        profile_data = {
+                            "file_id": file_id,
+                            "workspace_id": workspace_id,
+                            "summary": profile.get("summary"),
+                            "keywords": profile.get("keywords"),
+                            "entities": profile.get("entities"),
+                            "processed_at": datetime.now(timezone.utc).isoformat(),
+                            "model_used": "gpt-4o-mini"
+                        }
+                        # Upsert to handle cases where a profile might be re-generated
+                        supabase.table("document_profiles").upsert(profile_data, on_conflict="file_id, workspace_id").execute()
+                        profile_saved = True
+                        logger.info(f"[vs_ingest_worker] Successfully saved document profile for file_id: {file_id}")
+                    else:
+                        logger.warning(f"[vs_ingest_worker] Document profiling returned no data for file_id: {file_id}")
+                except Exception as e_profile_gen:
+                    logger.error(f"[vs_ingest_worker] Failed to generate or save document profile for file_id {file_id}: {e_profile_gen}", exc_info=True)
+            else:
+                logger.info(f"[vs_ingest_worker] Skipping document profiling for file_id {file_id} (no text content).")
+
+
             # Mark per-workspace ingestion success on file_workspaces and enrich basic metadata columns
             try:
                 # Always-attempt baseline fields first
@@ -319,7 +369,6 @@ async def upload_missing_files_to_vector_store():
 
                 # Try optional metadata enrichment (best-effort: tolerate missing columns)
                 try:
-                    has_ocr = bool(f.get("ocr_scanned")) or (temp_path and temp_path.lower().endswith(".txt"))
                     file_ext = _file_ext_from_name(name)
                     year, doc_type = _derive_year_and_doctype(name)
                     month = _derive_month_from_filename(name)
@@ -339,16 +388,17 @@ async def upload_missing_files_to_vector_store():
                 except Exception as e_meta:
                     logger.warning(f"[vs_ingest_worker] file_workspaces metadata enrichment skipped (columns may be missing): {e_meta}", exc_info=True)
 
-                # Mark document profile processed marker if present in schema
-                try:
-                    profile_upd = {
-                        "doc_profile_processed": True,
-                        "doc_profile_processed_at": datetime.now(timezone.utc).isoformat()
-                    }
-                    logger.info(f"[vs_ingest_worker] Updating doc_profile_processed flag for file_id {file_id}: {profile_upd}")
-                    supabase.table("file_workspaces").update(profile_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
-                except Exception as e_flag:
-                    logger.warning(f"[vs_ingest_worker] Doc profile processed flag not set (columns may be missing): {e_flag}", exc_info=True)
+                # Mark document profile processed marker if the profile was saved
+                if profile_saved:
+                    try:
+                        profile_upd = {
+                            "doc_profile_processed": True,
+                            "doc_profile_processed_at": datetime.now(timezone.utc).isoformat()
+                        }
+                        logger.info(f"[vs_ingest_worker] Updating doc_profile_processed flag for file_id {file_id}: {profile_upd}")
+                        supabase.table("file_workspaces").update(profile_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                    except Exception as e_flag:
+                        logger.warning(f"[vs_ingest_worker] Doc profile processed flag not set (columns may be missing): {e_flag}", exc_info=True)
             except Exception as e:
                 logger.error(f"[vs_ingest_worker] Uploaded {name} to VS but failed to update file_workspaces baseline fields: {e}", exc_info=True)
 
