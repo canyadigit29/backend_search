@@ -4,6 +4,7 @@ import tempfile
 import time
 import logging
 from typing import Optional, List, Dict
+from datetime import datetime, timezone
 
 from openai import OpenAI
 from fastapi import HTTPException
@@ -266,28 +267,42 @@ async def upload_missing_files_to_vector_store():
 
             # Mark per-workspace ingestion success on file_workspaces and enrich basic metadata columns
             try:
-                # Basic enrichment derived from filename and OCR flags
-                has_ocr = bool(f.get("ocr_scanned")) or (temp_path and temp_path.lower().endswith(".txt"))
-                file_ext = _file_ext_from_name(name)
-                year, doc_type = _derive_year_and_doctype(name)
-                month = _derive_month_from_filename(name)
-
-                upd = {"ingested": True, "openai_file_id": created.id}
+                # Always-attempt baseline fields first
+                base_upd = {"ingested": True, "openai_file_id": created.id}
                 if vs_file_id:
-                    upd["vs_file_id"] = vs_file_id
-                # Optional metadata columns if present in schema
-                upd["has_ocr"] = has_ocr
-                if file_ext:
-                    upd["file_ext"] = file_ext
-                if doc_type:
-                    upd["doc_type"] = doc_type
-                if year:
-                    upd["meeting_year"] = year
-                if month:
-                    upd["meeting_month"] = month
-                supabase.table("file_workspaces").update(upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                    base_upd["vs_file_id"] = vs_file_id
+                supabase.table("file_workspaces").update(base_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+
+                # Try optional metadata enrichment (best-effort: tolerate missing columns)
+                try:
+                    has_ocr = bool(f.get("ocr_scanned")) or (temp_path and temp_path.lower().endswith(".txt"))
+                    file_ext = _file_ext_from_name(name)
+                    year, doc_type = _derive_year_and_doctype(name)
+                    month = _derive_month_from_filename(name)
+
+                    meta_upd: Dict[str, object] = {"has_ocr": has_ocr}
+                    if file_ext:
+                        meta_upd["file_ext"] = file_ext
+                    if doc_type:
+                        meta_upd["doc_type"] = doc_type
+                    if year:
+                        meta_upd["meeting_year"] = year
+                    if month:
+                        meta_upd["meeting_month"] = month
+                    supabase.table("file_workspaces").update(meta_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                except Exception as e_meta:
+                    logger.warning(f"file_workspaces metadata enrichment skipped (columns may be missing): {e_meta}")
+
+                # Mark document profile processed marker if present in schema
+                try:
+                    supabase.table("file_workspaces").update({
+                        "doc_profile_processed": True,
+                        "doc_profile_processed_at": datetime.now(timezone.utc).isoformat()
+                    }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                except Exception as e_flag:
+                    logger.info(f"Doc profile processed flag not set (columns may be missing): {e_flag}")
             except Exception as e:
-                logger.warning(f"Uploaded {name} to VS but failed to mark file_workspaces.ingested=True: {e}")
+                logger.warning(f"Uploaded {name} to VS but failed to update file_workspaces baseline fields: {e}")
 
             uploaded += 1
             if per_call_sleep:
