@@ -209,6 +209,50 @@ def _get_eligible_files(limit: int, workspace_id: Optional[str]) -> List[Dict]:
         return []
 
 
+def _get_unprofiled_files(limit: int, workspace_id: Optional[str]) -> List[Dict]:
+    """Return files that are not deleted and have doc_profile_processed=false.
+    We still require text availability: (ocr_needed=false) OR (ocr_scanned=true).
+    """
+    if not workspace_id:
+        logger.error("[vs_ingest_worker] Workspace id not provided for doc profiling pass")
+        return []
+
+    logger.info(f"[vs_ingest_worker] Querying for unprofiled files for workspace_id: {workspace_id}")
+    try:
+        sel = (
+            "file_id, workspace_id, ingested, deleted, openai_file_id, vs_file_id, doc_profile_processed, "
+            "files(id,name,file_path,type,ocr_needed,ocr_scanned,ocr_text_path)"
+        )
+        q = (
+            supabase.table("file_workspaces")
+            .select(sel)
+            .eq("workspace_id", workspace_id)
+            .eq("deleted", False)
+            .eq("doc_profile_processed", False)
+            .limit(limit)
+        )
+        res = q.execute()
+        rows = getattr(res, "data", []) or []
+        logger.info(f"[vs_ingest_worker] Found {len(rows)} candidate rows with doc_profile_processed=false.")
+
+        eligible: List[Dict] = []
+        for r in rows:
+            f = r.get("files") or {}
+            ocr_needed = f.get("ocr_needed", False)
+            ocr_scanned = f.get("ocr_scanned", False)
+            if (not ocr_needed) or ocr_scanned:
+                eligible.append(r)
+            else:
+                logger.info(
+                    f"[vs_ingest_worker] Skipping file_id {r.get('file_id')} for profiling: ocr_needed={ocr_needed}, ocr_scanned={ocr_scanned}"
+                )
+        logger.info(f"[vs_ingest_worker] Found {len(eligible)} unprofiled eligible files to process.")
+        return eligible
+    except Exception as e:
+        logger.warning("[vs_ingest_worker] Unprofiled query failed (column missing?). Skipping profiling pass.", exc_info=True)
+        return []
+
+
 async def upload_missing_files_to_vector_store():
     """Uploads pending Supabase files into the OpenAI Vector Store with backoff.
     On success, sets files.ingested=True (repurposed to mean VS-uploaded).
@@ -239,9 +283,8 @@ async def upload_missing_files_to_vector_store():
 
     if not files:
         logger.info("[vs_ingest_worker] No eligible files to upload.")
-        return {"vector_store_id": vector_store_id, "uploaded": 0, "skipped": 0, "errors": 0, "message": "No eligible files found."}
 
-    for fw in files:
+    for fw in (files or []):
         file_id = fw["file_id"]
         f = fw.get("files") or {}
         name = f.get("name") or os.path.basename(f.get("file_path", "")) or f"file-{file_id}"
@@ -421,5 +464,86 @@ async def upload_missing_files_to_vector_store():
             except Exception:
                 pass
     
-    logger.info(f"[vs_ingest_worker] Task finished. Uploaded: {uploaded}, Skipped: {skipped}, Errors: {errors}")
-    return {"vector_store_id": vector_store_id, "uploaded": uploaded, "skipped": skipped, "errors": errors}
+    # Second pass: profile-only for already-ingested but unprofiled files
+    profile_only = _get_unprofiled_files(batch_limit, workspace_id)
+    profiled = 0
+    if profile_only:
+        logger.info(f"[vs_ingest_worker] Starting profile-only pass for {len(profile_only)} files.")
+    else:
+        logger.info("[vs_ingest_worker] No unprofiled files found for profile-only pass.")
+
+    for fw in profile_only:
+        file_id = fw["file_id"]
+        f = fw.get("files") or {}
+        name = f.get("name") or os.path.basename(f.get("file_path", "")) or f"file-{file_id}"
+        file_path = f.get("file_path")
+
+        try:
+            ocr_text_path = f.get("ocr_text_path")
+            text_content_for_profiling = None
+
+            if f.get("ocr_scanned") and ocr_text_path:
+                try:
+                    content_bytes = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(ocr_text_path)
+                    try:
+                        text_content_for_profiling = content_bytes.decode("utf-8")
+                    except UnicodeDecodeError:
+                        logger.warning(f"[vs_ingest_worker] Could not decode OCR text as utf-8 for profiling (profile-only), file_id: {file_id}")
+                except Exception as e:
+                    logger.warning(f"[vs_ingest_worker] Failed downloading OCR text (profile-only) for {name}: {e}")
+
+            if text_content_for_profiling is None:
+                try:
+                    content_bytes = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)
+                    if (name or "").lower().endswith((".txt", ".md", ".json")):
+                        try:
+                            text_content_for_profiling = content_bytes.decode("utf-8")
+                        except UnicodeDecodeError:
+                            logger.warning(f"[vs_ingest_worker] Could not decode text file as utf-8 (profile-only), file_id: {file_id}")
+                except Exception as e:
+                    logger.warning(f"[vs_ingest_worker] Failed downloading original content (profile-only) for {name}: {e}")
+
+            if not text_content_for_profiling:
+                logger.info(f"[vs_ingest_worker] Skipping profile-only for file_id {file_id} (no text content).")
+                continue
+
+            # Generate and save profile
+            try:
+                profile = await generate_profile_from_text(text_content_for_profiling)
+                if profile:
+                    profile_data = {
+                        "file_id": file_id,
+                        "workspace_id": workspace_id,
+                        "summary": profile.get("summary"),
+                        "keywords": profile.get("keywords"),
+                        "entities": profile.get("entities"),
+                        "processed_at": datetime.now(timezone.utc).isoformat(),
+                        "model_used": "gpt-4o-mini",
+                    }
+                    supabase.table("document_profiles").upsert(profile_data, on_conflict="file_id, workspace_id").execute()
+                    supabase.table("file_workspaces").update({
+                        "doc_profile_processed": True,
+                        "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                    profiled += 1
+                    logger.info(f"[vs_ingest_worker] Profile-only saved for file_id: {file_id}")
+                else:
+                    logger.warning(f"[vs_ingest_worker] Profile-only generation returned no data for file_id: {file_id}")
+            except Exception as e_profile:
+                logger.error(f"[vs_ingest_worker] Profile-only generation failed for file_id {file_id}: {e_profile}", exc_info=True)
+
+            if per_call_sleep:
+                time.sleep(per_call_sleep)
+        except Exception as e:
+            logger.error(f"[vs_ingest_worker] Profile-only pass failed for {name} (id={file_id}): {e}", exc_info=True)
+
+    logger.info(
+        f"[vs_ingest_worker] Task finished. Uploaded: {uploaded}, Skipped: {skipped}, Errors: {errors}, Profiled (profile-only): {profiled}"
+    )
+    return {
+        "vector_store_id": vector_store_id,
+        "uploaded": uploaded,
+        "skipped": skipped,
+        "errors": errors,
+        "profiled": profiled,
+    }
