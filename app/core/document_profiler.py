@@ -2,7 +2,7 @@ import logging
 import json
 from typing import Dict, Optional
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +34,16 @@ PROFILES_SCHEMA = {
 }
 
 PROMPT_TEMPLATE = """
-Based on the following document text, generate a structured profile. The profile must include a concise summary (2-4 sentences), a list of 5-10 keywords, and key named entities (people, organizations, locations, dates).
+You are an expert document analyst.
 
-Respond with a JSON object that conforms to the provided schema.
+Task:
+- Read the provided document text.
+- Produce a JSON object that strictly follows the JSON schema named "document_profile" provided out-of-band by the client.
+- Include: a concise summary (2-4 sentences), 5-10 keywords, and named entities (people, organizations, locations, dates arrays).
+
+Important:
+- Output ONLY the JSON object (no prose around it).
+- If unsure about specific entities, omit them rather than hallucinating.
 
 DOCUMENT TEXT:
 ---
@@ -45,8 +52,8 @@ DOCUMENT TEXT:
 """
 
 
-def generate_profile_from_text(
-    text_content: str, client: Optional[OpenAI] = None
+async def generate_profile_from_text(
+    text_content: str, client: Optional[AsyncOpenAI] = None
 ) -> Optional[Dict]:
     """
     Generates a structured document profile (summary, keywords, entities) from raw text content
@@ -69,33 +76,68 @@ def generate_profile_from_text(
     truncated_content = text_content[:max_chars]
 
     if client is None:
-        client = OpenAI()
+        client = AsyncOpenAI()
 
     try:
-        logger.info(f"[document_profiler] Generating profile for document content (truncated to {len(truncated_content)} chars).")
-        
-        # Use a model that supports JSON mode, like gpt-4-turbo-preview or newer
-        model = "gpt-4-turbo-preview"
-
-        response = client.chat.completions.create(
-            model=model,
-            response_format={"type": "json_object", "schema": PROFILES_SCHEMA},
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an expert document analyst. Your task is to create a structured JSON profile of a document based on its text content, following the provided schema precisely.",
-                },
-                {"role": "user", "content": PROMPT_TEMPLATE.format(document_text=truncated_content)},
-            ],
-            temperature=0.2,
+        logger.info(
+            f"[document_profiler] Generating profile for document content (truncated to {len(truncated_content)} chars)."
         )
 
-        message_content = response.choices[0].message.content
-        if not message_content:
-            logger.error("[document_profiler] OpenAI response was empty.")
-            return None
-
-        profile_data = json.loads(message_content)
+        # Prefer the Responses API with json_schema response_format
+        model = "gpt-5"
+        try:
+            response = await client.responses.create(
+                model=model,
+                input=PROMPT_TEMPLATE.format(document_text=truncated_content),
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "document_profile",
+                        "schema": PROFILES_SCHEMA,
+                        "strict": True,
+                    },
+                },
+                temperature=0.2,
+            )
+            output_text = getattr(response, "output_text", None)
+            if not output_text:
+                # Fallback: try to assemble from output blocks if output_text missing
+                try:
+                    blocks = getattr(response, "output", []) or []
+                    texts = []
+                    for b in blocks:
+                        for c in getattr(b, "content", []) or []:
+                            if getattr(c, "type", "") == "output_text":
+                                texts.append(getattr(c, "text", ""))
+                    output_text = "\n".join([t for t in texts if t]).strip()
+                except Exception:
+                    output_text = None
+            if not output_text:
+                logger.error("[document_profiler] Responses API returned no output_text.")
+                return None
+            profile_data = json.loads(output_text)
+        except Exception as resp_err:
+            # Compatibility fallback: chat.completions with simple json_object mode (no schema enforcement)
+            logger.warning(
+                f"[document_profiler] Responses API failed ({resp_err}); falling back to chat.completions JSON mode."
+            )
+            chat = await client.chat.completions.create(
+                model="gpt-4o-mini",
+                response_format={"type": "json_object"},
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "Return ONLY a JSON object with fields: summary (string), keywords (array of strings), entities (object with arrays: people, organizations, locations, dates).",
+                    },
+                    {"role": "user", "content": PROMPT_TEMPLATE.format(document_text=truncated_content)},
+                ],
+                temperature=0.2,
+            )
+            message_content = chat.choices[0].message.content if chat.choices else None
+            if not message_content:
+                logger.error("[document_profiler] Chat Completions fallback returned empty content.")
+                return None
+            profile_data = json.loads(message_content)
         
         # Basic validation against the schema
         if "summary" not in profile_data or "keywords" not in profile_data:
