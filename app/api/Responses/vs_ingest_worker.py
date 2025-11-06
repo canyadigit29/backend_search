@@ -419,7 +419,6 @@ async def upload_missing_files_to_vector_store():
                             "keywords": profile.get("keywords"),
                             "entities": profile.get("entities"),
                             "processed_at": datetime.now(timezone.utc).isoformat(),
-                            "model_used": "gpt-4o-mini"
                         }
                         # Upsert to handle cases where a profile might be re-generated
                         supabase.table("document_profiles").upsert(profile_data, on_conflict="file_id, workspace_id").execute()
@@ -556,7 +555,6 @@ async def upload_missing_files_to_vector_store():
                         "keywords": profile.get("keywords"),
                         "entities": profile.get("entities"),
                         "processed_at": datetime.now(timezone.utc).isoformat(),
-                        "model_used": "gpt-4o-mini",
                     }
                     supabase.table("document_profiles").upsert(profile_data, on_conflict="file_id, workspace_id").execute()
                     supabase.table("file_workspaces").update({
