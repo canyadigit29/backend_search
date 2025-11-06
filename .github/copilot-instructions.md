@@ -81,11 +81,13 @@ Retrieval is now performed by the frontend via the OpenAI Responses API + File S
     - For PDFs, runs a quick text check and triggers OCR if needed (sets `files.ocr_needed=true` and enqueues OCR).
     - Deletions: If a file disappears from Drive, removes from Supabase Storage and `files`, deletes related `file_workspaces`, and best‑effort detaches/deletes the corresponding OpenAI Vector Store file(s) by filename.
   - VS ingest worker: `app/api/Responses/vs_ingest_worker.py::upload_missing_files_to_vector_store()`
-    - Eligibility per workspace: `file_workspaces.ingested=false AND file_workspaces.deleted=false AND (files.ocr_needed=false OR files.ocr_scanned=true)`.
-    - Prefers uploading OCR text (`files.ocr_text_path`) when available; otherwise uploads original file bytes.
-    - Creates an OpenAI File (`purpose:"assistants"`) and attaches it to the workspace Vector Store.
-    - Marks `file_workspaces.ingested=true`, records `openai_file_id` and optional `vs_file_id`.
-    - Populates metadata on success: `has_ocr`, `file_ext`, `doc_type`, `meeting_year`, and `meeting_month` (derived from filename via month name/number heuristics).
+      - Eligibility per workspace: `file_workspaces.ingested=false AND file_workspaces.deleted=false AND (files.ocr_needed=false OR files.ocr_scanned=true)`.
+      - Prefers uploading OCR text (`files.ocr_text_path`) when available; otherwise uploads original file bytes.
+      - Creates an OpenAI File (`purpose:"assistants"`) and attaches it to the workspace Vector Store.
+      - Writes updates in stages for resilience:
+        1) Baseline (always attempted): `ingested=true`, `openai_file_id`, and `vs_file_id`.
+        2) Metadata enrichment (best-effort; tolerates missing columns): `has_ocr`, `file_ext`, `doc_type`, `meeting_year`, `meeting_month`.
+        3) Document profile flag (best-effort): `doc_profile_processed=true`, `doc_profile_processed_at=now()`.
 - Vector Store resolution: Uses `GDRIVE_VECTOR_STORE_ID` if set; otherwise looks up `workspace_vector_stores.vector_store_id` by `GDRIVE_WORKSPACE_ID`.
 - Retrieval remains UI-side via Responses API + File Search; this service does not handle chat, only ingestion and optional hybrid RAG.
 
@@ -138,6 +140,7 @@ Acceptance criteria
   - Drive sync entries: `[responses.gdrive] New file: …`, OCR decisions, and `Google Drive sync finished` summaries.
   - OCR pipeline logs: `Starting OCR`, `Processing page X/N`, and `Successfully completed OCR`.
   - VS worker logs on errors or warnings during upload/attach, and updates to `file_workspaces`.
+  - If schema columns are missing, the worker logs a best‑effort warning and still writes baseline fields; add columns per SQL below.
 - Absence of OpenAI upload/attach logs in the backend indicates the VS worker isn’t running or files aren’t yet eligible (e.g., waiting for OCR to finish).
 
 ### Operations: how to run workers
@@ -168,6 +171,21 @@ Acceptance criteria
 - Ensure the VS ingest worker is scheduled in production and has the env to resolve `vector_store_id`.
 - Confirm the service account is a member of the Shared Drive with Content Manager (or above) so list/download works across the org.
 - Add a small health metric: counts of `new_files_processed`, `ocr_started`, `uploaded`, `errors`, `files_deleted`, `vs_deleted` for observability.
+
+### Schema checklist (document profiles) – run in Supabase
+- Ensure the following columns exist on `file_workspaces` so the worker can record both baseline and enriched metadata:
+  - Baseline: `ingested boolean not null default false`, `deleted boolean not null default false`, `openai_file_id text`, `vs_file_id text`
+  - Metadata: `has_ocr boolean`, `file_ext text`, `doc_type text`, `meeting_year int`, `meeting_month int`
+  - Processed flags: `doc_profile_processed boolean not null default false`, `doc_profile_processed_at timestamptz`
+- Also ensure OCR/storage hints on `files`: `ocr_needed boolean`, `ocr_scanned boolean`, `ocr_text_path text`, `file_path text`, `type text`
+- See the workspace UI repo instructions for a combined SQL that also creates the `research_reports` table used by the frontend.
+
+### Research integration (context for frontend)
+- The frontend saves research runs to `research_reports` and lists them in a sidebar panel. Current research flow doesn’t yet use `file_workspaces` metadata for filtering; consider adding a “soft_filters” hint path or multi‑store routing when available.
+
+### Health & reconciliation (optional but recommended)
+- Health endpoint: add a tiny route (e.g., `GET /responses/vector-store/health`) that summarizes per‑workspace counts: pending vs ingested, rows missing `doc_profile_processed`, and recent worker errors.
+- Reconciliation job (if UI direct uploads are used): periodically list current Vector Store attachments and upsert/update `file_workspaces` rows (set `ingested/openai_file_id/vs_file_id` and fill basic metadata); this complements the Drive‑only ingestion path.
 
 ### Agent loop (optional)
 - If you add server-side tool orchestration (beyond OCR), use the Responses API tool loop patterns from `openai-cookbook/openai-agent-builder-guide.md`:

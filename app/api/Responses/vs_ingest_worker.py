@@ -163,8 +163,11 @@ def _get_eligible_files(limit: int, workspace_id: Optional[str]) -> List[Dict]:
     either (files.ocr_needed=False) OR (files.ocr_scanned=True).
     """
     if not workspace_id:
-        logger.error("Workspace id not provided for VS ingestion worker")
+        logger.error("[vs_ingest_worker] Workspace id not provided for VS ingestion worker")
         return []
+    
+    logger.info(f"[vs_ingest_worker] Querying for eligible files for workspace_id: {workspace_id}")
+    
     try:
         # Join file_workspaces with files to get paths and OCR fields
         sel = (
@@ -179,16 +182,29 @@ def _get_eligible_files(limit: int, workspace_id: Optional[str]) -> List[Dict]:
             .eq("deleted", False)
             .limit(limit)
         )
+        
+        logger.info(f"[vs_ingest_worker] Executing query for pending ingestion.")
         res = q.execute()
         rows = getattr(res, "data", []) or []
+        
+        logger.info(f"[vs_ingest_worker] Found {len(rows)} candidate rows with ingested=false.")
+
         eligible = []
         for r in rows:
             f = r.get("files") or {}
-            if (not f.get("ocr_needed")) or f.get("ocr_scanned"):
+            ocr_needed = f.get("ocr_needed", False)
+            ocr_scanned = f.get("ocr_scanned", False)
+            
+            is_eligible = (not ocr_needed) or ocr_scanned
+            if is_eligible:
                 eligible.append(r)
+            else:
+                logger.info(f"[vs_ingest_worker] Skipping file_id {r.get('file_id')}: ocr_needed={ocr_needed}, ocr_scanned={ocr_scanned}")
+
+        logger.info(f"[vs_ingest_worker] Found {len(eligible)} eligible files to process.")
         return eligible
     except Exception as e:
-        logger.error(f"Failed to query eligible files (per-workspace): {e}")
+        logger.error(f"[vs_ingest_worker] Failed to query eligible files (per-workspace): {e}", exc_info=True)
         return []
 
 
@@ -197,17 +213,32 @@ async def upload_missing_files_to_vector_store():
     On success, sets files.ingested=True (repurposed to mean VS-uploaded).
     Rate is controlled by VS_UPLOAD_DELAY_MS and VS_UPLOAD_BATCH_LIMIT envs.
     """
-    vector_store_id = _resolve_vector_store_id()
+    logger.info("[vs_ingest_worker] Starting upload_missing_files_to_vector_store task.")
+    try:
+        vector_store_id = _resolve_vector_store_id()
+        logger.info(f"[vs_ingest_worker] Resolved vector_store_id: {vector_store_id}")
+    except Exception as e:
+        logger.error(f"[vs_ingest_worker] Could not resolve vector_store_id. Aborting. Error: {e}", exc_info=True)
+        return {"error": "Failed to resolve vector_store_id"}
+
     client = OpenAI()
     delay_ms = max(0, int(settings.VS_UPLOAD_DELAY_MS))
     per_call_sleep = delay_ms / 1000.0
     batch_limit = max(1, int(settings.VS_UPLOAD_BATCH_LIMIT))
 
     workspace_id = settings.GDRIVE_WORKSPACE_ID
+    if not workspace_id:
+        logger.error("[vs_ingest_worker] GDRIVE_WORKSPACE_ID is not set. Aborting.")
+        return {"error": "GDRIVE_WORKSPACE_ID not set"}
+
     files = _get_eligible_files(batch_limit, workspace_id)
     uploaded = 0
     skipped = 0
     errors = 0
+
+    if not files:
+        logger.info("[vs_ingest_worker] No eligible files to upload.")
+        return {"vector_store_id": vector_store_id, "uploaded": 0, "skipped": 0, "errors": 0, "message": "No eligible files found."}
 
     for fw in files:
         file_id = fw["file_id"]
@@ -215,14 +246,18 @@ async def upload_missing_files_to_vector_store():
         name = f.get("name") or os.path.basename(f.get("file_path", "")) or f"file-{file_id}"
         file_path = f.get("file_path")
         content_type = f.get("type", "application/octet-stream")
+        
+        logger.info(f"[vs_ingest_worker] Processing file: {name} (file_id: {file_id})")
 
         # Prefer OCR text if available
         temp_path = None
         upload_dir = None
         try:
-            if f.get("ocr_scanned") and f.get("ocr_text_path"):
+            ocr_text_path = f.get("ocr_text_path")
+            if f.get("ocr_scanned") and ocr_text_path:
+                logger.info(f"[vs_ingest_worker] Attempting to download OCR text from: {ocr_text_path}")
                 try:
-                    content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(f["ocr_text_path"])  # type: ignore
+                    content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(ocr_text_path)  # type: ignore
                     # Create a stable temp file path using the original base name, so OpenAI sees a friendly filename
                     upload_dir = tempfile.mkdtemp(prefix="vs_ingest_")
                     base, _ = os.path.splitext(name)
@@ -230,10 +265,12 @@ async def upload_missing_files_to_vector_store():
                     temp_path = os.path.join(upload_dir, desired)
                     with open(temp_path, "wb") as tmp:
                         tmp.write(content if isinstance(content, (bytes, bytearray)) else content.encode("utf-8"))
+                    logger.info(f"[vs_ingest_worker] Successfully created temp file with OCR text at: {temp_path}")
                 except Exception as e:
-                    logger.warning(f"Failed downloading OCR text for {name}, falling back to original: {e}")
-
+                    logger.warning(f"[vs_ingest_worker] Failed downloading OCR text for {name}, falling back to original: {e}")
+            
             if temp_path is None:
+                logger.info(f"[vs_ingest_worker] No OCR text used. Downloading original file from: {file_path}")
                 content = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)  # type: ignore
                 # Create a stable temp file path using the original filename, preserving its extension
                 upload_dir = tempfile.mkdtemp(prefix="vs_ingest_") if upload_dir is None else upload_dir
@@ -244,10 +281,12 @@ async def upload_missing_files_to_vector_store():
                 temp_path = os.path.join(upload_dir, desired)
                 with open(temp_path, "wb") as tmp:
                     tmp.write(content)
+                logger.info(f"[vs_ingest_worker] Successfully created temp file with original content at: {temp_path}")
 
             # Upload to OpenAI Files with retry/backoff
             def _create_file(p):
                 with open(p, "rb") as fh:
+                    logger.info(f"[vs_ingest_worker] Uploading {p} to OpenAI Files API.")
                     # Attach a tiny bit of metadata to aid later debugging (optional)
                     try:
                         return client.files.create(file=fh, purpose="assistants", metadata={
@@ -257,13 +296,16 @@ async def upload_missing_files_to_vector_store():
                         })
                     except Exception:
                         # Fallback for SDKs/environments that don't accept metadata
+                        logger.warning("[vs_ingest_worker] OpenAI files.create with metadata failed, retrying without.")
                         fh.seek(0)
                         return client.files.create(file=fh, purpose="assistants")
 
             created = _retry_call(_create_file, temp_path, retries=4, base_delay=1.0)
+            logger.info(f"[vs_ingest_worker] Successfully created OpenAI File ID: {created.id}")
 
             # Attach to Vector Store with retry/backoff
             vs_file_id = _retry_call(_attach_file_to_vector_store, client, vector_store_id, created.id, retries=4, base_delay=1.0)
+            logger.info(f"[vs_ingest_worker] Successfully attached to Vector Store. VS File ID: {vs_file_id}")
 
             # Mark per-workspace ingestion success on file_workspaces and enrich basic metadata columns
             try:
@@ -271,6 +313,8 @@ async def upload_missing_files_to_vector_store():
                 base_upd = {"ingested": True, "openai_file_id": created.id}
                 if vs_file_id:
                     base_upd["vs_file_id"] = vs_file_id
+                
+                logger.info(f"[vs_ingest_worker] Updating baseline fields for file_id {file_id}: {base_upd}")
                 supabase.table("file_workspaces").update(base_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
 
                 # Try optional metadata enrichment (best-effort: tolerate missing columns)
@@ -289,26 +333,30 @@ async def upload_missing_files_to_vector_store():
                         meta_upd["meeting_year"] = year
                     if month:
                         meta_upd["meeting_month"] = month
+                    
+                    logger.info(f"[vs_ingest_worker] Updating metadata fields for file_id {file_id}: {meta_upd}")
                     supabase.table("file_workspaces").update(meta_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
                 except Exception as e_meta:
-                    logger.warning(f"file_workspaces metadata enrichment skipped (columns may be missing): {e_meta}")
+                    logger.warning(f"[vs_ingest_worker] file_workspaces metadata enrichment skipped (columns may be missing): {e_meta}", exc_info=True)
 
                 # Mark document profile processed marker if present in schema
                 try:
-                    supabase.table("file_workspaces").update({
+                    profile_upd = {
                         "doc_profile_processed": True,
                         "doc_profile_processed_at": datetime.now(timezone.utc).isoformat()
-                    }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                    }
+                    logger.info(f"[vs_ingest_worker] Updating doc_profile_processed flag for file_id {file_id}: {profile_upd}")
+                    supabase.table("file_workspaces").update(profile_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
                 except Exception as e_flag:
-                    logger.info(f"Doc profile processed flag not set (columns may be missing): {e_flag}")
+                    logger.warning(f"[vs_ingest_worker] Doc profile processed flag not set (columns may be missing): {e_flag}", exc_info=True)
             except Exception as e:
-                logger.warning(f"Uploaded {name} to VS but failed to update file_workspaces baseline fields: {e}")
+                logger.error(f"[vs_ingest_worker] Uploaded {name} to VS but failed to update file_workspaces baseline fields: {e}", exc_info=True)
 
             uploaded += 1
             if per_call_sleep:
                 time.sleep(per_call_sleep)
         except Exception as e:
-            logger.error(f"Failed VS upload for {name} (id={file_id}): {e}")
+            logger.error(f"[vs_ingest_worker] Failed VS upload for {name} (id={file_id}): {e}", exc_info=True)
             errors += 1
         finally:
             # Cleanup temp file and directory
@@ -322,5 +370,6 @@ async def upload_missing_files_to_vector_store():
                     os.rmdir(upload_dir)
             except Exception:
                 pass
-
+    
+    logger.info(f"[vs_ingest_worker] Task finished. Uploaded: {uploaded}, Skipped: {skipped}, Errors: {errors}")
     return {"vector_store_id": vector_store_id, "uploaded": uploaded, "skipped": skipped, "errors": errors}
