@@ -19,6 +19,33 @@ from app.core.document_profiler import generate_profile_from_text
 logger = logging.getLogger(__name__)
 
 
+def _extract_text_from_pdf_bytes(content: bytes) -> Optional[str]:
+    """Best-effort text extraction from PDF bytes.
+    Tries pypdf first; returns None on failure.
+    """
+    try:
+        from pypdf import PdfReader  # type: ignore
+    except Exception:
+        logger.warning("[vs_ingest_worker] pypdf not available; cannot extract text from PDF.")
+        return None
+
+    try:
+        reader = PdfReader(io.BytesIO(content))
+        parts: List[str] = []
+        for page in reader.pages:
+            try:
+                txt = page.extract_text() or ""
+                if txt.strip():
+                    parts.append(txt)
+            except Exception:
+                continue
+        joined = "\n\n".join(parts).strip()
+        return joined if joined else None
+    except Exception as e:
+        logger.warning(f"[vs_ingest_worker] Failed to extract PDF text: {e}")
+        return None
+
+
 def _resolve_vector_store_id() -> str:
     if settings.GDRIVE_VECTOR_STORE_ID:
         return settings.GDRIVE_VECTOR_STORE_ID
@@ -298,13 +325,15 @@ async def upload_missing_files_to_vector_store():
         upload_dir = None
         try:
             ocr_text_path = f.get("ocr_text_path")
-            has_ocr = False
+            # Reflect actual OCR status from files.ocr_scanned; don't rely solely on text path presence
+            has_ocr = bool(f.get("ocr_scanned"))
             text_content_for_profiling = None
 
             if f.get("ocr_scanned") and ocr_text_path:
                 logger.info(f"[vs_ingest_worker] Attempting to download OCR text from: {ocr_text_path}")
                 try:
                     content_bytes = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(ocr_text_path)
+                    # Text path present implies we used OCR-extracted text
                     has_ocr = True
                     # Create a stable temp file path using the original base name, so OpenAI sees a friendly filename
                     upload_dir = tempfile.mkdtemp(prefix="vs_ingest_")
@@ -340,12 +369,16 @@ async def upload_missing_files_to_vector_store():
                     tmp.write(content_bytes)
                 logger.info(f"[vs_ingest_worker] Successfully created temp file with original content at: {temp_path}")
 
-                # Attempt to get text for profiling from text-based files
+                # Attempt to get text for profiling from text-based files (including PDFs)
                 if temp_path.lower().endswith(('.txt', '.md', '.json')):
                     try:
                         text_content_for_profiling = content_bytes.decode("utf-8")
                     except UnicodeDecodeError:
                         logger.warning(f"[vs_ingest_worker] Could not decode text file as utf-8 for profiling, file_id: {file_id}")
+                elif temp_path.lower().endswith('.pdf'):
+                    pdf_text = _extract_text_from_pdf_bytes(content_bytes)
+                    if pdf_text:
+                        text_content_for_profiling = pdf_text
 
 
             # Upload to OpenAI Files with retry/backoff
@@ -495,11 +528,16 @@ async def upload_missing_files_to_vector_store():
             if text_content_for_profiling is None:
                 try:
                     content_bytes = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).download(file_path)
-                    if (name or "").lower().endswith((".txt", ".md", ".json")):
+                    lname = (name or "").lower()
+                    if lname.endswith((".txt", ".md", ".json")):
                         try:
                             text_content_for_profiling = content_bytes.decode("utf-8")
                         except UnicodeDecodeError:
                             logger.warning(f"[vs_ingest_worker] Could not decode text file as utf-8 (profile-only), file_id: {file_id}")
+                    elif lname.endswith('.pdf'):
+                        pdf_text = _extract_text_from_pdf_bytes(content_bytes)
+                        if pdf_text:
+                            text_content_for_profiling = pdf_text
                 except Exception as e:
                     logger.warning(f"[vs_ingest_worker] Failed downloading original content (profile-only) for {name}: {e}")
 
