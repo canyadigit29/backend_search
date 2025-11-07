@@ -193,6 +193,30 @@ def _get_eligible_files(limit: int, workspace_id: Optional[str]) -> List[Dict]:
     if not workspace_id:
         logger.error("[vs_ingest_worker] Workspace id not provided for VS ingestion worker")
         return []
+
+
+def _safe_upsert_document_profile(profile_data: Dict[str, object]) -> None:
+    """Upsert into document_profiles while tolerating schema differences.
+    - First attempt: include processed_at if provided.
+    - On PostgREST schema errors referencing unknown columns (e.g., processed_at), retry without it.
+    """
+    try:
+        supabase.table("document_profiles").upsert(profile_data, on_conflict="file_id, workspace_id").execute()
+        return
+    except Exception as e:
+        msg = str(e)
+        # Detect common PostgREST schema cache error for unknown column
+        if "processed_at" in msg or "PGRST204" in msg or "schema cache" in msg:
+            try:
+                slim = {k: v for k, v in profile_data.items() if k != "processed_at"}
+                supabase.table("document_profiles").upsert(slim, on_conflict="file_id, workspace_id").execute()
+                logger.warning("[vs_ingest_worker] document_profiles.upsert retried without processed_at column and succeeded.")
+                return
+            except Exception as e2:
+                logger.error(f"[vs_ingest_worker] document_profiles.upsert failed even after dropping processed_at: {e2}", exc_info=True)
+                raise
+        # Re-raise for non-schema errors
+        raise
     
     logger.info(f"[vs_ingest_worker] Querying for eligible files for workspace_id: {workspace_id}")
     
@@ -420,8 +444,7 @@ async def upload_missing_files_to_vector_store():
                             "entities": profile.get("entities"),
                             "processed_at": datetime.now(timezone.utc).isoformat(),
                         }
-                        # Upsert to handle cases where a profile might be re-generated
-                        supabase.table("document_profiles").upsert(profile_data, on_conflict="file_id, workspace_id").execute()
+                        _safe_upsert_document_profile(profile_data)
                         profile_saved = True
                         logger.info(f"[vs_ingest_worker] Successfully saved document profile for file_id: {file_id}")
                     else:
@@ -556,7 +579,7 @@ async def upload_missing_files_to_vector_store():
                         "entities": profile.get("entities"),
                         "processed_at": datetime.now(timezone.utc).isoformat(),
                     }
-                    supabase.table("document_profiles").upsert(profile_data, on_conflict="file_id, workspace_id").execute()
+                    _safe_upsert_document_profile(profile_data)
                     supabase.table("file_workspaces").update({
                         "doc_profile_processed": True,
                         "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),

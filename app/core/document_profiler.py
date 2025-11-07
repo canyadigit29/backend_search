@@ -116,6 +116,38 @@ async def generate_profile_from_text(
                 logger.error("[document_profiler] Responses API returned no output_text.")
                 return None
             profile_data = json.loads(output_text)
+        except TypeError as resp_err:
+            # Likely SDK does not yet support response_format; retry without it before falling back
+            if "response_format" in str(resp_err):
+                logger.warning("[document_profiler] responses.create unexpected kwarg 'response_format'; retrying without schema enforcement.")
+                try:
+                    response = await client.responses.create(
+                        model=model,
+                        input=PROMPT_TEMPLATE.format(document_text=truncated_content),
+                        temperature=0.2,
+                    )
+                    output_text = getattr(response, "output_text", None)
+                    if not output_text:
+                        try:
+                            blocks = getattr(response, "output", []) or []
+                            texts = []
+                            for b in blocks:
+                                for c in getattr(b, "content", []) or []:
+                                    if getattr(c, "type", "") == "output_text":
+                                        texts.append(getattr(c, "text", ""))
+                            output_text = "\n".join([t for t in texts if t]).strip()
+                        except Exception:
+                            output_text = None
+                    if not output_text:
+                        logger.error("[document_profiler] Responses API (no response_format) returned no output_text.")
+                        raise
+                    profile_data = json.loads(output_text)
+                except Exception as retry_err:
+                    logger.warning(f"[document_profiler] Retry without response_format failed ({retry_err}); falling back to chat.completions JSON mode.")
+                    raise retry_err
+            else:
+                logger.warning(f"[document_profiler] Responses API TypeError ({resp_err}); falling back to chat.completions JSON mode.")
+                raise resp_err
         except Exception as resp_err:
             # Compatibility fallback: chat.completions with simple json_object mode (no schema enforcement)
             logger.warning(
