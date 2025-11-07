@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y curl \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && /root/.local/bin/uv lock \
-    && /root/.local/bin/uv sync --frozen --no-dev
+    && /root/.local/bin/uv sync --frozen --no-dev \
+    && ln -s /root/.local/bin/uvicorn /usr/local/bin/uvicorn || true
 
  # Copy the rest of the project (after deps to leverage Docker layer caching)
 COPY . .
