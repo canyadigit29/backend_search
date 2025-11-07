@@ -12,6 +12,7 @@ from fastapi import HTTPException
 from app.core.config import settings
 from app.core.supabase_client import supabase
 from app.core.document_profiler import generate_profile_from_text
+from app.core.openai_async_client import AsyncOpenAIClient
 # Note: multi-store mapping helpers live in app.api.Responses.vs_store_mapping
 # When enabling Drive subfolder → store routing, resolve a per-file target store
 # via vs_store_mapping.resolve_vector_store_for(workspace_id, drive_folder_id=..., label=...)
@@ -188,7 +189,7 @@ def _retry_call(fn, *args, retries=4, base_delay=1.0, **kwargs):
 def _get_eligible_files(limit: int, workspace_id: Optional[str]) -> List[Dict]:
     """Pick files that should be uploaded to the Vector Store for a workspace.
     Policy (per-workspace): file_workspaces.ingested=False AND deleted=False AND
-    either (files.ocr_needed=False) OR (files.ocr_scanned=True).
+    ingest_failed=False AND either (files.ocr_needed=False) OR (files.ocr_scanned=True).
     """
     if not workspace_id:
         logger.error("[vs_ingest_worker] Workspace id not provided for VS ingestion worker")
@@ -223,7 +224,7 @@ def _safe_upsert_document_profile(profile_data: Dict[str, object]) -> None:
     try:
         # Join file_workspaces with files to get paths and OCR fields
         sel = (
-            "file_id, workspace_id, ingested, deleted, openai_file_id, vs_file_id, "
+            "file_id, workspace_id, ingested, deleted, openai_file_id, vs_file_id, ingest_retries, "
             "files(id,name,file_path,type,ocr_needed,ocr_scanned,ocr_text_path)"
         )
         q = (
@@ -232,6 +233,7 @@ def _safe_upsert_document_profile(profile_data: Dict[str, object]) -> None:
             .eq("workspace_id", workspace_id)
             .eq("ingested", False)
             .eq("deleted", False)
+            .eq("ingest_failed", False)
             .limit(limit)
         )
         
@@ -318,9 +320,11 @@ async def upload_missing_files_to_vector_store():
         return {"error": "Failed to resolve vector_store_id"}
 
     client = OpenAI()
+    async_openai_client = AsyncOpenAIClient()
     delay_ms = max(0, int(settings.VS_UPLOAD_DELAY_MS))
     per_call_sleep = delay_ms / 1000.0
     batch_limit = max(1, int(settings.VS_UPLOAD_BATCH_LIMIT))
+    max_retries = int(os.environ.get("VS_INGEST_MAX_RETRIES", 5))
 
     workspace_id = settings.GDRIVE_WORKSPACE_ID
     if not workspace_id:
@@ -521,6 +525,16 @@ async def upload_missing_files_to_vector_store():
         except Exception as e:
             logger.error(f"[vs_ingest_worker] Failed VS upload for {name} (id={file_id}): {e}", exc_info=True)
             errors += 1
+            # Increment retry counter and mark as failed if limit is exceeded
+            try:
+                retries = (fw.get("ingest_retries") or 0) + 1
+                update_payload = {"ingest_retries": retries}
+                if retries >= max_retries:
+                    update_payload["ingest_failed"] = True
+                    logger.error(f"File {name} (id={file_id}) has failed ingestion {retries} times and will be marked as failed.")
+                supabase.table("file_workspaces").update(update_payload).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+            except Exception as db_e:
+                logger.error(f"Failed to update retry count for file {file_id}: {db_e}")
         finally:
             # Cleanup temp file and directory
             try:

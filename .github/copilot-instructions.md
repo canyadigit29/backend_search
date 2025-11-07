@@ -181,7 +181,9 @@ Acceptance criteria
 - See the workspace UI repo instructions for a combined SQL that also creates the `research_reports` table used by the frontend.
 
 ### Research integration (context for frontend)
-- The frontend saves research runs to `research_reports` and lists them in a sidebar panel. Current research flow doesn’t yet use `file_workspaces` metadata for filtering; consider adding a “soft_filters” hint path or multi‑store routing when available.
+- The frontend saves research runs to `research_reports` and lists them in a sidebar panel.
+- The research route (`/api/research` in the UI) now derives soft filters (year, month, doc_type, meeting_body, ordinance_number) from `file_workspaces` metadata plus the user question and injects them as hints to bias File Search retrieval. Backend ingestion should continue to enrich these facet columns so the researcher can guide queries effectively.
+- Multi‑store routing (planned) will allow the researcher to attach multiple Vector Stores when the question spans categories; today a single workspace store is attached.
 
 ### Health & reconciliation (optional but recommended)
 - Health endpoint: add a tiny route (e.g., `GET /responses/vector-store/health`) that summarizes per‑workspace counts: pending vs ingested, rows missing `doc_profile_processed`, and recent worker errors.

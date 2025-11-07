@@ -32,10 +32,10 @@ def get_supabase_client(force_refresh: bool = False) -> Client:
             return _supabase_client
 
         url = settings.SUPABASE_URL
-        key = settings.SUPABASE_SERVICE_ROLE
+        key = settings.SUPABASE_SERVICE_ROLE_KEY
 
         if not _env_var_set(url) or not _env_var_set(key):
-            raise RuntimeError("Supabase credentials not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE)")
+            raise RuntimeError("Supabase credentials not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)")
         try:
             _supabase_client = create_client(url, key)
             return _supabase_client
