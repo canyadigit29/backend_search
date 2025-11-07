@@ -447,6 +447,16 @@ async def upload_missing_files_to_vector_store():
                             "processed_at": datetime.now(timezone.utc).isoformat(),
                         }
                         _safe_upsert_document_profile(profile_data)
+                        # Best-effort: also persist profile onto file_workspaces if columns exist
+                        try:
+                            supabase.table("file_workspaces").update({
+                                "profile_summary": profile.get("summary"),
+                                "profile_keywords": profile.get("keywords"),
+                                "profile_entities": profile.get("entities"),
+                                "profile_generated_at": datetime.now(timezone.utc).isoformat(),
+                            }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                        except Exception as e_profile_cols:
+                            logger.debug(f"[vs_ingest_worker] file_workspaces profile columns not present or update failed (continuing): {e_profile_cols}")
                         profile_saved = True
                         profiles_saved += 1
                         logger.info(f"[vs_ingest_worker] Successfully saved document profile for file_id: {file_id}")
@@ -585,6 +595,16 @@ async def upload_missing_files_to_vector_store():
                         "processed_at": datetime.now(timezone.utc).isoformat(),
                     }
                     _safe_upsert_document_profile(profile_data)
+                    # Best-effort: also persist profile onto file_workspaces if columns exist
+                    try:
+                        supabase.table("file_workspaces").update({
+                            "profile_summary": profile.get("summary"),
+                            "profile_keywords": profile.get("keywords"),
+                            "profile_entities": profile.get("entities"),
+                            "profile_generated_at": datetime.now(timezone.utc).isoformat(),
+                        }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                    except Exception as e_profile_cols:
+                        logger.debug(f"[vs_ingest_worker] file_workspaces profile columns not present or update failed (continuing): {e_profile_cols}")
                     supabase.table("file_workspaces").update({
                         "doc_profile_processed": True,
                         "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),
