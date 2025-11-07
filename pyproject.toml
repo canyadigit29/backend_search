@@ -1,0 +1,60 @@
+[project]
+name = "backend_search"
+version = "0.0.1"
+description = "Ingestion + Vector Store backend (FastAPI)"
+requires-python = ">=3.11"
+# We deliberately leave dependencies empty; we manage them via the [tool.uv] groups below.
+
+[tool.uv]
+# Default (production) direct dependencies
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "supabase",  # supabase client will pull gotrue/httpx compatible versions
+  "openai==2.7.1",  # aligned with local SDK
+  "pydantic",
+  "ocrmypdf",
+  "pypdf",
+  "requests",
+  "tiktoken",
+  "numpy",
+  "aiofiles",
+  "python-dotenv",
+  "python-multipart",
+  "google-api-python-client",
+  "google-auth-httplib2",
+  "google-auth-oauthlib"
+]
+
+[tool.uv.dev-dependencies]
+# Development/test extras
+pytest = "*"
+pytest-asyncio = "*"
+httpx = "*"  # for test client usage; not pinned unless needed
+black = "*"
+mypy = "*"
+
+[tool.uv.sources]
+# (Optional) Local path overrides could be added here if you want to develop against sibling SDK repos.
+# Example (commented):
+# openai = { path = "../openai-python" }
+
+[tool.uv.export]
+# Configure export format if we choose to generate requirements.txt for legacy tooling.
+format = "requirements-txt"
+include-hashes = false
+
+[tool.pytest.ini_options]
+pythonpath = ["app"]
+asyncio_mode = "auto"
+
+[tool.black]
+line-length = 100
+
+[tool.mypy]
+python_version = 3.11
+ignore_missing_imports = true
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

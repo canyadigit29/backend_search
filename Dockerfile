@@ -2,8 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
+ # System libs first, then install uv and sync deps from pyproject/lock.
+COPY pyproject.toml .
 RUN apt-get update && apt-get install -y \
         gawk \
         poppler-utils \
@@ -11,10 +11,11 @@ RUN apt-get update && apt-get install -y \
         ghostscript \
         qpdf \
         pngquant \
-    && \
-    pip install --no-cache-dir -r requirements.txt
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && /root/.local/bin/uv lock \
+    && /root/.local/bin/uv sync --frozen --no-dev
 
-# Copy project files
+ # Copy the rest of the project (after deps to leverage Docker layer caching)
 COPY . .
 
 # Convert line endings to Unix format to prevent script errors
