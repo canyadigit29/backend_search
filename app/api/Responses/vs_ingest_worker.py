@@ -194,30 +194,6 @@ def _get_eligible_files(limit: int, workspace_id: Optional[str]) -> List[Dict]:
     if not workspace_id:
         logger.error("[vs_ingest_worker] Workspace id not provided for VS ingestion worker")
         return []
-
-
-def _safe_upsert_document_profile(profile_data: Dict[str, object]) -> None:
-    """Upsert into document_profiles while tolerating schema differences.
-    - First attempt: include processed_at if provided.
-    - On PostgREST schema errors referencing unknown columns (e.g., processed_at), retry without it.
-    """
-    try:
-        supabase.table("document_profiles").upsert(profile_data, on_conflict="file_id, workspace_id").execute()
-        return
-    except Exception as e:
-        msg = str(e)
-        # Detect common PostgREST schema cache error for unknown column
-        if "processed_at" in msg or "PGRST204" in msg or "schema cache" in msg:
-            try:
-                slim = {k: v for k, v in profile_data.items() if k != "processed_at"}
-                supabase.table("document_profiles").upsert(slim, on_conflict="file_id, workspace_id").execute()
-                logger.warning("[vs_ingest_worker] document_profiles.upsert retried without processed_at column and succeeded.")
-                return
-            except Exception as e2:
-                logger.error(f"[vs_ingest_worker] document_profiles.upsert failed even after dropping processed_at: {e2}", exc_info=True)
-                raise
-        # Re-raise for non-schema errors
-        raise
     
     logger.info(f"[vs_ingest_worker] Querying for eligible files for workspace_id: {workspace_id}")
     
@@ -472,52 +448,6 @@ async def upload_missing_files_to_vector_store():
                     profiles_attempted += 1
             else:
                 logger.info(f"[vs_ingest_worker] Skipping document profiling for file_id {file_id} (no text content).")
-
-
-            # Mark per-workspace ingestion success on file_workspaces and enrich basic metadata columns
-            try:
-                # Always-attempt baseline fields first
-                base_upd = {"ingested": True, "openai_file_id": created.id}
-                if vs_file_id:
-                    base_upd["vs_file_id"] = vs_file_id
-                
-                logger.info(f"[vs_ingest_worker] Updating baseline fields for file_id {file_id}: {base_upd}")
-                supabase.table("file_workspaces").update(base_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
-
-                # Try optional metadata enrichment (best-effort: tolerate missing columns)
-                try:
-                    file_ext = _file_ext_from_name(name)
-                    year, doc_type = _derive_year_and_doctype(name)
-                    month = _derive_month_from_filename(name)
-
-                    meta_upd: Dict[str, object] = {"has_ocr": has_ocr}
-                    if file_ext:
-                        meta_upd["file_ext"] = file_ext
-                    if doc_type:
-                        meta_upd["doc_type"] = doc_type
-                    if year:
-                        meta_upd["meeting_year"] = year
-                    if month:
-                        meta_upd["meeting_month"] = month
-                    
-                    logger.info(f"[vs_ingest_worker] Updating metadata fields for file_id {file_id}: {meta_upd}")
-                    supabase.table("file_workspaces").update(meta_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
-                except Exception as e_meta:
-                    logger.warning(f"[vs_ingest_worker] file_workspaces metadata enrichment skipped (columns may be missing): {e_meta}", exc_info=True)
-
-                # Mark document profile processed marker if the profile was saved
-                if profile_saved:
-                    try:
-                        profile_upd = {
-                            "doc_profile_processed": True,
-                            "doc_profile_processed_at": datetime.now(timezone.utc).isoformat()
-                        }
-                        logger.info(f"[vs_ingest_worker] Updating doc_profile_processed flag for file_id {file_id}: {profile_upd}")
-                        supabase.table("file_workspaces").update(profile_upd).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
-                    except Exception as e_flag:
-                        logger.warning(f"[vs_ingest_worker] Doc profile processed flag not set (columns may be missing): {e_flag}", exc_info=True)
-            except Exception as e:
-                logger.error(f"[vs_ingest_worker] Uploaded {name} to VS but failed to update file_workspaces baseline fields: {e}", exc_info=True)
 
             uploaded += 1
             if per_call_sleep:
