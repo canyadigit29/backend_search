@@ -11,6 +11,9 @@ export PYTHONPATH=.
 
 # Give the container a few seconds to initialize networking and other services
 echo "Initializing..."
+echo "--- PRINTING ENVIRONMENT VARIABLES ---"
+printenv
+echo "------------------------------------"
 sleep 5
 
 # Resolve virtualenv created by uv
