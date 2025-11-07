@@ -68,3 +68,8 @@ This guide helps Copilot models (and humans) understand how the frontend (chatbo
 - 404 from UI routes when feature flag off: ensure `USE_OPENAI_FILE_SEARCH=true` on the server.
 - Uploads via backend ingest failing: verify `BACKEND_SEARCH_URL` and backend `ALLOWED_ORIGINS`.
 - Missing Vector Store: create mapping via `POST /api/vector-stores/create` (or the admin script) to persist `workspace_vector_stores.vector_store_id`.
+
+## Cross-repo schema reference
+- The frontend (chatbot-ui) repo contains a full Supabase schema snapshot for Copilot/code search: `supabase/migrations/20251107_manual_schema.sql`.
+- It is reference-only (includes tables, RLS policies, functions, triggers, extensions). Do not apply it as a migration.
+- Regenerate there (not here) when backend-visible schema changes occur to keep a single authoritative snapshot.

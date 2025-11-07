@@ -1,10 +1,12 @@
-# (Legacy) precache_model.py
-from sentence_transformers import CrossEncoder
+"""
+Deprecated local_dev precache script.
+No longer downloads or caches any model. Left as a stub so existing
+developer docs or scripts referencing it won't fail.
+"""
 
-print("Starting model pre-caching...")
-try:
-    model = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
-    print("Model 'cross-encoder/ms-marco-MiniLM-L-6-v2' downloaded and cached successfully.")
-except Exception as e:
-    print(f"Error during model pre-caching: {e}")
-    exit(1)
+def main() -> None:
+    print("local_dev/precache_model.py deprecated; doing nothing.")
+
+
+if __name__ == "__main__":
+    main()

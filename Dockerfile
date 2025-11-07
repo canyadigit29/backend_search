@@ -12,15 +12,10 @@ RUN apt-get update && apt-get install -y \
         qpdf \
         pngquant \
     && \
-    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy project files
 COPY . .
-
-# Pre-cache the sentence-transformer model
-# This runs the script to download the model during the build
-RUN python precache_model.py
 
 # Convert line endings to Unix format to prevent script errors
 RUN sed -i 's/\r$//' start.sh

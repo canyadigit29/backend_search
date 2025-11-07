@@ -209,5 +209,11 @@ Acceptance criteria
 ## Frontend integration note (chatbot-ui)
 - The frontend’s `/api/vector-stores/ingest` route forwards to this service’s `POST /responses/vector-store/ingest/upload`. If uploads fail in production, verify Vercel `BACKEND_SEARCH_URL` and CORS `ALLOWED_ORIGINS`, and confirm the endpoint path matches.
 
+## External schema reference (frontend)
+- The frontend (chatbot-ui) repository includes a full Supabase schema snapshot for Copilot/code navigation:
+  - Path (in that repo): `supabase/migrations/20251107_manual_schema.sql`
+  - Purpose: documentation & AI assistance only; not a runnable migration. Backend code may rely on tables/functions documented there.
+  - When backend schema changes require frontend awareness, regenerate the snapshot in the UI repo rather than copying it here to avoid divergence.
+
   ## Maintenance rule
   - Whenever this document is updated to reflect new resources or code behavior, remove or update any contradicting information to keep the instructions internally consistent. Treat `../COPILOT-WORKSPACE.md` and the frontend’s `COPILOT-WORKSPACE.md` as cross-repo sources of truth for flags, routes, and flows.
