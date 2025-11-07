@@ -57,7 +57,7 @@ This guide helps Copilot models (and humans) understand how the frontend (chatbo
   - Optional: `NEXT_PUBLIC_USE_BACKEND_INGEST=true`; `BACKEND_SEARCH_URL`
 
 - Backend (Railway/other)
-  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, `SUPABASE_STORAGE_BUCKET`
+  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`
   - `OPENAI_API_KEY`
   - `PGVECTOR_CONN_STR` (if used)
   - `ALLOWED_ORIGINS` includes the Vercel domain and localhost

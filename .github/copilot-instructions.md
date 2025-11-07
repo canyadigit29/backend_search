@@ -51,13 +51,13 @@ Retrieval is now performed by the frontend via the OpenAI Responses API + File S
 - Tests: `pytest tests/`.
 
 ## Required environment
-- Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, `SUPABASE_STORAGE_BUCKET`.
+- Supabase: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`.
 - OpenAI: `OPENAI_API_KEY`; optional `SEARCH_ASSISTANT_ID` to enable summarization.
 - CORS: `ALLOWED_ORIGINS` (comma-separated); API prefix is `settings.API_PREFIX` (default `/api`).
 
 ## Environment status (as of 2025-11-02)
 - `.env` is populated and git-ignored; values mirror Railway. Notable keys:
-  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE`, `SUPABASE_STORAGE_BUCKET` are set.
+  - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET` are set.
   - `OPENAI_API_KEY` is present; `SEARCH_ASSISTANT_ID` optional.
   - `PGVECTOR_CONN_STR` points to the remote instance.
   - `ALLOWED_ORIGINS` includes the Vercel URL and localhost.
@@ -81,13 +81,14 @@ Retrieval is now performed by the frontend via the OpenAI Responses API + File S
     - For PDFs, runs a quick text check and triggers OCR if needed (sets `files.ocr_needed=true` and enqueues OCR).
     - Deletions: If a file disappears from Drive, removes from Supabase Storage and `files`, deletes related `file_workspaces`, and best‑effort detaches/deletes the corresponding OpenAI Vector Store file(s) by filename.
   - VS ingest worker: `app/api/Responses/vs_ingest_worker.py::upload_missing_files_to_vector_store()`
-      - Eligibility per workspace: `file_workspaces.ingested=false AND file_workspaces.deleted=false AND (files.ocr_needed=false OR files.ocr_scanned=true)`.
+      - Eligibility per workspace: `file_workspaces.ingested=false AND file_workspaces.deleted=false AND file_workspaces.ingest_failed=false AND (files.ocr_needed=false OR files.ocr_scanned=true)`.
       - Prefers uploading OCR text (`files.ocr_text_path`) when available; otherwise uploads original file bytes.
       - Creates an OpenAI File (`purpose:"assistants"`) and attaches it to the workspace Vector Store.
       - Writes updates in stages for resilience:
         1) Baseline (always attempted): `ingested=true`, `openai_file_id`, and `vs_file_id`.
         2) Metadata enrichment (best-effort; tolerates missing columns): `has_ocr`, `file_ext`, `doc_type`, `meeting_year`, `meeting_month`.
         3) Document profile flag (best-effort): `doc_profile_processed=true`, `doc_profile_processed_at=now()`.
+      - Dead-letter queue: If a file fails ingestion repeatedly, the worker increments `ingest_retries` and eventually sets `ingest_failed=true` to prevent it from clogging the pipeline.
 - Vector Store resolution: Uses `GDRIVE_VECTOR_STORE_ID` if set; otherwise looks up `workspace_vector_stores.vector_store_id` by `GDRIVE_WORKSPACE_ID`.
 - Retrieval remains UI-side via Responses API + File Search; this service does not handle chat, only ingestion and optional hybrid RAG.
 
@@ -175,6 +176,7 @@ Acceptance criteria
 ### Schema checklist (document profiles) – run in Supabase
 - Ensure the following columns exist on `file_workspaces` so the worker can record both baseline and enriched metadata:
   - Baseline: `ingested boolean not null default false`, `deleted boolean not null default false`, `openai_file_id text`, `vs_file_id text`
+  - Ingestion state: `ingest_retries smallint not null default 0`, `ingest_failed boolean not null default false`
   - Metadata: `has_ocr boolean`, `file_ext text`, `doc_type text`, `meeting_year int`, `meeting_month int`
   - Processed flags: `doc_profile_processed boolean not null default false`, `doc_profile_processed_at timestamptz`
 - Also ensure OCR/storage hints on `files`: `ocr_needed boolean`, `ocr_scanned boolean`, `ocr_text_path text`, `file_path text`, `type text`

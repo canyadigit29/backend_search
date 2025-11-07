@@ -12,7 +12,7 @@ class Settings:
 
     # 🔐 Supabase
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "").strip()
-    SUPABASE_SERVICE_ROLE: str = os.getenv("SUPABASE_SERVICE_ROLE", "").strip()
+    SUPABASE_SERVICE_ROLE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip()
     SUPABASE_STORAGE_BUCKET: str = os.getenv("SUPABASE_STORAGE_BUCKET", "").strip()
 
     # 🤖 OpenAI
