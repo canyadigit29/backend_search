@@ -10,8 +10,14 @@ dependencies = [
   "httpx>=0.27,<0.29",  # ensure httpx includes 'proxy' kwarg but stays below 0.29 pending upstream validation
   "openai==2.7.1",  # aligned with local SDK
   "pydantic",
+  "pymupdf",  # for fitz (PyMuPDF) PDF text extraction
+  "pdfplumber",  # alternate PDF extraction path
+  "pytesseract",  # lightweight OCR fallback for pages
+  "pdf2image",  # convert PDF pages to images for pytesseract
   "ocrmypdf",
   "pypdf",
+  "python-docx",  # DOCX parsing used by extract_text
+  "pillow",  # imaging backend for pdf2image/pytesseract
   "requests",
   "tiktoken",
   "numpy",
