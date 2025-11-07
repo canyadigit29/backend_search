@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
         ghostscript \
         qpdf \
         pngquant \
+    && apt-get install -y curl \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
     && /root/.local/bin/uv lock \
     && /root/.local/bin/uv sync --frozen --no-dev
