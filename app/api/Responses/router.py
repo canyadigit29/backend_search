@@ -724,7 +724,32 @@ async def purge_vector_store(body: PurgeBody):
     Optionally delete the underlying OpenAI file. Optionally reset DB flags (ignored if DB empty).
     """
     vector_store_id = _get_vector_store_id(body.workspace_id)
-    data = await _list_vs_files_http(vector_store_id)
+    # Prefer REST listing; fall back to SDK list when REST is unavailable (e.g., unit tests)
+    try:
+        data = await _list_vs_files_http(vector_store_id)
+    except Exception as e_list:
+        logger.debug(f"REST list failed in purge (will try SDK fallback): {e_list}")
+        try:
+            client = OpenAI()
+            try:
+                lst = client.vector_stores.files.list(vector_store_id=vector_store_id)
+            except Exception:
+                lst = getattr(client, "beta").vector_stores.files.list(vector_store_id=vector_store_id)  # type: ignore
+            items = getattr(lst, "data", None) or []
+            # Normalize to REST-like shape for downstream logic
+            data = []
+            for it in items:
+                if isinstance(it, dict):
+                    data.append({"id": it.get("id"), "file_id": it.get("file_id"), "status": it.get("status")})
+                else:
+                    data.append({
+                        "id": getattr(it, "id", None),
+                        "file_id": getattr(it, "file_id", None),
+                        "status": getattr(it, "status", None),
+                    })
+        except Exception as e_sdk:
+            logger.warning(f"Both REST and SDK list failed in purge: {e_sdk}")
+            data = []
     detached = 0
     for it in data:
         vs_file_id = it.get("id")

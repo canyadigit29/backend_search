@@ -331,6 +331,8 @@ async def upload_missing_files_to_vector_store():
     uploaded = 0
     skipped = 0
     errors = 0
+    profiles_attempted = 0
+    profiles_saved = 0
 
     if not files:
         logger.info("[vs_ingest_worker] No eligible files to upload.")
@@ -446,11 +448,14 @@ async def upload_missing_files_to_vector_store():
                         }
                         _safe_upsert_document_profile(profile_data)
                         profile_saved = True
+                        profiles_saved += 1
                         logger.info(f"[vs_ingest_worker] Successfully saved document profile for file_id: {file_id}")
                     else:
                         logger.warning(f"[vs_ingest_worker] Document profiling returned no data for file_id: {file_id}")
                 except Exception as e_profile_gen:
                     logger.error(f"[vs_ingest_worker] Failed to generate or save document profile for file_id {file_id}: {e_profile_gen}", exc_info=True)
+                finally:
+                    profiles_attempted += 1
             else:
                 logger.info(f"[vs_ingest_worker] Skipping document profiling for file_id {file_id} (no text content).")
 
@@ -585,11 +590,14 @@ async def upload_missing_files_to_vector_store():
                         "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),
                     }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
                     profiled += 1
+                    profiles_saved += 1
                     logger.info(f"[vs_ingest_worker] Profile-only saved for file_id: {file_id}")
                 else:
                     logger.warning(f"[vs_ingest_worker] Profile-only generation returned no data for file_id: {file_id}")
             except Exception as e_profile:
                 logger.error(f"[vs_ingest_worker] Profile-only generation failed for file_id {file_id}: {e_profile}", exc_info=True)
+            finally:
+                profiles_attempted += 1
 
             if per_call_sleep:
                 time.sleep(per_call_sleep)
@@ -597,12 +605,14 @@ async def upload_missing_files_to_vector_store():
             logger.error(f"[vs_ingest_worker] Profile-only pass failed for {name} (id={file_id}): {e}", exc_info=True)
 
     logger.info(
-        f"[vs_ingest_worker] Task finished. Uploaded: {uploaded}, Skipped: {skipped}, Errors: {errors}, Profiled (profile-only): {profiled}"
+        f"[vs_ingest_worker] Task finished. Uploaded: {uploaded}, Skipped: {skipped}, Errors: {errors}, Profiles attempted: {profiles_attempted}, Profiles saved: {profiles_saved}, Profiled (profile-only): {profiled}"
     )
     return {
         "vector_store_id": vector_store_id,
         "uploaded": uploaded,
         "skipped": skipped,
         "errors": errors,
+        "profiles_attempted": profiles_attempted,
+        "profiles_saved": profiles_saved,
         "profiled": profiled,
     }
