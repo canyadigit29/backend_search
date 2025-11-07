@@ -12,8 +12,8 @@ python-multipart==0.0.9
 # OCR: we overwrite PDFs with OCRmyPDF; pypdf handles text extraction. Drop unused pytesseract/pdf2image.
 ocrmypdf==16.0.3
 requests==2.32.3
-# Supabase Python client
-supabase==2.4.0
+# Supabase Python client – bump to allow newer httpx that supports 'proxy' kwarg
+supabase==2.5.0
 uvicorn==0.30.6
 numpy==1.26.4
 tiktoken==0.7.0
