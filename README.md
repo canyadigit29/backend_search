@@ -71,14 +71,19 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
-4. **Start background workers**:
+4. **Start background workers** (now consolidated under `local_dev/`):
 ```bash
-# OCR and document processing
-python run_worker.py
+# OCR + ingestion/profile loop (hourly)
+python local_dev/run_worker.py
 
-# Google Drive sync (optional)
-python run_gdrive_sync.py
+# Legacy Drive sync loop (non-Responses)
+python local_dev/run_gdrive_sync.py
+
+# Unified Responses Drive sync + OCR + Vector Store ingest
+python local_dev/run_gdrive_sync_responses.py
 ```
+
+> Helper scripts were moved from the repo root into `local_dev/` to keep the top level clean.
 
 ## 🔧 Configuration
 

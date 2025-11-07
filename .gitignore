@@ -318,6 +318,15 @@ app/**/*.json
 .env
 .env.example
 
+# Local dev env and secrets
+local_dev/.env
+local_dev/.env.*
+local_dev/google-credentials.json
+
+# Virtual environments
+.venv/
+.venv*/
+
 # Google Cloud credentials
 google-credentials.json
 
