@@ -1,7 +1,8 @@
 aiofiles==24.1.0
 fastapi==0.115.0
-# Constrain httpx to satisfy supabase (<0.26) and openai (<1)
-httpx==0.25.2
+# httpx 0.25.x lacks the 'proxy' parameter used internally by current supabase/gotrue client.
+# Bump to >=0.27 where 'proxy' is supported; pin to a concrete version for reproducibility.
+httpx==0.28.1
 # Pin OpenAI SDK to the version present in the local openai-python workspace for API parity.
 openai==2.7.1
 psycopg2-binary==2.9.9
