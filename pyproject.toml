@@ -3,10 +3,6 @@ name = "backend_search"
 version = "0.0.1"
 description = "Ingestion + Vector Store backend (FastAPI)"
 requires-python = ">=3.11"
-# We deliberately leave dependencies empty; we manage them via the [tool.uv] groups below.
-
-[tool.uv]
-# Default (production) direct dependencies
 dependencies = [
   "fastapi",
   "uvicorn",
@@ -27,13 +23,15 @@ dependencies = [
   "google-auth-oauthlib"
 ]
 
-[tool.uv.dev-dependencies]
-# Development/test extras
-pytest = "*"
-pytest-asyncio = "*"
-httpx = "*"  # for test client usage; not pinned unless needed
-black = "*"
-mypy = "*"
+[tool.uv]
+# Development/test extras (installed with `uv sync --dev`)
+dev-dependencies = [
+  "pytest",
+  "pytest-asyncio",
+  "httpx",  # for test client usage; not pinned unless needed
+  "black",
+  "mypy"
+]
 
 [tool.uv.sources]
 # (Optional) Local path overrides could be added here if you want to develop against sibling SDK repos.
