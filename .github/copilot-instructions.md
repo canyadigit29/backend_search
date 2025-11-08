@@ -118,7 +118,7 @@ Notes
 - The `document_profiles` table is **DEPRECATED** and should be removed.
 
 ### Research integration (context for frontend)
-- The frontend's research agent (`/api/research`) derives soft filters (year, month, doc_type, etc.) from the metadata in the `file_workspaces` table.
+- The frontend's research agent (`/api/research`) derives soft filters (year, month, doc_type, etc.) from the metadata in the `file_workspaces` table. It may also accept a user-provided date range (`start_date`, `end_date`) and clamp those to the available `meeting_year`/`meeting_month` facets to bias retrieval.
 - This backend's primary role is to reliably populate those `file_workspaces` columns so the researcher can guide queries effectively.
 
 ## Endpoints map (current)
