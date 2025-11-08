@@ -411,6 +411,27 @@ async def upload_missing_files_to_vector_store():
             vs_file_id = _retry_call(_attach_file_to_vector_store, client, vector_store_id, created.id, retries=4, base_delay=1.0)
             logger.info(f"[vs_ingest_worker] Successfully attached to Vector Store. VS File ID: {vs_file_id}")
 
+            # --- Persist baseline ingestion metadata on file_workspaces ---
+            try:
+                # Derive light metadata from filename
+                year, derived_doc_type = _derive_year_and_doctype(name)
+                month = _derive_month_from_filename(name)
+                ext = _file_ext_from_name(name)
+
+                supabase.table("file_workspaces").update({
+                    "ingested": True,
+                    "openai_file_id": created.id,
+                    "vs_file_id": vs_file_id,
+                    "has_ocr": bool(has_ocr),
+                    "file_ext": ext,
+                    "doc_type": derived_doc_type,
+                    "meeting_year": year,
+                    "meeting_month": month,
+                }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                logger.info(f"[vs_ingest_worker] Updated file_workspaces baseline metadata for file_id: {file_id}")
+            except Exception as meta_e:
+                logger.error(f"[vs_ingest_worker] Failed to update baseline ingestion metadata for file_id {file_id}: {meta_e}")
+
             # --- Document Profiling Step ---
             profile_saved = False
             if text_content_for_profiling:
@@ -426,17 +447,20 @@ async def upload_missing_files_to_vector_store():
                             "entities": profile.get("entities"),
                             "processed_at": datetime.now(timezone.utc).isoformat(),
                         }
-                        _safe_upsert_document_profile(profile_data)
+                        # Deprecated: document_profiles table removed; persist directly to file_workspaces only
                         # Best-effort: also persist profile onto file_workspaces if columns exist
                         try:
+                            # Persist profile onto file_workspaces and mark processed
+                            now_iso = datetime.now(timezone.utc).isoformat()
                             supabase.table("file_workspaces").update({
                                 "profile_summary": profile.get("summary"),
                                 "profile_keywords": profile.get("keywords"),
                                 "profile_entities": profile.get("entities"),
-                                "profile_generated_at": datetime.now(timezone.utc).isoformat(),
+                                "doc_profile_processed": True,
+                                "doc_profile_processed_at": now_iso,
                             }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
                         except Exception as e_profile_cols:
-                            logger.debug(f"[vs_ingest_worker] file_workspaces profile columns not present or update failed (continuing): {e_profile_cols}")
+                            logger.debug(f"[vs_ingest_worker] file_workspaces profile columns update failed (continuing): {e_profile_cols}")
                         profile_saved = True
                         profiles_saved += 1
                         logger.info(f"[vs_ingest_worker] Successfully saved document profile for file_id: {file_id}")
@@ -538,7 +562,7 @@ async def upload_missing_files_to_vector_store():
                         "entities": profile.get("entities"),
                         "processed_at": datetime.now(timezone.utc).isoformat(),
                     }
-                    _safe_upsert_document_profile(profile_data)
+                    # Deprecated: document_profiles table removed; persist directly to file_workspaces only
                     # Best-effort: also persist profile onto file_workspaces if columns exist
                     try:
                         supabase.table("file_workspaces").update({
