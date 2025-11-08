@@ -356,3 +356,5 @@ app/core/__pycache__/openai_client.cpython-313.pyc
 app/core/__pycache__/token_utils.cpython-313.pyc
 app/services/__pycache__/file_processing_service.cpython-313.pyc
 app/workers/__pycache__/main_worker.cpython-313.pyc
+.env.example
+.env.example

@@ -88,70 +88,103 @@ python local_dev/run_gdrive_sync_responses.py
 ## 🔧 Configuration
 
 ### Environment Variables
+
+Copy `.env.example` to `.env` and fill in the required values. The most important variables are shown below; see `.env.example` for a complete list and recommended defaults.
+
 ```env
-# Database
-SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_ROLE=your_service_role_key
+# Required – Supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_STORAGE_BUCKET=files
 
-# OpenAI
-OPENAI_API_KEY=your_openai_key
+# Required – OpenAI
+OPENAI_API_KEY=sk-...
 
-# Google Drive (optional)
-GOOGLE_DRIVE_FOLDER_ID=your_folder_id
-GOOGLE_SERVICE_ACCOUNT_KEY=path_to_service_account.json
-
-# API Configuration
+# CORS / API
 API_PREFIX=/api
-ALLOWED_ORIGINS=https://your-frontend.com
+ALLOWED_ORIGINS=http://127.0.0.1:3100,http://localhost:3100
+
+# Optional – Google Workspace / Drive (Drive-only ingestion)
+GOOGLE_CREDENTIALS_BASE64=<base64-encoded service account json>
+GOOGLE_ADMIN_EMAIL=
+GOOGLE_DRIVE_FOLDER_ID=
+GDRIVE_WORKSPACE_ID=
+GDRIVE_VECTOR_STORE_ID=
+
+# Optional – Responses ingestion tuning
+VS_UPLOAD_DELAY_MS=1000
+VS_UPLOAD_BATCH_LIMIT=25
+ENABLE_RESPONSES_GDRIVE_SYNC=true
+
+# Optional – Reliability controls (retries/timeouts)
+RETRY_RETRIES=3
+RETRY_MIN_MS=300
+RETRY_MAX_MS=2500
+RETRY_JITTER=true
+RESPONSES_STREAM_TIMEOUT_SEC=600
+
+# Optional – Web search enrichment (Researcher)
+BRAVE_SEARCH_API_KEY=your_brave_api_key
+
+# Logging
+LOG_LEVEL=INFO
+LOG_JSON=false
 ```
+
+Notes:
+- Use `SUPABASE_SERVICE_ROLE_KEY` (not `SUPABASE_SERVICE_ROLE`) to match the code in `app/core/config.py`.
+- Keep secrets out of version control. Store them in `.env` locally and in your platform’s env settings in production.
+- Brave Search is only used when the research web enrichment step is enabled; leave blank to disable web queries.
 
 ## 📡 API Endpoints
 
-### Search Documents
-```http
-POST /api/assistant/search_docs
-Content-Type: application/json
+This service focuses on ingestion and Vector Store maintenance for the frontend’s File Search flow. Retrieval happens in the frontend via the OpenAI Responses API.
 
-{
-  "query": "your search query",
-  "relevance_threshold": 0.4,
-  "max_results": 100,
-  "search_weights": {
-    "semantic": 0.6,
-    "keyword": 0.4
-  }
-}
-```
+Key routes (prefix defaults to `/api`):
 
-### Google Drive Sync
-```http
-POST /api/gdrive/sync
-```
-
-### Manual Worker Trigger
-```http
-POST /api/run-worker
-```
+- Responses + Drive ingestion
+  - `POST /responses/vector-store/ingest/upload` – Upload files for ingestion (multipart)
+  - `POST /responses/vector-store/ingest` – Trigger a background ingestion run
+  - `POST /responses/gdrive/sync` – Trigger a Google Drive sync (when enabled)
+- Vector Store maintenance
+  - `GET /responses/list` – List files in the workspace Vector Store
+  - `DELETE /responses/file/{file_id}` – Detach and delete an OpenAI File
+  - `POST /responses/vector-store/purge` – Detach all files for a workspace
+- v2 endpoints (for parity with frontend while migrating)
+  - `POST /api/v2/chat/respond` – Responses API + File Search (stream/non-stream)
+  - `POST /api/v2/research` – Generate a research report (and persist)
+  - `GET /api/v2/research?stream=true&workspace_id=...&question=...` – SSE stream of phases
 
 ## 🔄 Background Processing
 
-The system includes automated background workers that run every hour:
+The system includes automated background workers that run on an interval:
 
-- **OCR Worker**: Processes uploaded PDFs for text extraction
-- **Ingestion Worker**: Chunks and embeds documents for search
-- **Google Drive Sync**: Downloads and processes new files from Google Drive
+- **Drive Sync (Responses)**: Downloads new files from Google Drive, uploads to Supabase Storage, marks rows for ingest
+- **Vector Store Ingest**: Prefers OCR text when available, uploads to OpenAI, attaches to the workspace Vector Store, enriches metadata
+- **Document Profiling**: Generates summary/keywords/entities and writes them to `file_workspaces` columns
 
 ## 🗃️ Database Schema
 
-Key tables:
-- `files`: Document metadata and processing status
-- `document_chunks`: Text chunks with embeddings for search
-- `embeddings`: Vector storage for semantic search
+Key tables/columns (see the frontend repo’s schema snapshot for full reference):
+- `files`: Document metadata and OCR hints (`ocr_needed`, `ocr_scanned`, `ocr_text_path`, `file_path`)
+- `file_workspaces`: Join table + ingestion/profiling state (`ingested`, `openai_file_id`, `vs_file_id`, `has_ocr`, `file_ext`, `doc_type`, `meeting_year`, `meeting_month`, `profile_*`, `doc_profile_processed`)
+- `workspace_vector_stores`: Per-workspace mapping to an OpenAI Vector Store id
 
 ## 🧪 Testing
 
 ```bash
 python -m pytest tests/
+```
+
+## 🩺 Health checks
+
+- Detailed: `GET /responses/vector-store/health` (per-workspace diagnostics)
+- Summary: `GET /responses/vector-store/health/summary?workspace_id=...`
+
+Nightly script (returns non‑zero exit code if dangling counts are high):
+
+```powershell
+python scripts/vs-health-check.py http://127.0.0.1:8000 <workspace_id>
 ```
 
 ## 📝 Development

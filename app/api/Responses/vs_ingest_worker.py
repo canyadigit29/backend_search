@@ -472,6 +472,14 @@ async def upload_missing_files_to_vector_store():
                     profiles_attempted += 1
             else:
                 logger.info(f"[vs_ingest_worker] Skipping document profiling for file_id {file_id} (no text content).")
+                # Also mark as processed to avoid re-queueing
+                try:
+                    supabase.table("file_workspaces").update({
+                        "doc_profile_processed": True,
+                        "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                except Exception as e_mark_processed:
+                    logger.warning(f"[vs_ingest_worker] Failed to mark file as processed after skipping profiling: {e_mark_processed}")
 
             uploaded += 1
             if per_call_sleep:
@@ -548,6 +556,14 @@ async def upload_missing_files_to_vector_store():
 
             if not text_content_for_profiling:
                 logger.info(f"[vs_ingest_worker] Skipping profile-only for file_id {file_id} (no text content).")
+                # Mark as processed to avoid re-queueing
+                try:
+                    supabase.table("file_workspaces").update({
+                        "doc_profile_processed": True,
+                        "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),
+                    }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                except Exception as e_mark_processed:
+                    logger.warning(f"[vs_ingest_worker] Failed to mark file as processed after skipping profile-only: {e_mark_processed}")
                 continue
 
             # Generate and save profile
@@ -582,6 +598,14 @@ async def upload_missing_files_to_vector_store():
                     logger.info(f"[vs_ingest_worker] Profile-only saved for file_id: {file_id}")
                 else:
                     logger.warning(f"[vs_ingest_worker] Profile-only generation returned no data for file_id: {file_id}")
+                    # Mark as processed to avoid re-queueing
+                    try:
+                        supabase.table("file_workspaces").update({
+                            "doc_profile_processed": True,
+                            "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),
+                        }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                    except Exception as e_mark_processed:
+                        logger.warning(f"[vs_ingest_worker] Failed to mark file as processed after empty profile-only result: {e_mark_processed}")
             except Exception as e_profile:
                 logger.error(f"[vs_ingest_worker] Profile-only generation failed for file_id {file_id}: {e_profile}", exc_info=True)
             finally:
