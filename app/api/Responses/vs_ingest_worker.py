@@ -458,6 +458,7 @@ async def upload_missing_files_to_vector_store():
                                 "profile_entities": profile.get("entities"),
                                 "doc_profile_processed": True,
                                 "doc_profile_processed_at": now_iso,
+                                "doc_profile_status": "Success",
                             }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
                         except Exception as e_profile_cols:
                             logger.debug(f"[vs_ingest_worker] file_workspaces profile columns update failed (continuing): {e_profile_cols}")
@@ -466,8 +467,24 @@ async def upload_missing_files_to_vector_store():
                         logger.info(f"[vs_ingest_worker] Successfully saved document profile for file_id: {file_id}")
                     else:
                         logger.warning(f"[vs_ingest_worker] Document profiling returned no data for file_id: {file_id}")
+                        try:
+                            supabase.table("file_workspaces").update({
+                                "doc_profile_processed": True,
+                                "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),
+                                "doc_profile_status": "Skipped: Profiling returned no data",
+                            }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                        except Exception as e_mark_processed:
+                            logger.warning(f"[vs_ingest_worker] Failed to mark file as processed after empty profile result: {e_mark_processed}")
                 except Exception as e_profile_gen:
                     logger.error(f"[vs_ingest_worker] Failed to generate or save document profile for file_id {file_id}: {e_profile_gen}", exc_info=True)
+                    try:
+                        supabase.table("file_workspaces").update({
+                            "doc_profile_processed": True,
+                            "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),
+                            "doc_profile_status": f"Failed: {e_profile_gen}",
+                        }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
+                    except Exception as e_mark_processed:
+                        logger.warning(f"[vs_ingest_worker] Failed to mark file as processed after profile generation error: {e_mark_processed}")
                 finally:
                     profiles_attempted += 1
             else:
@@ -477,6 +494,7 @@ async def upload_missing_files_to_vector_store():
                     supabase.table("file_workspaces").update({
                         "doc_profile_processed": True,
                         "doc_profile_processed_at": datetime.now(timezone.utc).isoformat(),
+                        "doc_profile_status": "Skipped: No text content found",
                     }).eq("file_id", file_id).eq("workspace_id", workspace_id).execute()
                 except Exception as e_mark_processed:
                     logger.warning(f"[vs_ingest_worker] Failed to mark file as processed after skipping profiling: {e_mark_processed}")
