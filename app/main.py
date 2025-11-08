@@ -13,6 +13,11 @@ from fastapi.middleware.cors import CORSMiddleware
 # Import existing, still-needed routers
 from app.api.Responses import router as responses_router
 from app.api.health import router as health_router
+
+# Import the new v2 routers
+from app.api.v2 import chat as chat_v2_router
+from app.api.v2 import research as research_v2_router
+
 from app.core.config import settings
 from app.core.logger import request_id_var, log_info
 from app.core.logging_config import setup_logging, set_request_id
@@ -80,6 +85,10 @@ async def root():
 async def run_worker_manually_disabled():
     return {"message": "Legacy ingestion worker disabled. Use /api/responses/gdrive/sync and /api/responses/vector-store/ingest instead."}
 
-# Mount the Responses router only (legacy routers removed)
+# Mount the existing routers
 app.include_router(responses_router, prefix=settings.API_PREFIX)
 app.include_router(health_router, prefix=settings.API_PREFIX)
+
+# Mount the new v2 routers
+app.include_router(chat_v2_router.router, prefix=f"{settings.API_PREFIX}/v2", tags=["v2_chat"])
+app.include_router(research_v2_router.router, prefix=f"{settings.API_PREFIX}/v2", tags=["v2_research"])

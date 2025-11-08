@@ -18,6 +18,11 @@ Note: For cross-repo flags, routes, and end-to-end flows, see the workspace inte
 ## Retrieval details
 Retrieval is now performed by the frontend (`chatbot-ui`) via the OpenAI Responses API + File Search. This backend no longer exposes any search or retrieval endpoints. Its sole responsibility is ingestion and data synchronization.
 
+## API versioning note ("v2" ≠ Assistants v2)
+- The `/api/v2/*` paths in this backend are internal API versioning for our FastAPI routes.
+- They are NOT related to "Assistants v2" and do not require or use the `OpenAI-Beta: assistants=v2` header.
+- We only use the OpenAI Responses API with File Search. Do not send the Assistants header in any request.
+
 ## Document Profiling
 - The ingestion worker (`vs_ingest_worker.py`) can automatically generate a profile for each document it processes.
 - Using the OpenAI Responses API, it creates a summary, a list of keywords, and extracts named entities.
@@ -30,6 +35,10 @@ Retrieval is now performed by the frontend (`chatbot-ui`) via the OpenAI Respons
   - `openai-python/` – Python SDK source and examples; the definitive place to confirm request/response shapes, retries, timeouts, and streaming helpers in Python.
   - `openai-node/` – Node/TypeScript SDK source and examples; helpful when ensuring API parity or comparing streaming patterns used by the frontend.
   - `evals/` – evaluation framework you can adapt for smoke tests or regression checks on summarization/retrieval behavior.
+
+ Authoritative Responses API guidance
+ - Treat `openai-cookbook` and `openai-python` as the canonical sources (“bibles”) for the Responses API, including `attachments`, `tools`, and `tool_resources.file_search`.
+ - When a request is rejected (e.g., 400 Unknown parameter), first cross-check the payload shape against the cookbook and the Python client’s expected schema, then adjust the call. Avoid adding compatibility fallbacks unless the canonical shape still fails in integration.
 
 Notes
 - These paths are local workspace references (not GitHub links). In VS Code, open the folders in the Explorer to navigate current code and docs.
@@ -67,6 +76,12 @@ Notes
 - `PGVECTOR_CONN_STR` is used for direct DB connections if needed.
 - `ALLOWED_ORIGINS` includes the Vercel URL for the frontend and localhost for development.
 - Do not check secrets into version control; rely on env files and platform envs (Railway/Vercel) for deployment.
+
+## Dev dependencies and tests (added)
+- For local testing, include pytest in a dev requirements file or your environment:
+  - Recommended: create `requirements-dev.txt` with `pytest`, `pytest-asyncio` and install via `pip install -r requirements-dev.txt`.
+  - Alternatively, install ad-hoc: `pip install pytest pytest-asyncio`.
+- The test suite includes streaming and non-streaming checks for `/api/v2/chat/respond` and `/api/v2/research`.
 
 ## Contract expectations (examples)
 - Responses ingestion: `POST /responses/vector-store/ingest/upload` accepts multipart with `workspace_id` and `files[]`; returns `{ vector_store_id, files: [{ id, name, size }], failed?: [{ name, reason }], status }`.
@@ -131,6 +146,10 @@ Notes
   - `GET /responses/list` – List files in the workspace Vector Store.
   - `DELETE /responses/file/{file_id}` – Detach and delete an OpenAI File.
   - `POST /responses/vector-store/purge` – Detach all files.
+ - Chat & Research (v2 – internal API versioning):
+   - `POST /api/v2/chat/respond` – Responses API + File Search (streaming and non-streaming supported).
+   - `POST /api/v2/research` – Generate a research report (draft/outline/quotes/logs) and persist to `research_reports`.
+   - `GET /api/v2/research?stream=true&workspace_id=...&question=...` – SSE stream of research phases; emits `phase`, `draft_chunk`, `sources`, `web_results`, `thoughts`, `complete`.
 
 ## Frontend integration note (chatbot-ui)
 - The frontend’s `/api/vector-stores/ingest` route forwards to this service’s `POST /responses/vector-store/ingest/upload`. If uploads fail in production, verify Vercel `BACKEND_SEARCH_URL` and backend `ALLOWED_ORIGINS`.

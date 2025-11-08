@@ -1,10 +1,31 @@
 import os
 import re
-import fitz  # PyMuPDF
-import pdfplumber
-import pytesseract
-from pdf2image import convert_from_path
-from docx import Document
+
+# Optional dependencies: degrade gracefully if not installed in test/light environments.
+try:  # PyMuPDF
+    import fitz  # type: ignore
+except ImportError:  # pragma: no cover - absence handled dynamically
+    fitz = None
+
+try:
+    import pdfplumber  # type: ignore
+except ImportError:  # pragma: no cover
+    pdfplumber = None
+
+try:
+    import pytesseract  # type: ignore
+except ImportError:  # pragma: no cover
+    pytesseract = None
+
+try:
+    from pdf2image import convert_from_path  # type: ignore
+except ImportError:  # pragma: no cover
+    convert_from_path = None
+
+try:
+    from docx import Document  # type: ignore
+except ImportError:  # pragma: no cover
+    Document = None
 
 class TextExtractionError(Exception):
     """Custom exception for text extraction failures."""
@@ -18,39 +39,40 @@ def clean_text(text):
     return text.strip()
 
 def extract_text_from_pdf(path):
-    # Try to extract text with pdfplumber
-    try:
-        with pdfplumber.open(path) as pdf:
+    # Try pdfplumber if available
+    if pdfplumber is not None:
+        try:
+            with pdfplumber.open(path) as pdf:
+                text = "\n".join(
+                    f"---PAGE {i+1}---\n" + (page.extract_text() or "")
+                    for i, page in enumerate(pdf.pages)
+                )
+                text_content_only = re.sub(r'---PAGE \d+---', '', text).strip()
+                if len(text_content_only) > 100:
+                    return clean_text(text)
+        except Exception as e:  # pragma: no cover
+            print(f"pdfplumber failed: {e}")
+
+    # Fallback to PyMuPDF if available
+    if fitz is not None:
+        try:
+            doc = fitz.open(path)
             text = "\n".join(
-                f"---PAGE {i+1}---\n" + (page.extract_text() or "")
-                for i, page in enumerate(pdf.pages)
+                f"---PAGE {i+1}---\n" + page.get_text()
+                for i, page in enumerate(doc)
             )
-            # New, more robust check:
-            # Remove all page markers and whitespace to see if any real text remains.
             text_content_only = re.sub(r'---PAGE \d+---', '', text).strip()
-            if len(text_content_only) > 100: # Check if there's substantial content
+            if len(text_content_only) > 100:
                 return clean_text(text)
-    except Exception as e:
-        print(f"pdfplumber failed: {e}")
+        except Exception as e:  # pragma: no cover
+            print(f"PyMuPDF failed: {e}")
 
-    # If pdfplumber fails, try with PyMuPDF
-    try:
-        doc = fitz.open(path)
-        text = "\n".join(
-            f"---PAGE {i+1}---\n" + page.get_text()
-            for i, page in enumerate(doc)
-        )
-        # Apply the same robust check here
-        text_content_only = re.sub(r'---PAGE \d+---', '', text).strip()
-        if len(text_content_only) > 100:
-            return clean_text(text)
-    except Exception as e:
-        print(f"PyMuPDF failed: {e}")
-
-    # If both methods fail, return None to indicate OCR is needed
+    # Indicate OCR or other fallback needed
     return None
 
 def extract_text_from_docx(path):
+    if Document is None:
+        raise TextExtractionError("python-docx not installed")
     try:
         doc = Document(path)
         text = "\n".join([para.text for para in doc.paragraphs])

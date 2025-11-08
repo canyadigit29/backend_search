@@ -947,6 +947,30 @@ def vector_store_health(workspace_id: str = Query(...)):
     }
 
 
+@router.get("/vector-store/health/summary")
+async def vector_store_health_summary(workspace_id: str = Query(...)):
+    """Compact health summary suitable for nightly checks.
+    Returns: { ok, vector_store_id, attachments, db_active, db_ingested_true, dangling_counts }
+    """
+    try:
+        base = vector_store_health.__wrapped__  # type: ignore[attr-defined]
+    except Exception:
+        # Fallback if __wrapped__ missing (older Python); just call directly
+        base = vector_store_health
+    data = base(workspace_id)  # type: ignore
+    return {
+        "ok": True,
+        "vector_store_id": data.get("vector_store_id"),
+        "attachments": data.get("vector_store", {}).get("attachments", 0),
+        "db_active": data.get("db", {}).get("file_workspaces", {}).get("active", 0),
+        "db_ingested_true": data.get("db", {}).get("file_workspaces", {}).get("ingested_true", 0),
+        "dangling_counts": {
+            "vs_without_db_mapping": data.get("dangling", {}).get("vs_without_db_mapping", {}).get("count", 0),
+            "db_ingested_missing_in_vs": data.get("dangling", {}).get("db_ingested_missing_in_vs", {}).get("count", 0),
+        },
+    }
+
+
 def _normalize_name(name: str) -> str:
     base = os.path.splitext(name or "")[0]
     import re

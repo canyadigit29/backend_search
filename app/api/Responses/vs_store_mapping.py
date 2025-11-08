@@ -77,3 +77,26 @@ def resolve_vector_store_for(workspace_id: Optional[str], *, drive_folder_id: Op
         pass
 
     return _default_vector_store_for_workspace(workspace_id)
+
+
+def resolve_multiple_stores(workspace_id: str, labels: list[str] | None = None) -> list[str]:
+    """Return a list of vector_store_ids for a workspace given logical labels.
+    If labels is None/empty, returns the default store only. Missing labels are ignored.
+    """
+    if not labels:
+        return [
+            _default_vector_store_for_workspace(workspace_id)
+        ]
+    vs_ids: list[str] = []
+    seen: set[str] = set()
+    for lab in labels:
+        try:
+            vid = resolve_vector_store_for(workspace_id, label=lab)
+            if vid and vid not in seen:
+                vs_ids.append(vid)
+                seen.add(vid)
+        except Exception:
+            continue
+    if not vs_ids:
+        vs_ids.append(_default_vector_store_for_workspace(workspace_id))
+    return vs_ids
